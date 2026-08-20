@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="title desc">
+  <title id="title">Douyin EchoCue taskbar icon</title>
+  <desc id="desc">A compact monochrome live echo cue icon.</desc>
+  <path d="M13 4.5a7.5 7.5 0 0 1 0 15M13 7.5a4.5 4.5 0 0 1 0 9M13 10.5a1.5 1.5 0 0 1 0 3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2.4"/>
+  <circle cx="7" cy="12" r="2.5" fill="currentColor"/>
+</svg>

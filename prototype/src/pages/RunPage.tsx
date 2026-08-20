@@ -1,0 +1,1 @@
+export function RunPage(){return <><h1>运行</h1><section className="card status"><b>● 正在监听</b><button className="danger">停止服务</button><p>当前直播间：516466932480　团队：Echocue 试播团队　主要出镜：小A</p></section><section className="card"><h2>最近活动</h2><p>最近收到弹幕：刚刚<br/>最近处理：已展示一条回复建议<br/>最近端到端耗时：1.8 秒</p><small>展示期内不生成下一条建议，也不排队。</small></section></>}

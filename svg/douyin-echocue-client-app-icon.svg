@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Douyin EchoCue client app icon</title>
+  <desc id="desc">A live interaction cue rendered as a warm notification dot and three echo waves.</desc>
+  <defs>
+    <linearGradient id="background" x1="72" y1="54" x2="442" y2="466" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#202733"/>
+      <stop offset="1" stop-color="#111722"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="174" y1="182" x2="310" y2="314" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF8669"/>
+      <stop offset="1" stop-color="#FA4F5E"/>
+    </linearGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="11" stdDeviation="12" flood-color="#000000" flood-opacity=".25"/>
+    </filter>
+  </defs>
+  <rect x="36" y="36" width="440" height="440" rx="120" fill="url(#background)"/>
+  <path d="M272 145c59 0 107 48 107 107s-48 107-107 107" fill="none" stroke="#F8F5EE" stroke-linecap="round" stroke-width="28" opacity=".3"/>
+  <path d="M272 183c38 0 69 31 69 69s-31 69-69 69" fill="none" stroke="#F8F5EE" stroke-linecap="round" stroke-width="28" opacity=".66"/>
+  <path d="M272 221c17 0 31 14 31 31s-14 31-31 31" fill="none" stroke="#F8F5EE" stroke-linecap="round" stroke-width="28"/>
+  <circle cx="188" cy="252" r="47" fill="url(#accent)" filter="url(#shadow)"/>
+</svg>
