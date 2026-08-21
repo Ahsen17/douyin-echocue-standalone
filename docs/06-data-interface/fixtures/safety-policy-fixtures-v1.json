@@ -52,6 +52,15 @@
       "stage": "INPUT",
       "simulateEngineFailure": true,
       "expected": { "allow": false, "reason": "SAFETY_ENGINE_ERROR", "traceFinalState": "FILTERED" }
+    },
+    {
+      "id": "team-forbidden-topic-filtered",
+      "stage": "INPUT",
+      "text": "不要聊公司机密",
+      "compiledRules": [
+        { "ruleType": "TOPIC_PHRASE", "category": "TEAM_FORBIDDEN", "text": "公司机密" }
+      ],
+      "expected": { "allow": false, "reason": "TEAM_FORBIDDEN", "traceFinalState": "FILTERED" }
     }
   ]
 }
