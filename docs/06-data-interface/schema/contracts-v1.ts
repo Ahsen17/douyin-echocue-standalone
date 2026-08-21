@@ -50,6 +50,12 @@ export const ServiceActivitySchema = z.enum([
   'IDLE', 'GATE_CHECKING', 'LISTENING', 'RETRIEVING', 'GENERATING', 'DISPLAYING',
 ]);
 
+export const SafetyReasonCodeV1Schema = z.enum([
+  'ABUSE', 'PII', 'POLITICS', 'SEXUAL', 'ILLEGAL',
+  'MEDICAL_FINANCIAL_ADVICE', 'COMPETITOR', 'TRANSACTION_PRICE',
+  'TEAM_FORBIDDEN', 'SAFETY_ENGINE_ERROR',
+]);
+
 export const TraceReasonCodeV1Schema = z.enum([
   'EVENT_RECEIVED', 'NORMALIZATION_OK', 'INPUT_SAFETY_FILTERED',
   'PERSONA_ROUTED', 'RETRIEVAL_STARTED', 'GOLDEN_DIRECT_ELIGIBLE',
@@ -197,6 +203,7 @@ export type LabelStatus = z.infer<typeof LabelStatusSchema>;
 export type TraceState = z.infer<typeof TraceStateSchema>;
 export type TraceFinalState = z.infer<typeof TraceFinalStateSchema>;
 export type SemanticTypeV1 = z.infer<typeof SemanticTypeV1Schema>;
+export type SafetyReasonCodeV1 = z.infer<typeof SafetyReasonCodeV1Schema>;
 export type TraceReasonCodeV1 = z.infer<typeof TraceReasonCodeV1Schema>;
 export type ProviderErrorV1 = z.infer<typeof ProviderErrorV1Schema>;
 export type DomainErrorV1 = z.infer<typeof DomainErrorV1Schema>;
