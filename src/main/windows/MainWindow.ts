@@ -24,7 +24,7 @@ export class MainWindow {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        preload: join(__dirname, '../preload/main-preload.js'),
+        preload: join(__dirname, '../preload/main-preload.cjs'),
       },
     })
 

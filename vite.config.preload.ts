@@ -9,7 +9,7 @@ export default defineConfig({
         'overlay-preload': resolve(__dirname, 'src/preload/overlay-preload.ts'),
       },
       formats: ['cjs'],
-      fileName: (_format, entryName) => `${entryName}.js`,
+      fileName: (_format, entryName) => `${entryName}.cjs`,
     },
     outDir: 'dist/preload',
     emptyOutDir: true,
