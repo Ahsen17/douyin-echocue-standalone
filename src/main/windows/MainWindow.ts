@@ -29,7 +29,7 @@ export class MainWindow {
     })
 
     if (process.env.NODE_ENV === 'development') {
-      this.window.loadURL('http://localhost:5173/src/renderer/main/index.html')
+      this.window.loadURL('http://localhost:5173/main/index.html')
     } else {
       this.window.loadFile(join(__dirname, '../renderer/main/index.html'))
     }

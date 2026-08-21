@@ -25,7 +25,7 @@ export class OverlayWindow {
     })
 
     if (process.env.NODE_ENV === 'development') {
-      this.window.loadURL('http://localhost:5173/src/renderer/overlay/index.html')
+      this.window.loadURL('http://localhost:5173/overlay/index.html')
     } else {
       this.window.loadFile(join(__dirname, '../renderer/overlay/index.html'))
     }
