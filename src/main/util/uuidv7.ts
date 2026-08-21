@@ -1,5 +1,9 @@
 import { randomBytes } from 'node:crypto';
 
+// Mirrors the contract's uuidV7 regex (schemas.ts keeps it as a non-exported
+// constant); the settings.activeSafetyPolicyVersion validation depends on it.
+export const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 // Version/variant bits are pinned so output always matches the contract's
 // uuidV7 regex (settings.activeSafetyPolicyVersion validation depends on it).
 export function uuidv7(now: number = Date.now()): string {
