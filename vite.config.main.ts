@@ -6,7 +6,7 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'src/main/index.ts'),
       formats: ['cjs'],
-      fileName: () => 'index.js',
+      fileName: () => 'index.cjs',
     },
     outDir: 'dist/main',
     emptyOutDir: true,

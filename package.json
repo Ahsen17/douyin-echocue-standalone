@@ -2,7 +2,7 @@
   "name": "echocue",
   "version": "0.1.0",
   "description": "Echocue - AI-powered live streaming assistant",
-  "main": "dist/main/index.js",
+  "main": "dist/main/index.cjs",
   "type": "module",
   "workspaces": [
     "src/contracts"

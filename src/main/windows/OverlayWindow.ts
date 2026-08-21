@@ -20,7 +20,7 @@ export class OverlayWindow {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        preload: join(__dirname, '../preload/overlay-preload.js'),
+        preload: join(__dirname, '../preload/overlay-preload.cjs'),
       },
     })
 
