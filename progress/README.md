@@ -14,3 +14,4 @@
 | M1-06 | 实现主窗口三按钮、托盘和显式退出 | ✅ 已完成 | 2026-08-21 | src/main/windows/{MainWindow,TrayManager}.ts, src/main/index.ts, src/preload/main-preload.ts, src/renderer/main/{App,echocue.d}.ts, tests/unit/windows/titlebar.test.ts |
 | M1-07 | 实现日志、Prometheus、OTel 和诊断数据源 | ✅ 已完成 | 2026-08-21 | src/main/telemetry/{Logger,Metrics,OtelSetup,DiagnosticsSource,index}.ts, tests/unit/telemetry/metrics-privacy.test.ts, tests/integration/telemetry/metrics.test.ts |
 | M2-01 | 实现成员、名称、昵称和别名 CRUD | ✅ 已完成 | 2026-08-21 | src/main/persona/{PersonaStore,types,index}.ts, tests/integration/persona/persona-store.test.ts |
+| M2-02 | 实现人设草稿、发布、比较与回滚 | ✅ 已完成 | 2026-08-22 | src/main/persona/{PersonaStore,types,index}.ts(扩展), src/main/util/{uuidv7,index}.ts, tests/integration/persona/persona-version.test.ts, tests/unit/util/uuidv7.test.ts |
