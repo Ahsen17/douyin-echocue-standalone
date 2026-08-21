@@ -9,3 +9,5 @@
 | M1-01 | 实现 settings.json 配置仓库 | ✅ 已完成 | 2026-08-21 | src/main/config/SettingsStore.ts, src/main/config/index.ts, tests/integration/config/settings-store.test.ts, vitest.config.ts (include fix) |
 | M1-02 | 实现 safeStorage Provider 凭证仓库 | ✅ 已完成 | 2026-08-21 | src/main/credentials/CredentialStore.ts, src/main/credentials/index.ts, tests/integration/config/credential-store.test.ts |
 | M1-03 | 实现 AES-GCM envelope、HMAC 与 DPAPI 包装 | ✅ 已完成 | 2026-08-21 | src/main/crypto/{types,field-encryptor,content-hmac,key-manager,index}.ts, tests/integration/crypto/aes-gcm-envelope.test.ts |
+| M1-04 | 实现 SQLite migration runner | ✅ 已完成 | 2026-08-21 | src/main/storage/{MigrationRunner,index}.ts, tests/integration/storage/migration-runner.test.ts |
+| M1-05 | 实现 AuditStoreWorker 单写模型 | ✅ 已完成 | 2026-08-21 | src/main/storage/AuditStoreWorker.ts, tests/integration/storage/audit-store-worker.test.ts |
