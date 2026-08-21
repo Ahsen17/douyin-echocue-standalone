@@ -27,7 +27,8 @@
 | 10 | [UI 信息架构与交互设计](../10-ui/Echocue-UI信息架构与交互设计-v0.1.md) | 页面信息架构、窗口/浮窗/托盘交互和 UI 状态。 | Renderer 及桌面交互实现。 |
 | 11-A | [LLM 提示词与输出校验](../11-implementation/Echocue-LLM提示词与输出校验设计-v0.1.md) | Provider prompt、JSON 输出、本地校验、超时取消和首个 DeepSeek adapter。 | Provider 与生成工作流实现。 |
 | 11-B | [Windows 部署运行手册](../11-implementation/Echocue-Windows部署运行与故障处理手册-v0.1.md) / [安装包清单与兼容矩阵](../11-implementation/Echocue-Windows安装包清单与兼容矩阵-v0.1.md) | Windows 安装、受控 sidecar、WAL、密钥、容量、升级和故障处置。 | 打包、运维与发布实现。 |
-| 08 | [研发任务、测试与验收](../08-delivery/Echocue-研发任务拆分、测试计划与验收标准-v0.1.md) | 研发工作包、POC、测试层级和验收。 | 排期、测试和交付判定。 |
+| 08-A | [研发任务、测试与验收](../08-delivery/Echocue-研发任务拆分、测试计划与验收标准-v0.1.md) | W1–W7 工作包、POC、测试层级和验收基线。 | 阶段门禁、测试和交付判定。 |
+| 08-B | [MVP 里程碑与原子任务实施计划](../08-delivery/Echocue-MVP里程碑与原子任务实施计划-v0.1.md) | M0–M7 依赖、61 个原子任务、最小阅读包、输入/输出、DoD 和领取模板。 | 任务排序、独立派发和逐项实施。 |
 | Review | [独立全量审查 v0.2](../07-review/Echocue-全量交付独立审查报告-v0.2.md) / [修复闭环 v0.3](../07-review/Echocue-全量交付修复闭环报告-v0.3.md) | v0.2 是修复前取证，v0.3 是逐项处置与当前门禁；均不是上游需求真值。 | 复核缺陷闭环与外部待执行证据。 |
 | Prototype | [Vite + React + TypeScript 原型](../../prototype/README.md) | 八个可运行视图、mock 状态和交互。 | UI 审查与 Renderer 演进。 |
 | Assets | [应用图标](../../svg/douyin-echocue-client-app-icon.svg) / [托盘图标](../../svg/douyin-echocue-client-tray-icon.svg) | Windows 构建图标唯一设计源。 | 打包和视觉一致性。 |
@@ -57,12 +58,12 @@
 4. 详细设计：09-B → 09-A（两者均以 06 canonical 契约为准）；
 5. 前端/桌面：02 → 06 IPC → 10 → `prototype/`；
 6. 生成与运行实现：11-A → 11-B；
-7. 实施与验证：08 → 07-review。
+7. 实施与验证：08-A 验收基线 → 08-B 原子任务实施计划 → 07-review。
 
 ## 5. 发布前完整性检查
 
 - 每个 P0 验收项都能回链到至少一个需求、设计图/契约和测试证据；
 - 所有 Mermaid 图以源码随文档保存，开发和评审以源码为准；
-- 涉及状态、数据或接口的变更同步更新 04、06、09-A/09-B、08 和本矩阵；
-- UI 行为变更同步更新 02、10、08；
+- 涉及状态、数据或接口的变更同步更新 04、06、09-A/09-B、08-A/08-B 和本矩阵；
+- UI 行为变更同步更新 02、10、08-A/08-B；
 - 未完成真实 `douyinLive` POC 时，只允许继续不依赖真实接入结论的工程基座/本地 POC；不得冻结真实联调结论或声明 MVP 验收通过。
