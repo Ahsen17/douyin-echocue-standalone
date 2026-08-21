@@ -27,7 +27,11 @@
     "test:all": "npm run test:contracts && npm run test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "start": "electron .",
-    "preview": "npm run build && npm run start"
+    "preview": "npm run build && npm run start",
+    "license:scan": "license-checker --json --out dist/compliance/licenses.json",
+    "license:check": "node scripts/license-check.js",
+    "sbom": "cyclonedx-npm --output-format json --output-file dist/compliance/sbom.cdx.json",
+    "compliance": "npm run license:check && npm run sbom"
   },
   "keywords": [
     "electron",
@@ -38,23 +42,25 @@
   "license": "UNLICENSED",
   "dependencies": {
     "@echocue/contracts": "*",
-    "electron": "^33.2.0"
+    "electron": "33.4.11"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/coverage-v8": "^2.1.9",
-    "@vitest/ui": "^2.1.9",
-    "concurrently": "^9.1.2",
-    "electron-builder": "^25.1.8",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tsx": "^4.23.12",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.3",
-    "vite-plugin-electron": "^0.28.8",
-    "vitest": "^2.1.9"
+    "@cyclonedx/cyclonedx-npm": "6.0.1",
+    "@types/node": "22.20.1",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "4.7.0",
+    "@vitest/coverage-v8": "2.1.9",
+    "@vitest/ui": "2.1.9",
+    "concurrently": "9.2.4",
+    "electron-builder": "25.1.8",
+    "license-checker": "25.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3",
+    "vite": "6.4.3",
+    "vite-plugin-electron": "0.28.8",
+    "vitest": "2.1.9"
   }
 }

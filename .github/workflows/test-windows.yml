@@ -40,3 +40,18 @@ jobs:
 
       - name: Type check
         run: npm run typecheck
+
+      - name: Create compliance output directory
+        run: mkdir -p dist/compliance
+
+      - name: Run license check
+        run: npm run license:check
+
+      - name: Generate SBOM
+        run: npm run sbom
+
+      - name: Upload compliance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-${{ github.sha }}
+          path: dist/compliance/
