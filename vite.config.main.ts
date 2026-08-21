@@ -1,0 +1,19 @@
+import { defineConfig } from 'vite'
+import { resolve } from 'path'
+
+export default defineConfig({
+  build: {
+    lib: {
+      entry: resolve(__dirname, 'src/main/index.ts'),
+      formats: ['cjs'],
+      fileName: () => 'index.js',
+    },
+    outDir: 'dist/main',
+    emptyOutDir: true,
+    rollupOptions: {
+      external: ['electron', 'path', 'fs', 'os', 'url', 'crypto', 'worker_threads'],
+    },
+    minify: false,
+    sourcemap: true,
+  },
+})
