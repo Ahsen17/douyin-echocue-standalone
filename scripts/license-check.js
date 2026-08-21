@@ -14,7 +14,10 @@ const PROHIBITED = new Set([
 
 mkdirSync('dist/compliance', { recursive: true });
 
-const raw = execSync('./node_modules/.bin/license-checker --json', { encoding: 'utf8' });
+const bin = process.platform === 'win32'
+  ? '.\\node_modules\\.bin\\license-checker'
+  : './node_modules/.bin/license-checker';
+const raw = execSync(`${bin} --json`, { encoding: 'utf8' });
 const licenses = JSON.parse(raw);
 
 writeFileSync('dist/compliance/licenses.json', JSON.stringify(licenses, null, 2));
