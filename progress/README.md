@@ -6,3 +6,4 @@
 | M0-02 | 建立共享 contract package | ✅ 已完成 | 2026-08-21 | src/contracts/src/schemas.ts, src/contracts/src/index.ts, src/contracts/test/schemas.test.ts |
 | M0-03 | 建立 Unit/Contract/Integration/E2E 测试骨架 | ✅ 已完成 | 2026-08-21 | vitest.config.ts, .github/workflows/test-windows.yml, tests/{setup,fixtures,unit,contract,integration,e2e}/ |
 | M0-04 | 锁定依赖并建立许可证/SBOM 入口 | ✅ 已完成 | 2026-08-21 | package.json (精确版本), scripts/license-check.js, tests/unit/pkg-compliance.test.ts, .github/workflows/test-windows.yml (更新) |
+| M1-01 | 实现 settings.json 配置仓库 | ✅ 已完成 | 2026-08-21 | src/main/config/SettingsStore.ts, src/main/config/index.ts, tests/integration/config/settings-store.test.ts, vitest.config.ts (include fix) |
