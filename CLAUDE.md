@@ -17,7 +17,7 @@ Echocue is a Windows standalone desktop application (Electron + React + TypeScri
 
 **Before starting any implementation work**, you MUST:
 
-1. Read `.claude/rules/roadmap.md` to understand the constraint
+1. Read `.claude/rules/standards.md` to understand the constraint
 2. Read `docs/08-delivery/Echocue-MVP里程碑与原子任务实施计划-v0.1.md` to identify the specific atomic task
 3. Follow the task's "最小阅读包" (minimal reading package) - only read documents listed for that task
 4. DO NOT read large volumes of documentation upfront; follow progressive disclosure
