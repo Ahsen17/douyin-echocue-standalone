@@ -1,50 +1,52 @@
-import { app, BrowserWindow } from 'electron';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { ServiceLifecycleSchema } from '@echocue/contracts';
+import { app, dialog } from 'electron'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
+import { MainWindow } from './windows/MainWindow.js'
+import { TrayManager } from './windows/TrayManager.js'
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
-// Validate contract package import
-const lifecycle = ServiceLifecycleSchema.parse('STOPPED');
-console.log('Contracts package loaded successfully:', lifecycle);
+let mainWindowInstance: MainWindow | null = null
+let trayManager: TrayManager | null = null
+let isExplicitQuit = false
 
-let mainWindow: BrowserWindow | null = null;
-
-function createMainWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      preload: join(__dirname, '../preload/main-preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173/src/renderer/main/index.html');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/main/index.html'));
-  }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+function getIsExplicitQuit(): boolean {
+  return isExplicitQuit
 }
 
-app.whenReady().then(createMainWindow);
+function showMainWindow(): void {
+  mainWindowInstance?.show()
+}
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+function doQuit(): void {
+  isExplicitQuit = true
+  trayManager?.dispose()
+  const win = mainWindowInstance?.getWindow()
+  if (win && !win.isDestroyed()) {
+    win.destroy()
   }
-});
+  app.quit()
+}
+
+app.whenReady().then(() => {
+  mainWindowInstance = new MainWindow(getIsExplicitQuit)
+
+  trayManager = new TrayManager({
+    onShow: showMainWindow,
+    onQuit: doQuit,
+  })
+})
+
+// Tray controls quit; do not exit on all-windows-closed
+app.on('window-all-closed', () => {
+  // intentionally empty — tray exit is the only exit path
+})
 
 app.on('activate', () => {
-  if (mainWindow === null) {
-    createMainWindow();
-  }
-});
+  showMainWindow()
+})
+
+app.on('before-quit', () => {
+  isExplicitQuit = true
+})
