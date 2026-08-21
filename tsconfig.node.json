@@ -13,7 +13,10 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@echocue/contracts": ["./src/contracts/src/index.ts"]
+    }
   },
-  "include": ["src/main", "src/preload", "vite.config.*.ts"]
+  "include": ["src/main", "src/preload", "vite.config.*.ts", "src/contracts/src"]
 }

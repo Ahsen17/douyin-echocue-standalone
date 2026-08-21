@@ -14,7 +14,10 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@echocue/contracts": ["./src/contracts/src/index.ts"]
+    }
   },
-  "include": ["src/renderer"]
+  "include": ["src/renderer", "src/contracts/src"]
 }
