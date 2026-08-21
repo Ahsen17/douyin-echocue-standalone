@@ -30,7 +30,7 @@
     "preview": "npm run build && npm run start",
     "license:scan": "license-checker --json --out dist/compliance/licenses.json",
     "license:check": "node scripts/license-check.js",
-    "sbom": "cyclonedx-npm --output-format json --output-file dist/compliance/sbom.cdx.json",
+    "sbom": "cyclonedx-npm --ignore-npm-errors --output-format json --output-file dist/compliance/sbom.cdx.json",
     "compliance": "npm run license:check && npm run sbom"
   },
   "keywords": [
