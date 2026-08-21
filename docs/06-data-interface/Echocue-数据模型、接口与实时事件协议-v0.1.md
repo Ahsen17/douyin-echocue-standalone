@@ -4,15 +4,17 @@
 > 范围：Windows x64 standalone MVP  
 > 本文是开发契约；未列出的字段不得由 Renderer 直接猜测或读取。
 
+配套可执行基线：[初始 migration](migrations/001_initial_schema.sql)、[migration contract test](fixtures/migration-contract-test.mjs)、[Zod/TypeScript 契约](schema/contracts-v1.ts)、[审计快照 JSON Schema](schema/audit-snapshot-v1.schema.json)、[Provider contract fixtures](fixtures/provider-contract-fixtures-v1.json) 与 [Safety fixtures](fixtures/safety-policy-fixtures-v1.json)。字段或枚举变更必须同时修改本文与对应 artifact，并由契约测试阻止漂移。
+
 ## 1. 数据归属
 
 | 存储/通道 | 事实来源 | 允许保存 |
 | --- | --- | --- |
 | SQLite `audit/audit.sqlite` | 人设版本、审计、打标与同步状态。 | 受字段加密保护的原文、快照、版本、反馈。 |
-| 本机配置文件 | 直播间引用、`model_id`、禁忌规则、关键词、浮窗偏好与内部阈值。 | 原子写入的非密钥配置；API Key 例外，见 safeStorage。 |
+| 本机配置文件 | 直播间引用、Provider 配置、浮窗偏好与内部阈值。 | 原子写入的非密钥配置；API Key 例外，见 safeStorage。 |
 | Qdrant `pre_set` | 通用相似案例。 | 稀疏向量、通用案例 payload。 |
 | Qdrant `golden_set` | 主播认可/修正答案。 | 稀疏向量、版本绑定 payload、可直出回复/提词。 |
-| Electron safeStorage | 密钥事实来源。 | DeepSeek API Key；严禁落入 SQLite/Qdrant/日志。 |
+| Electron safeStorage | 密钥事实来源。 | 按 `provider_id` 隔离的 API Key；严禁落入 SQLite/Qdrant/日志。 |
 | Prometheus / OTel | 非事实诊断。 | 匿名计数、类别、耗时；不得含原文或 `trace_id`。 |
 
 SQLite 由 `AuditStoreWorker` 独占。Renderer 不可打开数据库、Qdrant 或网络连接；只通过 preload 白名单 IPC 请求已授权的视图数据。
@@ -33,9 +35,42 @@ type InternalSyncStatus = 'NOT_REQUIRED' | 'PENDING' | 'SYNCED' | 'FAILED';
 type TraceState =
   | 'RECEIVED' | 'NORMALIZED' | 'FILTERED' | 'ROUTED' | 'RETRIEVING'
   | 'DIRECT_READY' | 'PROMPT_RENDERED' | 'LLM_PENDING' | 'GENERATED'
-  | 'DISPLAY_READY' | 'DISPLAYED' | 'EXPIRED' | 'DISCARDED' | 'FAILED';
+  | 'DISPLAY_READY' | 'DISPLAYED' | 'HIDDEN' | 'DISCARDED' | 'FAILED';
 type TraceFinalState =
-  | 'FILTERED' | 'DISCARDED' | 'FAILED' | 'EXPIRED';
+  | 'FILTERED' | 'DISCARDED' | 'FAILED' | 'HIDDEN';
+type SemanticTypeV1 =
+  | 'persona_relevant' | 'positive_praise' | 'funny_joke'
+  | 'interactive_question' | 'atmosphere_boost' | 'low_value' | 'filter_risk';
+type AuditContentTypeV1 =
+  | 'RAW_EVENT_JSON' | 'NORMALIZED_COMMENT_JSON' | 'DECISION_JSON'
+  | 'PERSONA_TEXT' | 'PROMPT_TEXT' | 'PROVIDER_META_JSON'
+  | 'PROVIDER_RESPONSE_JSON' | 'SUGGESTION_JSON'
+  | 'OVERLAY_RESULT_JSON' | 'FINAL_REASON_JSON';
+type AuditSnapshotRoleV1 =
+  | 'RAW_WS_EVENT' | 'NORMALIZED_COMMENT' | 'FILTER_DECISION'
+  | 'INPUT_SAFETY_DECISION' | 'PERSONA_ROUTE' | 'PERSONA_VERSION_SNAPSHOT'
+  | 'GOLDEN_QUERY_RESULT' | 'PRE_QUERY_RESULT' | 'RERANK_DECISION'
+  | 'RENDERED_PROMPT' | 'LLM_REQUEST_META' | 'LLM_RAW_RESPONSE'
+  | 'LLM_PARSED_OUTPUT' | 'OUTPUT_VALIDATION' | 'OUTPUT_SAFETY_DECISION'
+  | 'DIRECT_PAYLOAD' | 'DIRECT_DECISION' | 'OVERLAY_RESULT' | 'FINAL_REASON';
+type ServiceLifecycle = 'STOPPED' | 'GATE_CONNECTING' | 'RUNNING';
+type ServiceActivity =
+  | 'IDLE' | 'GATE_CHECKING' | 'LISTENING' | 'RETRIEVING' | 'GENERATING' | 'DISPLAYING';
+type SafetyReasonCodeV1 =
+  | 'ABUSE' | 'PII' | 'POLITICS' | 'SEXUAL' | 'ILLEGAL'
+  | 'MEDICAL_FINANCIAL_ADVICE' | 'COMPETITOR' | 'TRANSACTION_PRICE'
+  | 'TEAM_FORBIDDEN' | 'SAFETY_ENGINE_ERROR';
+type TraceReasonCodeV1 =
+  | 'EVENT_RECEIVED' | 'NORMALIZATION_OK' | 'INPUT_SAFETY_FILTERED'
+  | 'PERSONA_ROUTED' | 'RETRIEVAL_STARTED' | 'GOLDEN_DIRECT_ELIGIBLE'
+  | 'LLM_REQUIRED' | 'PROVIDER_REQUESTED'
+  | 'PROVIDER_SUCCEEDED' | 'PROVIDER_FAILED' | 'OUTPUT_VALIDATED'
+  | 'OUTPUT_INVALID' | 'OVERLAY_RENDERED' | 'DISPLAY_DURATION_ELAPSED'
+  | 'DISPLAY_WINDOW_ACTIVE' | 'LOW_VALUE' | 'PERSONA_REVIEW_UNCERTAIN'
+  | 'STALE_SESSION' | 'STALE_WINDOW' | 'DEADLINE_EXCEEDED'
+  | 'AUDIT_FAILURE' | 'SOURCE_ERROR' | 'ROOM_ENDED' | 'USER_STOPPED';
+type OutboxJobStateV1 = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+type OutboxActionV1 = 'UPSERT' | 'SET_BAD_CASE';
 ```
 
 ## 3. SQLite 逻辑模型与 DDL
@@ -69,8 +104,7 @@ CREATE TABLE persona_version (
   created_at TEXT NOT NULL,
   published_at TEXT,
   created_from_version TEXT,
-  UNIQUE(persona_id, persona_version),
-  UNIQUE(persona_id, content_hmac)
+  UNIQUE(persona_id, persona_version)
 ) STRICT;
 
 CREATE TABLE persona_alias (
@@ -82,13 +116,29 @@ CREATE TABLE persona_alias (
   UNIQUE(persona_id, alias_text)
 ) STRICT;
 
+CREATE TABLE safety_policy_version (
+  safety_policy_version TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('DRAFT','PUBLISHED','SUPERSEDED','INVALID')),
+  policy_text_envelope BLOB NOT NULL,
+  keywords_envelope BLOB NOT NULL,
+  compiled_rules_envelope BLOB,
+  compiler_version TEXT NOT NULL,
+  validation_error_envelope BLOB,
+  created_at TEXT NOT NULL,
+  published_at TEXT
+) STRICT;
+
 CREATE TABLE live_session (
   session_id TEXT PRIMARY KEY,
   room_reference TEXT NOT NULL,
   platform_room_id TEXT,
   started_at TEXT NOT NULL,
   ended_at TEXT,
-  end_reason TEXT
+  end_reason TEXT,
+  safety_policy_version TEXT REFERENCES safety_policy_version(safety_policy_version),
+  provider_id TEXT,
+  adapter_type TEXT,
+  model_id TEXT
 ) STRICT;
 
 CREATE TABLE audit_trace (
@@ -96,7 +146,7 @@ CREATE TABLE audit_trace (
   session_id TEXT NOT NULL REFERENCES live_session(session_id),
   source_message_id TEXT NOT NULL,
   received_at TEXT NOT NULL,
-  final_state TEXT CHECK (final_state IN ('FILTERED','DISCARDED','FAILED','EXPIRED','DISPLAYED')),
+  final_state TEXT CHECK (final_state IN ('FILTERED','DISCARDED','FAILED','HIDDEN')),
   label_status TEXT NOT NULL DEFAULT 'UNLABELED' CHECK (label_status IN ('UNLABELED','ACCEPTED','REJECTED','CORRECTED','NOT_APPLICABLE')),
   current_feedback_id TEXT,
   created_at TEXT NOT NULL,
@@ -107,9 +157,9 @@ CREATE TABLE audit_trace (
 CREATE TABLE audit_transition (
   trace_id TEXT NOT NULL REFERENCES audit_trace(trace_id),
   sequence_no INTEGER NOT NULL,
-  from_state TEXT CHECK (from_state IS NULL OR from_state IN ('RECEIVED','NORMALIZED','FILTERED','ROUTED','RETRIEVING','DIRECT_READY','PROMPT_RENDERED','LLM_PENDING','GENERATED','DISPLAY_READY','DISPLAYED','EXPIRED','DISCARDED','FAILED')),
-  to_state TEXT NOT NULL CHECK (to_state IN ('RECEIVED','NORMALIZED','FILTERED','ROUTED','RETRIEVING','DIRECT_READY','PROMPT_RENDERED','LLM_PENDING','GENERATED','DISPLAY_READY','DISPLAYED','EXPIRED','DISCARDED','FAILED')),
-  reason_code TEXT NOT NULL,
+  from_state TEXT CHECK (from_state IS NULL OR from_state IN ('RECEIVED','NORMALIZED','FILTERED','ROUTED','RETRIEVING','DIRECT_READY','PROMPT_RENDERED','LLM_PENDING','GENERATED','DISPLAY_READY','DISPLAYED','HIDDEN','DISCARDED','FAILED')),
+  to_state TEXT NOT NULL CHECK (to_state IN ('RECEIVED','NORMALIZED','FILTERED','ROUTED','RETRIEVING','DIRECT_READY','PROMPT_RENDERED','LLM_PENDING','GENERATED','DISPLAY_READY','DISPLAYED','HIDDEN','DISCARDED','FAILED')),
+  reason_code TEXT NOT NULL CHECK (reason_code IN ('EVENT_RECEIVED','NORMALIZATION_OK','INPUT_SAFETY_FILTERED','PERSONA_ROUTED','RETRIEVAL_STARTED','GOLDEN_DIRECT_ELIGIBLE','LLM_REQUIRED','PROVIDER_REQUESTED','PROVIDER_SUCCEEDED','PROVIDER_FAILED','OUTPUT_VALIDATED','OUTPUT_INVALID','OVERLAY_RENDERED','DISPLAY_DURATION_ELAPSED','DISPLAY_WINDOW_ACTIVE','LOW_VALUE','PERSONA_REVIEW_UNCERTAIN','STALE_SESSION','STALE_WINDOW','DEADLINE_EXCEEDED','AUDIT_FAILURE','SOURCE_ERROR','ROOM_ENDED','USER_STOPPED')),
   occurred_at TEXT NOT NULL,
   previous_hmac TEXT,
   entry_hmac TEXT NOT NULL,
@@ -118,7 +168,7 @@ CREATE TABLE audit_transition (
 
 CREATE TABLE audit_snapshot (
   snapshot_id TEXT PRIMARY KEY,
-  content_type TEXT NOT NULL,
+  content_type TEXT NOT NULL CHECK (content_type IN ('RAW_EVENT_JSON','NORMALIZED_COMMENT_JSON','DECISION_JSON','PERSONA_TEXT','PROMPT_TEXT','PROVIDER_META_JSON','PROVIDER_RESPONSE_JSON','SUGGESTION_JSON','OVERLAY_RESULT_JSON','FINAL_REASON_JSON')),
   envelope BLOB NOT NULL,
   content_hmac TEXT NOT NULL,
   created_at TEXT NOT NULL
@@ -128,7 +178,7 @@ CREATE TABLE audit_reference (
   trace_id TEXT NOT NULL,
   sequence_no INTEGER NOT NULL,
   snapshot_id TEXT NOT NULL REFERENCES audit_snapshot(snapshot_id),
-  role TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('RAW_WS_EVENT','NORMALIZED_COMMENT','FILTER_DECISION','INPUT_SAFETY_DECISION','PERSONA_ROUTE','PERSONA_VERSION_SNAPSHOT','GOLDEN_QUERY_RESULT','PRE_QUERY_RESULT','RERANK_DECISION','RENDERED_PROMPT','LLM_REQUEST_META','LLM_RAW_RESPONSE','LLM_PARSED_OUTPUT','OUTPUT_VALIDATION','OUTPUT_SAFETY_DECISION','DIRECT_PAYLOAD','DIRECT_DECISION','OVERLAY_RESULT','FINAL_REASON')),
   PRIMARY KEY(trace_id, sequence_no, snapshot_id),
   FOREIGN KEY(trace_id, sequence_no) REFERENCES audit_transition(trace_id, sequence_no)
 ) STRICT;
@@ -155,7 +205,7 @@ CREATE TABLE suggestion_feedback (
 CREATE TABLE qdrant_sync_job (
   job_id TEXT PRIMARY KEY,
   feedback_id TEXT NOT NULL REFERENCES suggestion_feedback(feedback_id),
-  target_collection TEXT NOT NULL CHECK (target_collection IN ('golden_set','pre_set')),
+  target_collection TEXT NOT NULL DEFAULT 'golden_set' CHECK (target_collection = 'golden_set'),
   action TEXT NOT NULL CHECK (action IN ('UPSERT','SET_BAD_CASE')),
   idempotency_key TEXT NOT NULL UNIQUE,
   state TEXT NOT NULL CHECK (state IN ('PENDING','RUNNING','SUCCEEDED','FAILED')),
@@ -170,6 +220,12 @@ CREATE TABLE audit_meta (
   value_envelope BLOB NOT NULL,
   updated_at TEXT NOT NULL
 ) STRICT;
+
+CREATE INDEX ix_audit_trace_received_at ON audit_trace(received_at DESC);
+CREATE INDEX ix_audit_trace_label_received ON audit_trace(label_status, received_at DESC);
+CREATE INDEX ix_feedback_trace_revision ON suggestion_feedback(trace_id, revision_no DESC);
+CREATE INDEX ix_feedback_sync_created ON suggestion_feedback(sync_status, created_at);
+CREATE INDEX ix_qdrant_job_state_updated ON qdrant_sync_job(state, updated_at);
 ```
 
 所有敏感列只保存一个 canonical envelope BLOB，其 UTF-8 JSON 结构固定为 `{alg:'AES-256-GCM',keyVersion,nonceB64,ciphertextB64,tagB64,aadVersion:'1'}`；不得拆列或另行解释 ciphertext。AAD 为 `tableName|primaryKey|columnOrContentType|aadVersion`。数据加密密钥与 HMAC 密钥必须独立随机生成，由 `safeStorage`/DPAPI 包装保存；`audit_meta` 保存加密的链锚点与密钥元数据。禁止存储无密钥普通 SHA-256：所有内容完整性摘要使用 HMAC-SHA-256，输入采用 UTF-8 canonical JSON。
@@ -206,21 +262,46 @@ BEGIN
       AND pv.persona_id = NEW.persona_id
   ) THEN RAISE(ABORT, 'invalid parent persona version') END;
 END;
+
+CREATE TRIGGER qdrant_sync_job_golden_only_insert
+BEFORE INSERT ON qdrant_sync_job
+BEGIN
+  SELECT CASE WHEN NEW.target_collection <> 'golden_set'
+    THEN RAISE(ABORT, 'feedback outbox may target golden_set only') END;
+  SELECT CASE WHEN NEW.action = 'SET_BAD_CASE' AND NOT EXISTS (
+    SELECT 1 FROM suggestion_feedback sf
+    WHERE sf.feedback_id = NEW.feedback_id
+      AND sf.label_status = 'REJECTED'
+      AND sf.is_bad_case = 1
+      AND sf.source_collection = 'golden_set'
+      AND sf.source_point_id IS NOT NULL
+  ) THEN RAISE(ABORT, 'invalid golden bad-case job') END;
+END;
 ```
 
-| from | 允许 to |
-| --- | --- |
-| `null` | `RECEIVED` |
-| `RECEIVED` | `NORMALIZED` |
-| `NORMALIZED` | `FILTERED`、`ROUTED`、`DISCARDED` |
-| `ROUTED` | `RETRIEVING` |
-| `RETRIEVING` | `DIRECT_READY`、`PROMPT_RENDERED`、`DISCARDED` |
-| `DIRECT_READY` | `DISPLAY_READY` |
-| `PROMPT_RENDERED` | `LLM_PENDING` |
-| `LLM_PENDING` | `GENERATED`、`FAILED`、`DISCARDED` |
-| `GENERATED` | `DISPLAY_READY`、`DISCARDED` |
-| `DISPLAY_READY` | `DISPLAYED`、`DISCARDED` |
-| `DISPLAYED` | `EXPIRED` |
+| from | 允许 to | 允许的主 `reason_code` |
+| --- | --- | --- |
+| `null` | `RECEIVED` | `EVENT_RECEIVED` |
+| `RECEIVED` | `NORMALIZED` | `NORMALIZATION_OK` |
+| `NORMALIZED` | `FILTERED` | `INPUT_SAFETY_FILTERED` |
+| `NORMALIZED` | `ROUTED` | `PERSONA_ROUTED` |
+| `NORMALIZED` | `DISCARDED` | `DISPLAY_WINDOW_ACTIVE`、`LOW_VALUE`、取消/停服类 reason |
+| `ROUTED` | `RETRIEVING` | `RETRIEVAL_STARTED` |
+| `RETRIEVING` | `DIRECT_READY` | `GOLDEN_DIRECT_ELIGIBLE` |
+| `RETRIEVING` | `PROMPT_RENDERED` | `LLM_REQUIRED` |
+| `RETRIEVING` | `DISCARDED` | `LOW_VALUE`、取消/停服类 reason |
+| `DIRECT_READY` | `DISPLAY_READY` | `OUTPUT_VALIDATED` |
+| `PROMPT_RENDERED` | `LLM_PENDING` | `PROVIDER_REQUESTED` |
+| `LLM_PENDING` | `GENERATED` | `PROVIDER_SUCCEEDED` |
+| `LLM_PENDING` | `FAILED` | `PROVIDER_FAILED` |
+| `LLM_PENDING` | `DISCARDED` | 取消/停服类 reason |
+| `GENERATED` | `DISPLAY_READY` | `OUTPUT_VALIDATED` |
+| `GENERATED` | `DISCARDED` | `OUTPUT_INVALID`、`PERSONA_REVIEW_UNCERTAIN`、取消/停服类 reason |
+| `DISPLAY_READY` | `DISPLAYED` | `OVERLAY_RENDERED` |
+| `DISPLAY_READY` | `DISCARDED` | 取消/停服类 reason |
+| `DISPLAYED` | `HIDDEN` | `DISPLAY_DURATION_ELAPSED` |
+
+“取消/停服类 reason”只能是 `STALE_SESSION`、`STALE_WINDOW`、`DEADLINE_EXCEEDED`、`AUDIT_FAILURE`、`SOURCE_ERROR`、`ROOM_ENDED` 或 `USER_STOPPED`。`AuditStoreWorker.appendTransition()` 必须用上表同时校验 from/to/reason 三元组；reason 的细节（具体安全类别、Provider error）进入对应快照，不得另造 trace reason 字符串。
 
 `audit_snapshot` 的 `content_type` 和 `audit_reference.role` 只能是下表值。
 
@@ -233,7 +314,7 @@ END;
 | `PROMPT_RENDERED` / `LLM_PENDING` | `RENDERED_PROMPT`、`LLM_REQUEST_META` |
 | `GENERATED` | `LLM_RAW_RESPONSE`、`LLM_PARSED_OUTPUT`、`OUTPUT_VALIDATION` |
 | `DIRECT_READY` | `DIRECT_PAYLOAD`、`DIRECT_DECISION` |
-| `DISPLAYED` / 终态 | `OVERLAY_RESULT`、`FINAL_REASON` |
+| `DISPLAYED` / `HIDDEN` / 其他终态 | `OVERLAY_RESULT`、`FINAL_REASON` |
 
 `audit_trace.label_status` 是用户可见状态；`suggestion_feedback.sync_status` 与 outbox job 状态仅内部可见。
 
@@ -243,17 +324,27 @@ END;
 interface SettingsV1 {
   schemaVersion: 1;
   roomReference?: string;
-  modelId?: string;
-  forbiddenPolicyText: string;
-  forbiddenKeywords: string[];
+  provider?: ProviderConfigV1;
+  activeSafetyPolicyVersion?: string;
   overlay: { durationMs: number; width: number; height: number; opacity: number; fontScale: number; theme: 'light'|'dark'; clickThrough: boolean };
   internalRetrieval: { calibrationVersion: string; directPushThreshold: number; windowMaxAgeMs: number; candidateMaxCount: number };
 }
+
+interface ProviderConfigV1 {
+  providerId: string;
+  displayName: string;
+  adapterType: 'DEEPSEEK' | 'OPENAI_COMPATIBLE' | 'ANTHROPIC_MESSAGES';
+  baseUrl: string;
+  modelId: string;
+  credentialRef: string;
+}
 ```
 
-`config.get/update` 只能传递此 schema 的允许字段；`internalRetrieval` 不在用户设置界面显示，且只能由受控配置/POC 变更。API Key 不属于该文件。
+`config.get/update` 只能传递此 schema 的允许字段；`internalRetrieval` 不在用户设置界面显示，且只能由受控配置/POC 变更。API Key 不属于该文件。生产配置的 `baseUrl` 必须为无 userinfo/query/fragment 的 HTTPS URL；禁止自动跟随跨 host 重定向。修改 host 或 adapter type 后，旧 `credentialRef` 立即失效，用户必须重新确认并保存 API Key。`config.get` 只返回 `apiKeyConfigured: boolean`，绝不回显 Key。
 
-golden 回流采用 transactional outbox：`audit.submitLabel` 在同一 SQLite 事务内写入 feedback 修订、更新 trace 的用户可见 `label_status`，并在需要回流时写入唯一 `qdrant_sync_job`。job 是同步的唯一事实来源；`suggestion_feedback.sync_status` 只由 job 状态派生，禁止独立写入。worker 以 `idempotency_key=feedbackId:revisionNo:action` 领取 job，Qdrant 成功后在同一 SQLite 事务标记 `SUCCEEDED/SYNCED`；失败指数退避重试，保留错误审计。重复提交同一修订不可产生重复 job。仅 `GOLDEN_SYNC_FAILED` 的内部诊断可触发人工修复重试，用户打标页面不可见。
+自然语言禁忌与关键词写入 `safety_policy_version`：保存草稿时由 `SafetyRuleCompilerV1` 生成确定性规则；只有编译成功的 `PUBLISHED` 版本可写入 `activeSafetyPolicyVersion`。运行会话固定该版本，不热切换。编译器支持受控“不要/禁止/不讨论 + 明确话题”句式、关键词/短语和受控 regex；任何不可解释内容都必须在 UI 标为需修改并阻止发布。
+
+golden 回流采用 transactional outbox：`audit.submitLabel` 在同一 SQLite 事务内写入 feedback 修订、更新 trace 的用户可见 `label_status`，并在需要回流时写入唯一 `qdrant_sync_job`。job 是同步的唯一事实来源；`suggestion_feedback.sync_status` 只由 job 状态派生，禁止独立写入。worker 只允许 `PENDING→RUNNING→SUCCEEDED/FAILED`，到达重试时间后才允许 `FAILED→PENDING`；Qdrant 成功后在同一 SQLite 事务标记 `SUCCEEDED/SYNCED`，失败保留错误并指数退避。重复提交同一修订不可产生重复 job。仅 `GOLDEN_SYNC_FAILED` 的内部诊断可触发人工修复重试，用户打标页面不可见。
 
 修正答案回流时，`case_id = feedback:{feedback_id}:{revision_no}`，`target_point_id = UUIDv5('echocue:golden_set:' + case_id)`，明文为 canonical JSON `CorrectionPayloadV1`，写入前复用输出长度/安全校验器。未修正且评分 `>=85` 时使用同样规则，但 reply/cues 来自该 trace 已审计的最终输出。拒绝且未修正时，只有 `source_collection='golden_set' AND source_point_id IS NOT NULL` 才创建 `SET_BAD_CASE` job；否则 `sync_status=NOT_REQUIRED`。
 
@@ -277,7 +368,7 @@ interface PreSetPayload {
   case_id: string;
   tokenizer_version: 'zh_jieba_search_v1';
   text: string;
-  semantic_type: string;
+  semantic_type: SemanticTypeV1;
   description: string;
   reference_reply?: string;
   reference_cues?: string[];
@@ -299,7 +390,7 @@ interface GoldenSetPayload {
   persona_id: string;
   persona_version: string;
   text: string;
-  semantic_type: string;
+  semantic_type: SemanticTypeV1;
   reply: string;
   cues: string[];
   quality_score: number;
@@ -344,10 +435,16 @@ interface RetrievalResult {
 
 校准函数与阈值只存于内部配置和审计快照，绝不通过用户 UI/IPC 暴露。
 
+### 4.5 首次初始化与 profile 发布顺序
+
+初始化必须可重入，且严格按以下顺序执行：离线校验完整 JSONL 与 schema → 使用冻结 pipeline 分词并写本机 staging → 计算 `avg_doc_len_baseline`/profile metadata → 创建带版本后缀的临时 `pre_set` 与 `golden_set` collection、sparse vector 和 payload index → 批量 upsert `pre_set` → 校验 point 数、跨语言 hash fixture 与查询 fixture → 原子写入 active profile/collection alias。失败时只隔离或删除本次临时 collection，不得改变现有 active profile；“导入”不得发生在 collection 创建之前。`pre_set` 运行期只读，用户反馈 outbox 只能写 active `golden_set`。
+
+### 4.6 服务视图状态
+
 ```ts
 interface ServiceViewState {
-  lifecycle: 'STOPPED' | 'GATE_CONNECTING' | 'RUNNING' | 'DISPLAYING';
-  activity: 'IDLE' | 'LISTENING' | 'RETRIEVING' | 'GENERATING' | 'DISPLAYING';
+  lifecycle: ServiceLifecycle;
+  activity: ServiceActivity;
   stopReason?: 'USER_STOP' | 'ROOM_OFFLINE' | 'ROOM_ENDED' | 'SOURCE_ERROR' | 'AUDIT_UNAVAILABLE';
   recoverableError?: { code: string; at: string };
 }
@@ -376,13 +473,13 @@ interface SourceComment {
   userNickname?: string;
   upstreamCreatedAt?: string;
   receivedAt: string;
+  receivedMonotonicMs: number; // client 收到原始 WS frame 时立即采样，统一 t0
 }
 
 interface ProcessingComment extends SourceComment {
   sessionId: string;
   traceId: string;
   windowVersion: number;
-  receivedMonotonicMs: number; // t0
   freshnessDeadlineMonotonicMs: number;
 }
 ```
@@ -392,13 +489,16 @@ interface ProcessingComment extends SourceComment {
 - `ROOM_ENDED` → `LIVE_ENDED`，停止服务并关闭本地 WS；
 - `WebcastChatMessage` → `COMMENT`；礼物、点赞只用于匿名连接诊断，不能进入生成。
 
-## 6. Provider 与 DeepSeek 输出
+## 6. Provider、首个 DeepSeek 适配器与统一输出
 
 ```ts
 interface GenerateSuggestionRequest {
   sessionId: string;
   traceId: string;
   windowVersion: number;
+  providerId: string;
+  adapterType: ProviderConfigV1['adapterType'];
+  baseUrl: string;
   modelId: string;
   timeoutMs: 5000;
   selectedAtMonotonicMs: number;
@@ -411,6 +511,8 @@ interface GenerateSuggestionRequest {
 
 interface GenerateSuggestionResponse {
   providerRequestId?: string;
+  providerId: string;
+  adapterType: ProviderConfigV1['adapterType'];
   modelId: string;
   quickReply: string;
   cues: string[];
@@ -418,11 +520,18 @@ interface GenerateSuggestionResponse {
 
 interface ProviderAuditRecord {
   providerRequestId?: string;
+  providerId: string;
+  adapterType: ProviderConfigV1['adapterType'];
+  baseUrlOrigin: string;
   modelId: string;
   rawRequest: unknown;
   rawResponse?: unknown;
   normalizedError?: string;
 }
+
+type ProviderErrorV1 =
+  | 'AUTH' | 'BILLING' | 'VALIDATION' | 'RATE_LIMIT' | 'NETWORK'
+  | 'SERVER' | 'TIMEOUT' | 'ABORTED' | 'PROTOCOL' | 'OUTPUT_INVALID';
 
 interface CorrectionPayloadV1 {
   schemaVersion: 1;
@@ -431,7 +540,9 @@ interface CorrectionPayloadV1 {
 }
 ```
 
-`ProcessingComment` 由 Service Orchestrator 在适配器输出 `SourceComment` 后创建；它分配 `traceId` 并绑定当前 session/window。`freshnessDeadlineMonotonicMs = min(t0 + 3000ms, candidateSelectedAt + 2500ms, windowOpenedAt + windowMaxAgeMs)`；其中 `t0=receivedMonotonicMs`，`windowMaxAgeMs` 为内部配置/POC 校准值。`SuggestionAttempt` 在检索、生成和浮窗调用前后都必须二次比对 `sessionId + traceId + windowVersion + freshnessDeadlineMonotonicMs`；任一不符写 `DISCARDED`，reason code 为 `STALE_SESSION`、`STALE_WINDOW` 或 `DEADLINE_EXCEEDED`。`t1=筛选完成`，`t2=本地输出校验完成`，`t3=浮窗首帧`，四个值写入对应审计快照。
+Provider 到领域错误映射固定为：`AUTH→E_PROVIDER_AUTH`、`BILLING→E_PROVIDER_BILLING`、`RATE_LIMIT→E_PROVIDER_RATE_LIMIT`、`NETWORK→E_PROVIDER_NETWORK`、`SERVER→E_PROVIDER_SERVER`、`TIMEOUT→E_PROVIDER_TIMEOUT`、`PROTOCOL/VALIDATION→E_PROVIDER_PROTOCOL`、`OUTPUT_INVALID→E_PROVIDER_OUTPUT_INVALID`；`ABORTED` 若由用户停止/窗口变化触发则不是用户错误，workflow 进入 `DISCARDED` 并写具体 reason。不得把 provider HTTP 状态码直接作为领域错误码。
+
+`ProcessingComment` 由 Service Orchestrator 在适配器输出 `SourceComment` 后创建；它分配 `traceId` 并绑定当前 session/window。`SourceComment.receivedMonotonicMs` 必须在 client 收到原始 WS frame 时立即采样，是统一 `t0`，不得在解析/规范化后重置。`freshnessDeadlineMonotonicMs = min(t0 + 3000ms, candidateSelectedAt + 2500ms, windowOpenedAt + windowMaxAgeMs)`；`windowMaxAgeMs` 为内部配置/POC 校准值。`SuggestionAttempt` 在检索、生成和浮窗调用前后都必须二次比对 `sessionId + traceId + windowVersion + freshnessDeadlineMonotonicMs`；任一不符写 `DISCARDED`，reason code 为 `STALE_SESSION`、`STALE_WINDOW` 或 `DEADLINE_EXCEEDED`。`t1=筛选完成`，`t2=本地输出校验完成`，`t_end=浮窗首帧确认`，全部写入对应审计快照；上游 `createTime` 只做旁路观测。
 
 模型必须返回 JSON：
 
@@ -442,7 +553,7 @@ interface CorrectionPayloadV1 {
 }
 ```
 
-`DeepSeekProvider` 固定使用 DeepSeek OpenAI-compatible `POST /chat/completions`；非流式、非思考模式、禁用 tool calls，传递 `response_format: { type: 'json_object' }`。统一错误类型为 `AUTH`（401）、`BILLING`（402）、`VALIDATION`（400/422）、`RATE_LIMIT`（429）、`SERVER`（5xx）、`TIMEOUT` 和 `ABORTED`；业务层只接收上述错误与结构化结果，`rawResponse` 只写加密审计快照，不向业务/Renderer 返回。
+业务层只依赖 `TextGenerationProvider.generateReply()`，不感知具体协议。首个 `DeepSeekProvider` 使用经校验的 Base URL 与 OpenAI-compatible `POST /chat/completions`；非流式、非思考模式、请求不包含 `tools`，传递 `response_format: { type: 'json_object' }`。其他适配器必须实现同一输出和 `ProviderErrorV1` 映射。MVP 收到任何 `tool_calls` 字段均归一为 `PROTOCOL`，不执行工具；完整 DeepSeek Tool Call 专用适配器属于后续 backlog。业务层只接收统一错误与结构化结果，`rawResponse` 只写加密审计快照，不向业务/Renderer 返回。
 
 本地校验：`quick_reply` 非空且不超过 80 汉字；`cues` 为 **2–3 条**、每条不超过 40 汉字；不得出现硬规则风险内容。校验失败、超时、provider 异常均只记录审计并回到监听，绝不重试过期弹幕。
 
@@ -455,8 +566,10 @@ interface CorrectionPayloadV1 {
 | `service.start` | `roomReference` | `ServiceViewState` |
 | `service.stop` | 无 | `ServiceViewState` |
 | `service.state.subscribe` | 无 | `service.state.changed` |
-| `config.get` / `config.update` | 白名单配置字段 | 脱敏配置视图 |
-| `persona.list/get/saveDraft/publish` | 人设与版本操作 | 人设摘要/版本摘要 |
+| `config.get` / `config.update` | 白名单非密钥配置字段 | 脱敏配置视图 |
+| `provider.credential.set/clear/test` | `providerId` + 一次性 API Key（set）/无 Key（clear/test） | 仅 `apiKeyConfigured` 或脱敏连接测试结果 |
+| `persona.list/get/create/delete/setPrincipal/saveDraft/publish/listVersions/compare` | 人设与版本操作 | 人设摘要/版本摘要 |
+| `safety.get/saveDraft/publish` | 自然语言、关键词/短语与草稿版本 | 编译校验结果/版本摘要 |
 | `audit.search` | 时间、label 状态、分页 | `AuditTraceSummary[]` |
 | `audit.getWorkflow` | `traceId` | 完整 workflow 上下文 |
 | `audit.submitLabel` | 评分、拒绝/修正内容 | 用户可见 `labelStatus` |
@@ -469,16 +582,29 @@ interface CorrectionPayloadV1 {
 
 ## 8. 错误码
 
+本表是 MVP 唯一领域错误全集。Provider 原始错误先映射为 `ProviderErrorV1`，再映射为下列领域码；其他文档和 UI 只能引用，不得另造同义码。
+
 | 代码 | 层 | 用户提示 | 系统动作 |
 | --- | --- | --- | --- |
-| `E_CONFIG_MISSING` | 配置 | 请完善直播间、人设或模型配置。 | 拒绝启动。 |
+| `E_CONFIG_INVALID` | 配置 | 请完善或修正直播间、人设、Provider 或浮窗配置。 | 拒绝启动。 |
 | `E_AUDIT_UNAVAILABLE` | 审计 | 审计存储不可用，请处理后重新启动。 | 停止服务。 |
+| `E_AUDIT_STATE_INVALID` | 审计 | 本轮处理状态异常，服务已停止。 | 停止服务并保留诊断。 |
 | `E_QDRANT_UNAVAILABLE` | 检索 | 本地检索服务不可用，请重试。 | 拒绝启动。 |
+| `E_SIDECAR_START_FAILED` | 本地服务 | 本地组件启动失败，请查看诊断后重试。 | 拒绝启动或显式退出。 |
+| `E_SOURCE_UNAVAILABLE` | 接入 | 无法连接直播弹幕服务，请检查后手动重试。 | 关闭 WS，停止服务。 |
 | `E_ROOM_OFFLINE` | 接入 | 直播间尚未开播，请稍后手动启动。 | 关闭 WS，停止服务。 |
 | `E_ROOM_ENDED` | 接入 | 直播已结束，服务已停止。 | 清空/隐藏/关闭 WS。 |
-| `E_LLM_TIMEOUT` | 模型 | 本轮建议未生成，正在继续监听。 | 审计失败，不重试。 |
-| `E_LLM_PROVIDER` | 模型 | 本轮建议未生成，正在继续监听。 | 审计失败，不重试。 |
-| `E_GOLDEN_SYNC` | 回流 | 不向用户展示。 | 内部记录失败并重试。 |
+| `E_SAFETY_POLICY_INVALID` | 安全 | 安全与禁忌规则无法执行，请修正后重新启动。 | 拒绝启动或停服。 |
+| `E_PROVIDER_AUTH` | 模型 | AI 服务认证失败，请检查 API Key。 | 本轮失败；配置修正前拒绝再次启动。 |
+| `E_PROVIDER_BILLING` | 模型 | AI 服务账户不可用，请检查账户状态。 | 本轮失败；不重试。 |
+| `E_PROVIDER_RATE_LIMIT` | 模型 | 本轮建议未生成，正在继续监听。 | 审计失败；过期弹幕不重试。 |
+| `E_PROVIDER_NETWORK` | 模型 | 本轮建议未生成，请检查网络。 | 审计失败；不重试。 |
+| `E_PROVIDER_SERVER` | 模型 | AI 服务暂时不可用，本轮已跳过。 | 审计失败；不重试。 |
+| `E_PROVIDER_TIMEOUT` | 模型 | 本轮建议超时，正在继续监听。 | abort；审计失败；不重试。 |
+| `E_PROVIDER_PROTOCOL` | 模型 | AI 返回格式不受支持，本轮已跳过。 | 审计失败；不重试。 |
+| `E_PROVIDER_OUTPUT_INVALID` | 模型 | AI 建议未通过校验，本轮已跳过。 | 审计丢弃；不重试。 |
+| `E_GOLDEN_SYNC_FAILED` | 回流 | 不向普通用户界面展示。 | 内部记录失败并幂等重试。 |
+| `E_STORAGE_LOW` | 存储 | 本机存储空间不足，可能影响后续直播，请尽快处理。 | 预警；未到硬门槛时继续。 |
 
 ## 9. 实施验收点
 

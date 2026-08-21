@@ -1,0 +1,28 @@
+decision_id,prd_ids,design_contract_refs,work_packages,testcase_ids,acceptance_ids
+D-01,FR-01,"03§3;06§5",W2,T-CON-001,A-01
+D-02,FR-01,"03 POC-01;douyinLive POC template",W2,T-CON-001,A-01
+D-02a,"FR-01;FR-08","03§3/§6.3;04§3;11-B§2/§5.2","W1;W2","T-CON-001;T-CON-002;T-PKG-001","A-01;A-02;A-09"
+D-03,FR-08,"03§4;04§2;11-B",W1,T-PKG-001,A-09
+D-03a,"FR-08;FR-11","04§2/§7;09-A§2",W1,T-PKG-001,A-09
+D-04,FR-02,"04§4.2;06§3;09-B§4.1",W3,T-PER-001,A-04
+D-04a,FR-03,"Safety and route POC template;04§4.2;06 PersonaRoute;10§6",W4,T-PER-001,A-04
+D-04b,FR-02,"04§4.2;06 persona DDL;09-B§4.1",W3,T-PER-001,A-04
+D-05,FR-06,"04§1;09-A§1;11-A§1",W6,"T-PROV-001;T-OVR-001;T-QUAL-001","A-06;A-10"
+D-06,"FR-04;FR-05","Safety and route POC template;04§4.4;06 SafetyPolicy;09-A§4",W4,T-SAFE-001,A-03
+D-07,FR-07,"04§8;10§5",W6,T-OVR-001,A-08
+D-07a,"FR-05;FR-07","04§3/§4.1;06 trace;09-A§4/§8","W2;W6","T-PERF-001;T-OVR-001","A-06;A-08"
+D-08,FR-04,"04§4.4;06 SafetyReasonCodeV1",W4,T-SAFE-001,A-03
+D-08a,FR-04,"04§4.4;06 SafetyReasonCodeV1",W4,T-SAFE-001,A-03
+D-08b,FR-04,"04§4.4;06 safety_policy_version;Safety fixtures;10§7.2",W4,T-SAFE-001,A-03
+D-09,PRD§8,"03§6;04§9;06§6;11-A§6",W6,T-PERF-001,A-06
+D-10,NON_GOAL,"01/02 scope;04 standalone boundary",NONE,T-SCOPE-001,SCOPE_NEGATIVE
+D-11,FR-07,"04§8;10§5;prototype Preferences",W6,T-OVR-001,A-08
+D-12,FR-08,"04§3;06§5;09-A§3;11-B§4",W2,T-CON-002,A-02
+D-13,FR-05,"03§4.5;BM25 POC template;04§4.3;06§4;09-B§6",W5,T-RET-001,A-05
+D-14,"FR-06;FR-08","03§5;04§1/§5;06§6;Provider fixtures;11-A",W6,T-PROV-001,A-11
+D-15,FR-10,"04§6;06§3;09-B§4;10§8","W3;W7",T-AUD-001,A-07
+D-16,"FR-02;FR-03;FR-10","04§4.2;06 persona DDL;09-B§4.1",W3,"T-PER-001;T-AUD-001","A-04;A-07"
+D-17,"FR-05;FR-10","04§4.3;06§3/§4;09-B§4.3/§6","W5;W7","T-RET-001;T-AUD-001","A-05;A-07"
+D-18,"FR-09;FR-10","04§6/§7;09-B§8;10§8/§9;11-B§5/§8","W1;W3;W7","T-DIAG-001;T-AUD-001;T-STO-001","A-07;A-12;A-13"
+D-19,"FR-05;FR-08","05+Schema;03§4;11-B§2/§3;package manifest","W1;W5","T-RET-001;T-PKG-001","A-05;A-09"
+D-20,"FR-06;FR-08","03§5/§6;06§6;11-A§4/§6",W6,"T-PROV-001;T-PERF-001","A-06;A-11"

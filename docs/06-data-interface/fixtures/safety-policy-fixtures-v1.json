@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "SafetyRuleCompilerV1",
+  "note": "用于确定性编译与输入/输出 fail-closed 契约测试；真实准确率报告须在甲方样本 POC 中补录。",
+  "compileCases": [
+    {
+      "id": "explicit-topics-valid",
+      "policyText": "不要讨论主播住址和真实手机号；禁止回应具体交易价格。",
+      "keywords": ["家庭住址", "手机号", "最低价"],
+      "expected": { "valid": true, "categories": ["PII", "TRANSACTION_PRICE"] }
+    },
+    {
+      "id": "ambiguous-natural-language-invalid",
+      "policyText": "不合适的话题都不要说。",
+      "keywords": [],
+      "expected": { "valid": false, "domainError": "E_SAFETY_POLICY_INVALID" }
+    },
+    {
+      "id": "invalid-regex",
+      "policyText": "禁止匹配受控正则。",
+      "keywords": ["regex:(未闭合"],
+      "expected": { "valid": false, "domainError": "E_SAFETY_POLICY_INVALID" }
+    }
+  ],
+  "runtimeCases": [
+    {
+      "id": "pii-input-filtered",
+      "stage": "INPUT",
+      "text": "你家具体住址和手机号是多少",
+      "expected": { "allow": false, "reason": "PII", "traceFinalState": "FILTERED" }
+    },
+    {
+      "id": "abuse-input-filtered",
+      "stage": "INPUT",
+      "text": "带有侮辱谩骂的测试占位文本",
+      "expected": { "allow": false, "reason": "ABUSE", "traceFinalState": "FILTERED" }
+    },
+    {
+      "id": "positive-input-allowed",
+      "stage": "INPUT",
+      "text": "今天状态真好，给大家分享一下吧",
+      "expected": { "allow": true }
+    },
+    {
+      "id": "unsafe-output-discarded",
+      "stage": "OUTPUT",
+      "text": "输出中包含已配置的个人地址占位内容",
+      "expected": { "allow": false, "reason": "PII", "traceFinalState": "DISCARDED" }
+    },
+    {
+      "id": "engine-failure-closed",
+      "stage": "INPUT",
+      "simulateEngineFailure": true,
+      "expected": { "allow": false, "reason": "SAFETY_ENGINE_ERROR", "traceFinalState": "FILTERED" }
+    }
+  ]
+}

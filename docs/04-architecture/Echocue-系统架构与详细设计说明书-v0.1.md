@@ -1,18 +1,18 @@
 # Echocue 系统架构与详细设计说明书 v0.1
 
-> 状态：详细设计起稿  
+> 状态：已确认架构基线；外部 POC 与实现校准待完成
 > 适用范围：Windows standalone MVP、单直播间、单一团队、人工查看 AI 建议  
 > 上游依据：《需求澄清与 MVP 定义》《PRD》《技术调研与选型报告》
 
 ## 1. 设计目标与约束
 
-本设计实现一条可预测、可取消、可审计的实时工作流：接收真实抖音弹幕，先安全过滤和确定性人设路由，再以 Qdrant 检索优先、DeepSeek 单次生成兜底，最终通过始终置顶的 Windows 浮窗展示一条建议。
+本设计实现一条可预测、可取消、可审计的实时工作流：接收真实抖音弹幕，先安全过滤和确定性人设路由，再以 Qdrant 检索优先、可配置 `TextGenerationProvider` 单次生成兜底，最终通过始终置顶的 Windows 浮窗展示一条建议。DeepSeek 是首个适配器，不是业务层硬绑定。
 
 1. 不使用 Agent 框架、多轮工具调用或候选队列。
 2. `douyinLive` 本地 WS 只在用户启动 AI 服务后创建；仅 `ROOM_ONLINE` 通过启动门禁。`ROOM_OFFLINE`、`ROOM_ENDED`、用户停止或连接异常均立即关闭 WS。
 3. 弹幕展示窗口期间不再启动新生成；窗口结束后只从最新窗口重新选取，不补发历史建议。
 4. 每条处理弹幕以 `trace_id` 串起全链路可回放审计。无法写入审计库时停止产生新建议。
-5. 端到端 P95 ≤ 3 秒是持续优化目标，测量起点为适配器规范化完成，终点为浮窗首帧完成。
+5. 端到端 P95 ≤ 3 秒是持续优化目标；`t0` 为 client 收到原始 WebSocket frame 的单调时钟，`t_end` 为浮窗首帧确认。上游事件时间仅旁路报告。
 6. 人设与人工反馈均为版本化资产；人工确认的高质量反馈可回流为 golden set，但不能自动污染可直出样本。
 
 ## 2. 总体架构
@@ -23,10 +23,10 @@ flowchart LR
   MAIN --> OVL[Overlay Window]
   MAIN --> DYL[douyinLive<br/>localhost WebSocket]
   MAIN --> QS[Qdrant Sidecar<br/>127.0.0.1]
-  MAIN --> LLM[DeepSeek API]
+  MAIN --> LLM[TextGenerationProvider<br/>DeepSeek first adapter]
   MAIN <--> AW[AuditStore Worker<br/>SQLite + AES-GCM]
   MAIN --> OBS[Prometheus / OTel<br/>匿名指标]
-  MAIN --> CFG[本地配置 / Markdown / DPAPI]
+  MAIN --> CFG[本地配置 / SQLite / DPAPI]
 ```
 
 ### 2.1 进程边界
@@ -36,22 +36,18 @@ flowchart LR
 | Renderer（主窗口） | React 界面、配置编辑、审计查询展示。 | 不可访问 Node、文件系统、API Key、数据库、Qdrant 或 WebSocket。 |
 | Renderer（浮窗） | 仅渲染已验证的建议与窗口偏好。 | 不执行生成、检索、审计写入或配置修改。 |
 | Electron Main | 服务状态机、接入适配、候选编排、provider 调用、窗口控制、IPC 权限。 | 不允许把密钥/原文审计数据传给非授权 Renderer。 |
-| AuditStore Worker | SQLite 事务、字段加密/解密、哈希链、审计查询和备份。 | 不访问网络或 UI；不持有 DeepSeek API Key。 |
+| AuditStore Worker | SQLite 事务、字段加密/解密、哈希链、审计查询和备份。 | 不访问网络或 UI；不持有任何 Provider API Key。 |
 | Qdrant Sidecar | 本地样本稀疏检索。 | 不暴露到 loopback 以外；不承担审计事实来源。 |
 
-## 3. 服务运行状态机
+## 3. 服务生命周期与活动状态
 
 ```mermaid
 stateDiagram-v2
     [*] --> STOPPED
-    STOPPED --> STARTING: 用户启动
-    STARTING --> GATE_CONNECTING: 检查配置/Qdrant/audit
+    STOPPED --> GATE_CONNECTING: 用户启动并通过本地配置/Qdrant/audit预检
     GATE_CONNECTING --> RUNNING: ROOM_ONLINE
     GATE_CONNECTING --> STOPPED: ROOM_OFFLINE / 超时 / 失败
-    RUNNING --> DISPLAYING: 有效建议首帧展示
-    DISPLAYING --> RUNNING: 展示窗口到期
     RUNNING --> STOPPED: ROOM_ENDED / WS 断开 / 用户停止 / 审计故障
-    DISPLAYING --> STOPPED: ROOM_ENDED / WS 断开 / 用户停止 / 审计故障
 ```
 
 ### 3.1 状态定义
@@ -61,11 +57,11 @@ stateDiagram-v2
 | `STOPPED` | `START` | 清空内存候选/窗口，隐藏浮窗，创建一次门禁 WS。 |
 | `GATE_CONNECTING` | `ROOM_ONLINE` | 记录会话开始，转 `RUNNING`。 |
 | `GATE_CONNECTING` | `ROOM_OFFLINE`、超时、错误 | 关闭 WS，显示“未开播/连接失败，可手动重试”，回 `STOPPED`。 |
-| `RUNNING` | `COMMENT` | 仅当没有展示窗口且审计可用时，进入单条弹幕状态机。 |
-| `DISPLAYING` | 任意 `COMMENT` | 仍创建加密审计 trace，记录 `RECEIVED → NORMALIZED → DISCARDED`，原因 `DISPLAY_WINDOW_ACTIVE`；不进入候选、不调用检索/LLM、不排队。 |
+| `RUNNING` + activity 非 `DISPLAYING` | `COMMENT` | 审计可用时进入单条弹幕状态机；activity 可为 `LISTENING/RETRIEVING/GENERATING`。 |
+| `RUNNING` + activity=`DISPLAYING` | 任意 `COMMENT` | 仍创建加密审计 trace，记录 `RECEIVED → NORMALIZED → DISCARDED`，原因 `DISPLAY_WINDOW_ACTIVE`；不进入候选、不调用检索/LLM、不排队。 |
 | 任意非停止状态 | `STOP`、`ROOM_ENDED`、WS 异常、审计故障 | 取消 in-flight 任务，关闭 WS，隐藏浮窗，清空最新窗口，回 `STOPPED`。 |
 
-服务状态和每一次状态转换必须广播给主界面；UI 不得自行推断运行状态。
+唯一生命周期枚举为 `STOPPED/GATE_CONNECTING/RUNNING`；唯一活动枚举为 `IDLE/GATE_CHECKING/LISTENING/RETRIEVING/GENERATING/DISPLAYING`。服务状态和每一次状态转换必须广播给主界面；UI 不得自行推断运行状态。
 
 ## 4. 实时处理工作流
 
@@ -76,7 +72,7 @@ sequenceDiagram
   participant A as AuditStore
   participant Q as Qdrant
   participant P as Persona Store
-  participant D as DeepSeek
+  participant D as TextGenerationProvider
   participant O as Overlay
 
   WS->>S: WebcastChatMessage
@@ -103,14 +99,16 @@ sequenceDiagram
     end
     O-->>S: 首帧完成
     S->>A: DISPLAYED
+    S->>O: 展示窗口到期后隐藏
+    S->>A: HIDDEN
   end
 ```
 
 ### 4.1 并发、取消与新鲜度
 
-- 运行期最多一个 `SuggestionAttempt`；状态为 `DISPLAYING` 时不创建新 attempt。
+- 运行期最多一个 `SuggestionAttempt`；activity 为 `DISPLAYING` 时不创建新 attempt。
 - 每个 attempt 绑定 `session_id`、`trace_id`、`window_version`、`AbortController`。
-- 用户停止、下播、WS 断开、窗口版本变化或请求超时，调用 `abort()`；任何异步返回都必须再次比对四个值。比对失败则审计为 `DISCARDED_STALE`，不可展示。
+- 用户停止、下播、WS 断开、窗口版本变化或请求超时，调用 `abort()`；任何异步返回都必须再次比对四个值。比对失败则进入 `DISCARDED`，reason 为 `STALE_SESSION/STALE_WINDOW/DEADLINE_EXCEEDED`，不可展示。
 - 最新窗口只保存未展示期内的安全候选摘要；展示结束时清空，并增加 `window_version`。
 - 初始窗口参数为 `window_max_age_ms=1500`、`candidate_max_count=50`、按 `source_message_id` 会话内去重；这些内部参数与候选评分快照必须写入审计，并由 POC-02 校准后固化。
 
@@ -147,13 +145,21 @@ Qdrant 始终维护两个独立 collection：`pre_set`（预置相似案例库�
 
 若 Top-1 来源为 `golden_set`、payload filter 全部满足、`retrieval_confidence >= direct_push_threshold`（初始建议 `0.85`，由 POC 校准并仅作为内部配置固化）且弹幕仍在最新窗口，先经当前人设版本、当前禁忌规则版本、结构、长度和安全类别的共用输出校验器；通过后才直接选用该条 `reply`/`cues` 推送浮窗，不调用 LLM。任何条件不满足（包括 Top-1 来自 `pre_set`）均把合并 TopK 作为上下文，调用一次 LLM 生成新的回复与提词。`GENERATED → DISPLAY_READY` 也必须调用同一校验器；校验输入、规则版本、结果与拒绝原因写入审计。
 
+### 4.4 安全规则执行契约
+
+安全规则由版本化 `SafetyPolicyVersionV1` 管理，原始自然语言说明和关键词均保留；运行期只执行已发布版本的确定性编译结果，不在 3 秒主链路内调用 LLM 解释规则。规则发布顺序固定为：Unicode NFKC/大小写/空白归一 → 内置高风险类别与 PII detector → 精确关键词/短语 → 受控 regex → 自然语言边界的确定性编译规则。任何一步命中即 `FILTERED`，记录稳定 `SafetyReasonCodeV1`、规则版本和命中规则 ID。
+
+`SafetyRuleCompilerV1` 仅接受可解释句式，例如“不要/禁止/不讨论 + 一个或多个明确话题”，并把话题编译为 `TOPIC_PHRASE`；无法无歧义解析、regex 非法、关键词为空或类别未知时，版本标为 `INVALID`，不得发布、不得启动服务。用户仍以自然语言配置，但 UI 必须展示“可执行/需修改”的校验结果；不得静默忽略无法执行的自然语言。内置类别至少包括 `ABUSE`、`PII`、`POLITICS`、`SEXUAL`、`ILLEGAL`、`MEDICAL_FINANCIAL_ADVICE`、`COMPETITOR`、`TRANSACTION_PRICE`、`TEAM_FORBIDDEN`。
+
+输入过滤与输出复验必须引用同一个已发布 `safety_policy_version`，但分别写入 `INPUT_SAFETY_DECISION` 与 `OUTPUT_SAFETY_DECISION` 快照。检测器异常、规则版本缺失或编译产物校验失败时 fail closed：拒绝启动或停止服务并返回 `E_SAFETY_POLICY_INVALID`，不能降级为“无规则运行”。规则测试集必须覆盖归一化变体、同音/错别字已配置变体、regex 边界、PII、每个内置类别、允许样本和编译失败样本。
+
 ## 5. 模块接口契约
 
 以下为领域层 TypeScript 契约草案；具体目录和错误类型在接口设计文档固定。
 
 ```ts
-type ServiceState = 'STOPPED' | 'GATE_CONNECTING' | 'RUNNING' | 'DISPLAYING';
-type ServiceActivity = 'IDLE' | 'LISTENING' | 'RETRIEVING' | 'GENERATING' | 'DISPLAYING';
+type ServiceLifecycle = 'STOPPED' | 'GATE_CONNECTING' | 'RUNNING';
+type ServiceActivity = 'IDLE' | 'GATE_CHECKING' | 'LISTENING' | 'RETRIEVING' | 'GENERATING' | 'DISPLAYING';
 
 interface NormalizedComment {
   traceId: string;
@@ -217,7 +223,7 @@ interface SuggestionOutput {
 | 数据 | 位置/形式 | 安全要求 |
 | --- | --- | --- |
 | 应用偏好、直播间引用 | 本机配置文件 | 不保存 Cookie/签名 URL。 |
-| DeepSeek API Key / model_id | Electron `safeStorage` / 本机配置 | API Key 仅 Main 解密，UI 永不回显；`model_id` 可配置。 |
+| Provider 配置与凭证 | 非密钥配置文件 / Electron `safeStorage` | 保存服务商名称、adapter type、Base URL、Model ID 与凭证引用；API Key 按 provider 独立加密，Main 解密且 UI 永不回显。 |
 | 人设 | SQLite `persona_version` 自然语言文本 + metadata | 不限文本格式；draft/published 不可变版本；运行期固定 published snapshot。 |
 | 禁忌规则/关键词 | 本机配置 | 修改形成版本并审计引用。 |
 | Qdrant 案例库 | 独立 `pre_set` 与 `golden_set` collection | `pre_set` 按《pre_set 初始案例数据标准》由甲方初始化；两路并行召回；打标合格/修正答案即时 upsert 至 golden set。 |
@@ -257,8 +263,8 @@ stateDiagram-v2
 
 | 用途 | SVG 源 | 构建/运行产物 |
 | --- | --- | --- |
-| Windows 应用、任务栏、安装包 | `svg/douyin-echocue-client-app-icon.svg` | electron-builder 从 SVG 生成 Windows ICO，作为应用图标。 |
-| 运行期系统托盘 | `svg/douyin-echocue-client-tray-icon.svg` | 构建阶段生成多 DPI PNG，并作为 runtime resource 随包携带；Electron main 以 `nativeImage` 加载 PNG。 |
+| Windows 应用、任务栏、安装包 | [`../../svg/douyin-echocue-client-app-icon.svg`](../../svg/douyin-echocue-client-app-icon.svg) | electron-builder 从 SVG 生成 Windows ICO，作为应用图标。 |
+| 运行期系统托盘 | [`../../svg/douyin-echocue-client-tray-icon.svg`](../../svg/douyin-echocue-client-tray-icon.svg) | 构建阶段生成多 DPI PNG，并作为 runtime resource 随包携带；Electron main 以 `nativeImage` 加载 PNG。 |
 
 Electron 运行期 `nativeImage` 跨平台只支持 PNG/JPEG，Windows 另支持 ICO，故 Tray 不直接读取 SVG；这只是格式转换约束，源设计仍严格使用上述 SVG。electron-builder 支持由 SVG 生成 Windows 图标。[electron-builder Icons](https://www.electron.build/docs/features/icons-and-images/)；[Electron nativeImage](https://www.electronjs.org/docs/latest/api/native-image)
 
@@ -269,7 +275,7 @@ Electron 运行期 `nativeImage` 跨平台只支持 PNG/JPEG，Windows 另支持
 | 规范化/规则/路由 | 100 ms | 规则命中、路由置信度。 |
 | Qdrant + 人设读取（并行） | 150 ms | TopK 检索耗时、命中/灰区比例。 |
 | prompt 渲染/本地校验 | 100 ms | 输出结构失败率。 |
-| DeepSeek 单次调用 | 2,300 ms（目标预算）/ 5,000 ms（硬超时） | 首 token/总耗时、超时、provider 错误。 |
+| Provider 单次调用 | 2,300 ms（目标预算）/ 5,000 ms（保险上限，同时服从 3 秒新鲜度 deadline） | 首 token/总耗时、超时、provider 错误。 |
 | 审计事务 + 浮窗首帧 | 350 ms | audit 事务耗时、overlay first-frame。 |
 | 合计 | 3,000 ms | E2E P95。 |
 
@@ -280,7 +286,7 @@ Electron 运行期 `nativeImage` 跨平台只支持 PNG/JPEG，Windows 另支持
 1. 验证 Electron 版本、`node:sqlite`、Worker、WAL、DPAPI 与审计事务恢复。
 2. 验证 Qdrant Windows sidecar 的打包、初始化、jieba-BM25 中文样本检索和本地回收。
 3. 以 Windows x64 安装包、甲方授权真实开播房间验证 `douyinLive` 启动门禁、WS 生命周期与连续 30 分钟稳定性；归档评论数、重复率、断连/错误、到达时间、`ROOM_OFFLINE/ENDED` 关 WS 证据及凭证不落日志检查。此 POC 未通过前，MVP 不得进入端到端验收。
-4. 实现规则/路由/审计状态机、人设发布版本及打标回流，再接入直出 payload、DeepSeek fallback 和浮窗。
+4. 实现规则/路由/审计状态机、人设发布版本及打标回流，再接入直出 payload、首选 Provider fallback 和浮窗。
 5. 以真实样本压测时延、审计完整性、安全过滤、过期取消、golden set 排序与安装包升级；同时验证 SVG→ICO/PNG 产物、任务栏/托盘图标、关闭/Alt+F4 隐藏、托盘恢复、显式退出的 sidecar 停止与审计 flush。
 
 ## 11. 详细设计补充材料与剩余实现输入
@@ -292,4 +298,4 @@ Electron 运行期 `nativeImage` 跨平台只支持 PNG/JPEG，Windows 另支持
 3. 页面信息架构、窗口/托盘、审计追溯与打标入口、用户可见错误和隐私边界见《UI 信息架构与交互设计》；
 4. 研发工作包、测试用例层级、POC 证据和验收门禁见《研发任务拆分、测试计划与验收标准》。
 
-DeepSeek 的最终 prompt 模板、JSON schema 的 provider 兼容实现、Windows 安装运行与故障处理已分别由《LLM 提示词与输出校验设计》《Windows 部署、运行与故障处理手册》维护；任何变更均必须保持本章的单次调用、5 秒硬超时、审计快照和不重试约束。
+Provider 的最终 prompt 模板、JSON schema、首个 DeepSeek 适配器与 Windows 安装运行方式分别由《LLM 提示词与输出校验设计》《Windows 部署、运行与故障处理手册》维护；任何变更均必须保持本章的单次调用、5 秒保险上限、新鲜度取消、审计快照和不重试约束。

@@ -21,7 +21,7 @@ flowchart LR
   Configurer[配置人员]
   Douyin[抖音直播间]
   DYL[douyinLive 本地服务]
-  DS[DeepSeek 兼容 API]
+  DS[TextGenerationProvider API\nDeepSeek 首个适配器]
 
   subgraph Client[Windows Echocue standalone client]
     direction LR
@@ -56,7 +56,7 @@ flowchart LR
 | 主窗口 Renderer | UI、配置编辑、受控审计查看和打标入口 | Node、文件、网络、SQLite、Qdrant、密钥 |
 | 浮窗 Renderer | 已校验建议和视觉偏好 | 检索、生成、审计、配置写入 |
 | Electron Main | 生命周期、WS、候选编排、检索、LLM、窗口和 IPC 授权 | 向 Renderer 广播密钥或审计快照 |
-| AuditStore Worker | SQLite 事务、字段加密、审计状态、反馈和 outbox | 网络、UI、DeepSeek Key |
+| AuditStore Worker | SQLite 事务、字段加密、审计状态、反馈和 outbox | 网络、UI、任何 Provider Key |
 | Qdrant Sidecar | 两 collection 的本机稀疏检索 | 审计事实、用户可见反馈状态 |
 
 ## 3. 服务启动门禁与停止流程
@@ -91,7 +91,7 @@ flowchart TD
 flowchart TD
   C0[WebcastChatMessage 到达] --> C1[创建 trace_id\n审计 RECEIVED 和原始事件]
   C1 --> C2[规范化和会话内 source_message_id 去重]
-  C2 --> C3{当前为 DISPLAYING}
+  C2 --> C3{activity 为 DISPLAYING}
   C3 -- 是 --> C4[审计 NORMALIZED 到 DISCARDED\nreason DISPLAY_WINDOW_ACTIVE]
   C4 --> C5[不检索 不生成 不入队]
   C3 -- 否 --> C6{重复或硬规则命中\n风险 隐私 侮辱 禁忌}
@@ -113,7 +113,7 @@ flowchart TD
   C19 -- 是 --> C20[DIRECT_READY\n不调用 LLM]
   C19 -- 否 --> C21[渲染提示词]
   C17 -- 否 --> C21
-  C21 --> C22[调用一次 DeepSeek\n5 秒硬超时]
+  C21 --> C22[调用一次选定 Provider\n5 秒保险上限且服从新鲜度 deadline]
   C22 --> C23{输出校验通过\n且 attempt 仍有效}
   C23 -- 否 --> C24[审计失败或 STALE\n回 RUNNING]
   C23 -- 是 --> C25[GENERATED DISPLAY_READY]
@@ -123,7 +123,7 @@ flowchart TD
   C27 --> C28[DISPLAYING\n不生成 不排队]
   C28 --> C29{展示时长到期}
   C29 -- 是 --> C30[隐藏浮窗 清空旧候选\nwindow_version 加一]
-  C30 --> C31[RUNNING\n从最新窗口重新筛选]
+  C30 --> C31[审计 HIDDEN\nactivity 回 LISTENING]
 ```
 
 ## 5. jieba-BM25 写入和查询数据流
@@ -165,7 +165,7 @@ flowchart LR
   Actor1[配置人员]
   Actor2[出镜人员]
   Source[douyinLive WS]
-  Provider[DeepSeek API]
+  Provider[TextGenerationProvider API]
 
   P1((P1 服务门禁与接入))
   P2((P2 筛选 路由 检索 生成))
@@ -245,12 +245,12 @@ sequenceDiagram
   participant A as Audit Worker
   participant P as Persona Store
   participant Q as Qdrant
-  participant D as DeepSeek
+  participant D as TextGenerationProvider
   participant O as Overlay
 
   W->>M: WebcastChatMessage
   M->>A: RECEIVED NORMALIZED 规则结论
-  alt 正在 DISPLAYING
+  alt activity 为 DISPLAYING
     M->>A: DISCARDED DISPLAY_WINDOW_ACTIVE
   else 风险或重复
     M->>A: FILTERED 或 DISCARDED
@@ -277,6 +277,8 @@ sequenceDiagram
     end
     O-->>M: overlay first-frame
     M->>A: DISPLAYED
+    M->>O: 展示窗口到期后隐藏
+    M->>A: HIDDEN
   end
 ```
 
@@ -291,12 +293,12 @@ sequenceDiagram
   participant Q as golden_set
 
   U->>UI: 打开 workflow 上下文
-  UI->>M: audit.getTrace trace_id
+  UI->>M: audit.getWorkflow trace_id
   M->>A: 解密读取受权快照
   A-->>M: 状态链 路由 检索 LLM 展示证据
   M-->>UI: 完整上下文
   U->>UI: 认可 拒绝 或修正并评分
-  UI->>M: feedback.submit
+  UI->>M: audit.submitLabel
   M->>A: 单事务写反馈 修订和 outbox
   alt 修正答案 或 未修正评分大于等于 85
     A-->>M: outbox PENDING
@@ -322,20 +324,24 @@ stateDiagram-v2
   STOPPED --> GATE_CONNECTING: 用户 START
   GATE_CONNECTING --> RUNNING: ROOM_ONLINE 和审计可写
   GATE_CONNECTING --> STOPPED: ROOM_OFFLINE ROOM_ENDED 超时 连接失败
-  RUNNING --> RETRIEVING: 最新安全候选
-  RETRIEVING --> GENERATING: 不满足直出
-  RETRIEVING --> DISPLAYING: 直出复验通过
-  RETRIEVING --> RUNNING: 过期 取消 检索失败
-  GENERATING --> DISPLAYING: 输出校验通过和首帧展示
-  GENERATING --> RUNNING: 超时 失败 过期 取消
-  DISPLAYING --> RUNNING: 展示到期 清空旧候选
   RUNNING --> STOPPED: STOP ROOM_ENDED WS断开 审计失败
-  RETRIEVING --> STOPPED: STOP ROOM_ENDED WS断开 审计失败
-  GENERATING --> STOPPED: STOP ROOM_ENDED WS断开 审计失败
-  DISPLAYING --> STOPPED: STOP ROOM_ENDED WS断开 审计失败
 ```
 
-`DISPLAYING` 不存在到 `RETRIEVING` 或 `GENERATING` 的转换；展示期间收到的新弹幕只走可审计丢弃分支。
+生命周期只有 `STOPPED/GATE_CONNECTING/RUNNING`。`RUNNING` 内另有唯一活动状态机：
+
+```mermaid
+stateDiagram-v2
+  [*] --> LISTENING
+  LISTENING --> RETRIEVING: 最新安全候选
+  RETRIEVING --> GENERATING: 不满足直出
+  RETRIEVING --> DISPLAYING: 直出复验和首帧通过
+  RETRIEVING --> LISTENING: 丢弃 取消 检索失败
+  GENERATING --> DISPLAYING: 输出校验和首帧通过
+  GENERATING --> LISTENING: 超时 失败 丢弃 取消
+  DISPLAYING --> LISTENING: 展示到期并审计 HIDDEN
+```
+
+activity=`DISPLAYING` 时不创建新的 `SuggestionAttempt`；展示期间收到的新弹幕只走可审计丢弃分支。
 
 ### 8.2 单条弹幕 workflow 状态机
 
@@ -348,20 +354,20 @@ stateDiagram-v2
   NORMALIZED --> ROUTED: 安全候选被选中
   ROUTED --> RETRIEVING
   RETRIEVING --> DIRECT_READY: 合格 golden payload
-  RETRIEVING --> LLM_PENDING: 其余路径
+  RETRIEVING --> PROMPT_RENDERED: 其余路径并完成 prompt
   RETRIEVING --> DISCARDED: 失效 取消 检索异常
   DIRECT_READY --> DISPLAY_READY: 共用输出校验通过
-  DIRECT_READY --> REJECTED: 共用输出校验失败
+  DIRECT_READY --> DISCARDED: 共用输出校验失败
+  PROMPT_RENDERED --> LLM_PENDING: 发起唯一 Provider 请求
   LLM_PENDING --> GENERATED: 结构化输出成功
   LLM_PENDING --> FAILED: 超时 Provider 解析失败
   GENERATED --> DISPLAY_READY: 共用输出校验通过
-  GENERATED --> REJECTED: 共用输出校验失败
+  GENERATED --> DISCARDED: 共用输出校验失败
   DISPLAY_READY --> DISPLAYED: 浮窗首帧完成
   DISPLAY_READY --> DISCARDED: stale 或取消
   DISPLAYED --> HIDDEN: 展示窗口到期
   FILTERED --> [*]
   DISCARDED --> [*]
-  REJECTED --> [*]
   FAILED --> [*]
   HIDDEN --> [*]
 ```

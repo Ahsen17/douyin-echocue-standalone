@@ -1,5 +1,7 @@
 # Echocue Windows 部署、运行与故障处理手册 v0.1
 
+发布候选的二进制、哈希、许可证、SBOM、兼容性和进程所有权必须填写并归档到 [《Windows 安装包清单与兼容矩阵》](Echocue-Windows安装包清单与兼容矩阵-v0.1.md)；模板空值不构成发布证据。
+
 > 状态：开发交付基线  
 > 适用范围：Windows x64 standalone MVP，单直播间、单团队、本机运行  
 > 上游依据：《系统架构与详细设计说明书》《数据模型、接口与实时事件协议》《数据建模与迁移设计》《UI 信息架构与交互设计》  
@@ -29,16 +31,16 @@ Echocue 是一个本机 standalone client。Electron Main Process 编排服务�
 | Echocue Electron 主程序、预加载脚本及 Renderer | 客户端 | Windows x64；Renderer 无 Node/文件系统权限。 |
 | Qdrant Server `>=1.19.0` | 本机 sidecar | 仅 loopback；由 Main 受控启动/停止；只承载 `pre_set`、`golden_set`。 |
 | `jieba-wasm`、BM25 profile、MurmurHash fixture | 应用资源 | 不在线下载词典；写入/查询使用同一版本。 |
-| douyinLive | 已安装或甲方按 POC 受控启动的本机服务 | 客户端仅连接 `ws://127.0.0.1:1088/ws/{roomReference}`；其生命周期不由“窗口关闭”改变。 |
-| SVG 图标源的构建产物 | 安装包资源 | 应用/任务栏 ICO 源自 `svg/douyin-echocue-client-app-icon.svg`；托盘 PNG 源自 `svg/douyin-echocue-client-tray-icon.svg`。 |
+| douyinLive 固定版本 Windows x64 产物 | Echocue 拥有的受控 sidecar | 随包发布；仅用户点击启动服务后由 Main 创建；停止服务/显式退出时由 Main 终止；客户端连接 `ws://127.0.0.1:1088/ws/{roomReference}`。 |
+| SVG 图标源的构建产物 | 安装包资源 | 应用/任务栏 ICO 源自 [`../../svg/douyin-echocue-client-app-icon.svg`](../../svg/douyin-echocue-client-app-icon.svg)；托盘 PNG 源自 [`../../svg/douyin-echocue-client-tray-icon.svg`](../../svg/douyin-echocue-client-tray-icon.svg)。 |
 
-douyinLive 的部署形态须在发布前 POC 固化：若作为随包受控 sidecar，Main 在显式启动服务时启动并在停服时停止；若由甲方单独维护，则只检测其 loopback 可达性。无论形态如何，Echocue 的 WS 都只在服务门禁期间持有，停服即关闭。
+MVP 部署形态已经冻结为随包受控 sidecar，不支持外部共享/甲方单独维护模式。Main 使用 Windows Job Object 绑定其拥有的 douyinLive 子进程，固定工作目录、loopback 端口、版本/SHA/许可证；用户停止服务时先关闭 Echocue WS，再终止该子进程。主窗口隐藏到托盘不改变进程；托盘显式退出必须完成同一停止顺序。端口占用或二进制校验失败返回 `E_SIDECAR_START_FAILED`，不得连接或杀死不属于本应用的外部进程。
 
 ### 2.2 前置条件
 
-1. Windows x64，用户对其应用数据目录有读写权限，并预留审计、Qdrant 索引和 WAL 的持续增长空间。
+1. Windows x64，用户对其应用数据目录有读写权限；安装/启动时数据卷至少有 2 GiB 可用空间。
 2. 已收到甲方提供的、通过数据标准校验的 `pre_set` JSONL；初始导入前不得启用服务。
-3. 已配置至少一名主要出镜人员及其已发布人设版本、直播间 `roomReference`、DeepSeek API Key 和 `model_id`。
+3. 已配置至少一名主要出镜人员及其已发布人设版本、已发布且可执行的安全规则、直播间标识，以及 Provider 的服务商名称、adapter type、Base URL、Model ID 和 API Key。
 4. 已完成已开播真实房间的 douyinLive 兼容性 POC；未通过前不得宣称端到端 MVP 验收完成。
 
 ### 2.3 本机数据布局
@@ -64,8 +66,8 @@ API Key 不得出现于上述文件、SQLite、Qdrant payload、日志、崩溃�
 
 1. 从受控发布渠道取得 Windows x64 安装包并验证发布版本、签名/校验清单。
 2. 安装完成后启动主程序。首次启动只检查本机依赖、创建数据目录和初始化向导；不得自动连接直播间、创建 WS 或调用 LLM。
-3. 用户完成直播间、团队人设、AI Key/`model_id` 和浮窗偏好配置；API Key 输入后 UI 仅显示“已配置”。
-4. 导入并验证 `pre_set` JSONL：拒绝未知 `schema_version`、重复 `id`、敏感内容和无效字段。失败时不创建半成品 collection。
+3. 用户完成直播间、团队人设、安全规则、Provider 和浮窗偏好配置；API Key 输入后 UI 仅显示“已配置”。
+4. 离线整包验证 `pre_set` JSONL 并写 staging：拒绝未知 `schema_version`、重复 `id`、额外字段、超限、敏感内容和无效字段。失败时不创建 active collection。
 5. 初始化 SQLite、Qdrant 与检索 profile，全部健康后显示“可以启动服务”。
 
 ### 3.2 初始化事务顺序
@@ -77,29 +79,30 @@ flowchart TD
   A[创建数据目录] --> B[启动 Qdrant loopback sidecar]
   B --> C[SQLite: migration / WAL / 加密与链锚点校验]
   C --> D[safeStorage/DPAPI 密钥可用性校验]
-  D --> E[校验并导入 pre_set JSONL]
+  D --> E[离线整包校验 分词并写 staging]
   E --> F[计算并冻结 avg_doc_len_baseline]
-  F --> G[创建 pre_set / golden_set 与 payload index]
-  G --> H[写入 profile metadata 并健康检查]
-  H --> I[允许 ROOM_ONLINE 启动门禁]
+  F --> G[创建临时 pre_set / golden_set 与 payload index]
+  G --> H[批量 upsert pre_set 并验证计数和 fixture]
+  H --> I[原子切换 active alias 和 profile metadata]
+  I --> J[允许 ROOM_ONLINE 启动门禁]
 ```
 
 SQLite 初始化或迁移前必须设置 `foreign_keys=ON`、`journal_mode=WAL` 和受控 `busy_timeout`。migration 以单事务执行，记录单调版本与 checksum；失败不得“半修复”。
 
-Qdrant 初始化创建两套独立 collection：`pre_set`（运行期只读）与 `golden_set`（仅由审计 transactional outbox 回流）。二者使用 `bm25_zh_jieba_v1`、`modifier: 'idf'` 与既定 payload index。导入完整有效 `pre_set` 后，以 jieba token 长度均值计算并冻结 `avg_doc_len_baseline`；`golden_set` 增量回流不会重建 collection。
+Qdrant 初始化先计算 profile，再创建两套临时 collection：`pre_set`（运行期只读）与 `golden_set`（仅由审计 transactional outbox 回流）。二者使用 `bm25_zh_jieba_v1`、`modifier: 'idf'` 与既定 payload index。完整 upsert 和 fixture 验证通过后才原子发布 active alias；失败只清理/隔离本次临时 collection。`golden_set` 增量回流不会重建 collection。
 
 ## 4. 日常启动、停止与窗口行为
 
 ### 4.1 用户启动服务
 
-1. 用户在运行页点击“启动服务”。Main 先校验已发布人设、直播间引用、API Key、SQLite 可写、Qdrant 健康及 profile 完整性。
-2. 通过本机 WS 请求 douyinLive 直播状态；此时服务状态为 `GATE_CONNECTING`。
+1. 用户在运行页点击“启动服务”。Main 先校验已发布人设/安全规则、直播间引用、Provider 配置与凭证、SQLite 可写、Qdrant 健康及 profile 完整性。
+2. Main 校验并启动归本应用所有的 douyinLive sidecar，再创建本机 WS 请求直播状态；此时 lifecycle=`GATE_CONNECTING`、activity=`GATE_CHECKING`。
 3. 只有 `ROOM_ONLINE`：创建 `live_session`、固定本次已发布人设/安全规则快照、转为 `RUNNING`。
-4. `ROOM_OFFLINE`、超时或错误：**立即关闭 WS**、回 `STOPPED`，显示“未开播/连接失败，可手动重试”。不保留后台轮询和重连任务。
+4. `ROOM_OFFLINE`、超时或错误：**立即关闭 WS 并终止本应用拥有的 douyinLive sidecar**、回 `STOPPED`，显示“未开播/连接失败，可手动重试”。不保留后台轮询和重连任务。
 
 ### 4.2 运行期停止条件
 
-下列事件都必须取消 in-flight attempt，隐藏浮窗、清除内存候选窗口并关闭本地 WS：用户停止、`ROOM_ENDED`、`ROOM_OFFLINE`、WS 断开、审计不可用。LLM 超时、结构校验失败或 provider 单轮失败仅记录加密审计并继续监听；不得重试已过期弹幕。
+下列事件都必须取消 in-flight attempt，隐藏浮窗、清除内存候选窗口、关闭本地 WS，并终止本应用拥有的 douyinLive sidecar：用户停止、`ROOM_ENDED`、`ROOM_OFFLINE`、WS 断开、审计不可用。Provider 超时、结构校验失败或单轮失败仅记录加密审计并继续监听；不得重试已过期弹幕。
 
 展示窗口默认 10 秒且可配置。展示期间的后续弹幕仍写入审计（`RECEIVED → NORMALIZED → DISCARDED`，`DISPLAY_WINDOW_ACTIVE`），但不得进入队列、检索或 LLM；窗口结束只从最新窗口开始处理，不补发历史建议。
 
@@ -136,6 +139,7 @@ AuditStore Worker 是数据库唯一写入者。每条 trace 的 transition、sn
 - 运行中不得手工复制、移动、删除 `audit.sqlite`、`-wal` 或 `-shm`；三者共同构成一致性视图。
 - 关闭时由 Worker 完成受控 checkpoint/close；若进程崩溃，下一次启动按 SQLite WAL 恢复并先执行完整性、迁移和解密/链锚点校验。
 - 磁盘空间、权限、锁、解密、事务或完整性故障导致不可写时，报 `E_AUDIT_UNAVAILABLE` 并停服。不得删除历史审计、关闭 WAL 或降级为无审计模式来恢复。
+- 每 60 秒检查数据卷可用空间；低于 1 GiB 或卷容量 10%（取更高门槛）报 `E_STORAGE_LOW`，诊断页显示容量与按 POC“每千条增长量”估算的剩余时长；低于 256 MiB 时禁止新 attempt 并按 `E_AUDIT_UNAVAILABLE` 停服。任何阈值都不得触发自动删除。
 
 ### 5.4 密钥与加密
 
@@ -162,17 +166,19 @@ UI 对普通用户显示可理解的文案；诊断页可显示以下受控代�
 
 | 代码 | 含义与即时动作 | 操作员处置 |
 | --- | --- | --- |
-| `E_CONFIG_INVALID` | 配置缺失/无效，拒绝启动。 | 补齐直播间、主出镜、人设发布或模型配置后手动启动。 |
-| `E_LIVE_OFFLINE` | 门禁收到 `ROOM_OFFLINE` 或超时；关闭 WS。 | 确认直播已开播、douyinLive 可用后手动重试。 |
-| `E_SOURCE_DISCONNECTED` | 运行期 WS 断开；停服并关闭 WS。 | 检查本机 douyinLive 和网络状态，重新点击启动。 |
+| `E_CONFIG_INVALID` | 配置缺失/无效，拒绝启动。 | 补齐直播间、主出镜、人设/安全规则发布或 Provider 配置后手动启动。 |
+| `E_SIDECAR_START_FAILED` | 受控 sidecar 校验、端口或启动失败。 | 检查安装完整性和端口占用；不得结束未知外部进程。 |
+| `E_SOURCE_UNAVAILABLE` | 无法创建/维持 WS；停服并关闭 WS/本应用 sidecar。 | 检查本地组件和网络状态，重新点击启动。 |
+| `E_ROOM_OFFLINE` / `E_ROOM_ENDED` | 未开播或已下播；关闭 WS/本应用 sidecar。 | 确认直播开播后手动重试。 |
 | `E_QDRANT_UNAVAILABLE` | sidecar 未就绪、崩溃、端口/metadata 异常；拒绝启动或停服。 | 查看本机端口、磁盘、受控二进制完整性和 collection 诊断；修复后手动启动。 |
 | `E_AUDIT_UNAVAILABLE` | 审计库不可写、解密/事务/完整性失败；取消 attempt 并停服。 | 检查磁盘空间、目录权限、Windows profile/DPAPI；不要删除库或 WAL。 |
 | `E_AUDIT_STATE_INVALID` | 检测到非法 workflow 迁移；当前链路失败并停服。 | 保留库与脱敏诊断，交由开发人员分析迁移/状态机缺陷后修复。 |
-| `E_MIGRATION_FAILED` | SQLite migration/checksum 失败；阻断应用服务。 | 保留原库，恢复兼容安装包或由受控迁移修复；禁止删库重装。 |
-| `E_PROFILE_MISMATCH` | BM25 profile、词表、tokenizer 或 metadata 不一致。 | 停止直播服务后执行受控 profile 迁移；不得在线重建。 |
-| `E_KEY_UNAVAILABLE` | safeStorage/DPAPI 或数据密钥不可用。 | 使用原 Windows 用户环境排查；不得重置密钥覆盖历史数据。 |
+| `E_SAFETY_POLICY_INVALID` | 安全规则缺失、编译失败或版本损坏。 | 在安全页修正并发布规则，随后手动启动。 |
 | `E_PROVIDER_AUTH` / `E_PROVIDER_BILLING` | API Key 认证或账户计费失败；本轮不生成。 | 更新 Key 或账户状态；重新测试配置。 |
-| `E_PROVIDER_RATE_LIMIT` / `E_PROVIDER_SERVER` / `E_PROVIDER_TIMEOUT` | 单轮 provider 失败或 5 秒硬超时；记录审计后继续监听。 | 检查配置、模型服务与时延；不重试过期弹幕。 |
+| `E_PROVIDER_RATE_LIMIT` / `E_PROVIDER_NETWORK` / `E_PROVIDER_SERVER` / `E_PROVIDER_TIMEOUT` | 单轮 Provider 失败或保险上限/新鲜度取消；记录审计后继续监听。 | 检查配置、模型服务与时延；不重试过期弹幕。 |
+| `E_PROVIDER_PROTOCOL` / `E_PROVIDER_OUTPUT_INVALID` | 返回协议或输出校验失败。 | 保留脱敏诊断；检查 adapter/模型兼容性。 |
+| `E_GOLDEN_SYNC_FAILED` | 内部回流同步失败，不展示给普通用户。 | 后台幂等重试；诊断维护入口处理。 |
+| `E_STORAGE_LOW` | 数据卷进入预警区，尚未自动删除数据。 | 释放其他应用空间或扩容；低于硬门槛将停服。 |
 
 ## 8. 升级、回滚、备份与恢复边界
 
@@ -200,11 +206,12 @@ MVP **不提供用户可操作的审计导出或备份/恢复 UI**，也不支�
 | 安装与离线性 | Windows x64 空机安装；所有 sidecar/词典资源随包且校验通过；首次运行无静默二进制下载。 |
 | 初始化 | SQLite WAL/migration/加密/HMAC 可用；`pre_set` 导入校验和平均文档长度冻结成功；双 collection 与 metadata 健康。 |
 | 真实直播 POC | 甲方真实已开播房间连续 30 分钟；验证 `ROOM_ONLINE` 门禁、评论事件、`ROOM_ENDED/OFFLINE` 立即关闭 WS、断连后无自动重连。 |
-| 性能 | 真实网络、真实人设和候选模型下测量端到端 P95；持续优化目标为不超过 3 秒，LLM 硬超时 5 秒。 |
+| 性能 | `t0` 为 client 收到原始 WS frame 的单调时钟、`t_end` 为浮窗首帧确认；真实网络/人设/Provider 下测量 P95，持续优化目标不超过 3 秒，Provider 5 秒为保险上限且服从新鲜度 deadline。 |
 | 审计 | 每条弹幕均有 trace；展示期弹幕审计但不排队；完整工作流、版本快照、TopK、输出与反馈可回放；不可写即停服。 |
 | 安全 | Key 不进入 SQLite/Qdrant/日志/IPC；Qdrant/指标仅 loopback；日志与指标无原文、昵称、trace ID 或凭证。 |
 | 桌面行为 | 三个窗口按钮正确；关闭隐藏托盘且服务不变；只有托盘显式退出停止服务、关闭 WS/sidecar、flush 审计。 |
 | 升级恢复 | 空库、历史库、失败 migration、sidecar 异常、WAL 崩溃恢复和 DPAPI 不可用均有演练记录；无删库“修复”。 |
+| 容量 | 记录每千条审计增长量；验证 2 GiB 启动门槛、低空间预警、256 MiB 停服、WAL checkpoint、释放空间后的完整性检查和受控本机恢复。 |
 
 ## 10. 交付责任与记录
 

@@ -10,6 +10,8 @@
 - 格式：JSON Lines；每行一个完整 JSON 对象；不得含注释、数组外壳或空行。
 - `id` 必须稳定且全局唯一。同一案例更新时保留同一 `id`，由客户端做幂等 upsert。
 - 该 JSONL 只是甲方向客户端交付的**初始导入包**，客户端首次初始化时写入 `pre_set`；它不是运行期回流机制，不会触发 collection 全量重建。
+- 可执行 JSON Schema：[`schema/pre-set-v1.schema.json`](schema/pre-set-v1.schema.json)。Schema 以 Draft 2020-12 校验，`additionalProperties=false`；本文与 Schema 冲突时以 Schema 为准并修正文档。
+- MVP 单包上限为 20 MiB、100,000 行；超限必须在导入前整体拒绝，不得部分导入。
 
 ## 2. 单条案例 Schema
 
@@ -31,19 +33,19 @@
 | 字段 | 必填 | 规则 |
 | --- | --- | --- |
 | `schema_version` | 是 | 当前固定为 `"1.0"`。 |
-| `id` | 是 | 字符串；建议 `pre-` 前缀；稳定唯一。 |
-| `text` | 是 | 原始或脱敏后的典型弹幕，不得含真实个人信息、联系方式、账号凭证或攻击性内容。 |
+| `id` | 是 | 匹配 `^pre-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`；稳定唯一。 |
+| `text` | 是 | 1–200 个 Unicode 字符；原始或脱敏后的典型弹幕，不得含真实个人信息、联系方式、账号凭证或攻击性内容。 |
 | `semantic_type` | 是 | 见第 3 节枚举。 |
-| `description` | 是 | 自然语言描述该案例的互动价值、语境或筛选理由。 |
-| `reference_reply` | 否 | 供 LLM 参考的短回复；`pre_set` 即使包含它也不可直接展示。 |
-| `reference_cues` | 否 | 字符串数组，最多 3 条、每条不超过 40 个汉字。 |
-| `tags` | 否 | 字符串数组，用于人工整理；不作为人设路由依据。 |
+| `description` | 是 | 1–500 个 Unicode 字符，自然语言描述互动价值、语境或筛选理由。 |
+| `reference_reply` | 否 | 1–80 个 Unicode 字符；供 LLM 参考，`pre_set` 即使包含它也不可直接展示。 |
+| `reference_cues` | 否 | 1–3 个不重复字符串，每条 1–40 个 Unicode 字符。 |
+| `tags` | 否 | 最多 10 个不重复字符串，每项 1–24 个 Unicode 字符；只用于人工整理。 |
 | `enabled` | 是 | 初始建议均为 `true`；设为 `false` 的案例不会被召回。 |
 | `is_bad_case` | 是 | 初始必须为 `false`；`pre_set` 在运行期只读，不因主播对某次 AI 建议的拒绝而被修改。 |
 
 ## 3. `semantic_type` 枚举
 
-建议优先使用以下值；如确需新增，先与乙方确认并更新 schema：
+只允许以下值；新增值必须升级 JSON Schema、`SemanticTypeV1` 和检索 profile 版本：
 
 | 值 | 含义 |
 | --- | --- |
@@ -73,3 +75,11 @@
 ## 6. 导入后行为
 
 客户端将 `text` 经 regex 清理、Unicode 标准化、`jieba-wasm.cut_for_search` 分词后生成文档侧 BM25 稀疏向量，写入 `pre_set`，并保存上述字段为 payload；collection 开启 Qdrant `modifier.IDF`。运行时只查询 `enabled=true AND is_bad_case=false` 的通用案例；返回的 `reference_reply`/`reference_cues` 只作为 LLM 上下文，永不直接触发浮窗。`pre_set` 运行期只读；`golden_set` 不由本文件提供，而由用户在审计工作区的打标结果自动维护。
+
+## 7. 整包校验、冲突与发布语义
+
+1. 导入器先逐行完成 UTF-8、JSON、Schema、安全和重复 `id` 校验；任一行失败则整包失败，并输出不含敏感原文的 `line/id/path/error_code` 报告。
+2. 同一文件出现重复 `id` 一律失败。MVP 不支持向 active `pre_set` 做增量 upsert；更换初始包视为新的受控 retrieval profile。
+3. 全文件校验成功后才分词并写 staging；随后计算 `avg_doc_len_baseline`、创建临时 collection、批量 upsert、校验计数/fixture，最后原子切换 active alias。
+4. 失败不得留下部分 active 数据。旧 active profile 保持可用；首次初始化失败时启动门禁保持关闭。
+5. 仓库提供 [`fixtures/pre-set-valid.jsonl`](fixtures/pre-set-valid.jsonl) 与 [`fixtures/pre-set-invalid.jsonl`](fixtures/pre-set-invalid.jsonl) 作为 importer contract fixture。

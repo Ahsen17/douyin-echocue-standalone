@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档版本 | v0.1（第一轮调研） |
-| 状态 | 待甲方确认调研结论与 POC 授权 |
-| 日期 | 2026-08-20 |
+| 状态 | 选型结论已确认；POC-01/POC-02 待执行并归档 |
+| 日期 | 2026-08-21 |
 | 调研优先级 | 官方/大型企业公开能力 → GitHub 成熟开源方案 → POC 实测 |
 | 上游依据 | 《Echocue 需求澄清与 MVP 定义 v0.1》；《Echocue PRD v0.1》 |
 
@@ -17,7 +17,7 @@
 3. 因此，若 MVP 坚持“真实抖音普通弹幕 + Windows standalone”，第三方逆向 WebSocket 接入是当前唯一可调研的工程路径，但它必须被标记为 **P0 风险依赖**，不能承诺长期稳定性、合规性或消息完整性。
 4. **甲方已确定 `jwwsjlm/douyinLive` 为当前 MVP 弹幕接入方案。** 它是 MIT 许可、约 445 stars、提供 Windows 可执行文件与 Go 库，具备断线重连、未开播轮询、基础保活和本地 WebSocket 转发。它同时明确声明不保证任意业务消息一定能收到或完整解析，故仍须以可替换本地适配器封装，并通过 POC 验证风险。[仓库 README](https://github.com/jwwsjlm/douyinLive)
 5. Windows client 推荐优先采用 **Electron + React + TypeScript + Vite**。React 负责界面组件与状态，Vite 负责开发服务器和生产构建，二者互补而非替代；Electron 负责 Windows 窗口与打包。其官方 `BrowserWindow` 能力覆盖置顶、透明、点击穿透、窗口尺寸/位置和系统外观等 MVP 浮窗要求；同时可通过 `safeStorage` 调用 Windows DPAPI 保存本机密钥。该结论仍须用原型验证与 OBS/常用直播软件的兼容性。[Vite 指南](https://vite.dev/guide/)；[Electron BrowserWindow](https://www.electronjs.org/docs/latest/api/browser-window)；[Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)
-6. 3 秒端到端目标不能靠文档保证。必须使用甲方真实直播间、真实网络、真实人设和 DeepSeek 进行 POC 基准测试；正式开发应基于测试发现持续优化接入、筛选、提示词、模型参数和浮窗渲染，最终 MVP 验收以 P95 ≤ 3 秒为业务目标，不得将未达标状态默认为可接受结果。
+6. 3 秒端到端目标不能靠文档保证。必须使用甲方真实直播间、真实网络、真实人设和首选 Provider 进行 POC 基准测试；正式开发应基于测试发现持续优化接入、筛选、提示词、模型参数和浮窗渲染，最终 MVP 验收以 P95 ≤ 3 秒为业务目标，不得将未达标状态默认为可接受结果。
 
 ### 1.2 本轮建议的暂定方向
 
@@ -148,7 +148,7 @@ MVP 业务层只依赖 `type=comment` 的文本和接收时间；其他事件只
 
 ### 4.3 standalone client 可观测性：Prometheus 与 OpenTelemetry
 
-**结论：TypeScript/Node.js SDK 可用，且应只在 Electron main process 中初始化。** OpenTelemetry JavaScript 的 traces 和 metrics 已标为 Stable，而 logs 仍为 Development；Electron renderer 属于浏览器侧，官方说明其浏览器端 instrumentation 仍偏实验性。因此 MVP 不在 React renderer 内做完整观测，只由 main process 记录 client、弹幕适配器、DeepSeek 调用和浮窗生命周期。[OpenTelemetry JavaScript](https://opentelemetry.io/docs/languages/js/)
+**结论：TypeScript/Node.js SDK 可用，且应只在 Electron main process 中初始化。** OpenTelemetry JavaScript 的 traces 和 metrics 已标为 Stable，而 logs 仍为 Development；Electron renderer 属于浏览器侧，官方说明其浏览器端 instrumentation 仍偏实验性。因此 MVP 不在 React renderer 内做完整观测，只由 main process 记录 client、弹幕适配器、Provider 调用和浮窗生命周期。[OpenTelemetry JavaScript](https://opentelemetry.io/docs/languages/js/)
 
 | 能力 | TypeScript 方案 | standalone 集成方式 | MVP 结论 |
 | --- | --- | --- | --- |
@@ -161,7 +161,7 @@ MVP 业务层只依赖 `type=comment` 的文本和接收时间；其他事件只
 
 #### 观测事件与隐私边界
 
-必须记录：弹幕接收计数、过滤计数（按类别）、候选计数、DeepSeek 调用计数/错误类型/耗时、端到端时延直方图、浮窗展示计数、本地接入进程重连/崩溃次数。
+必须记录：弹幕接收计数、过滤计数（按类别）、候选计数、Provider 调用计数/错误类型/耗时、端到端时延直方图、浮窗展示计数、本地接入进程异常/崩溃次数。Echocue 不自动重连 WS；任何重新启动均由用户显式触发。
 
 不得以 Prometheus label 或 OTel attribute 记录：用户 ID、直播间原始弹幕、昵称、成员名称、完整人设 Markdown、回复正文、API Key、Cookie、完整 URL 或 `messageId`。客户端默认不开启公网监听；`/metrics` 仅绑定 loopback 地址，OTLP 导出也必须由配置人员显式启用。
 
@@ -186,11 +186,11 @@ stateDiagram-v2
     GENERATED --> DISPLAY_READY: output validated
     DIRECT_READY --> DISPLAY_READY: payload validated
     DISPLAY_READY --> DISPLAYED: overlay first frame
-    DISPLAYED --> EXPIRED: display window elapsed
+    DISPLAYED --> HIDDEN: display window elapsed
     FILTERED --> [*]
     DISCARDED --> [*]
     FAILED --> [*]
-    EXPIRED --> [*]
+    HIDDEN --> [*]
 ```
 
 每一个状态迁移写入 `audit_transition`：`trace_id`、序号、`from_state`、`to_state`、`at`、`reason_code`、内容快照引用和完整性摘要。关联快照按以下逻辑存入独立的 `audit_store`：
@@ -248,11 +248,11 @@ WebcastChatMessage
   → BM25 文档稀疏向量写入 / Qdrant `modifier.IDF` 查询检索
   → TopK 相似样本、类型投票与置信度
   ├─ 明确应过滤 / 明确低价值：丢弃，不调用 LLM
-  ├─ 高价值互动候选：进入最新窗口排序与 DeepSeek 生成
+  ├─ 高价值互动候选：进入最新窗口排序与选定 Provider 生成
   └─ 不确定灰区：按详细设计的保守阈值处理，不能错误丢弃潜在高价值弹幕
 ```
 
-`pre_set` 与 `golden_set` 是独立 Qdrant collection，而不是同一 collection 的质量区间。前者随安装包提供预置相似案例/分类参考；后者由审计打标实时、幂等 upsert。两库 point 均含 `id`、`text`、`semantic_type`、`persona_id`、`persona_version`、`enabled` 等 payload；golden point 另含 `reply`、`cues[]`、`source_trace_id` 与人工质量分。不存在 JSONL 中转或全量重建流程。`semantic_type` 应覆盖人设相关互动、正面夸赞、有梗玩笑、互动提问、氛围带动、低价值/无互动价值及过滤类。
+`pre_set` 与 `golden_set` 是独立 Qdrant collection，而不是同一 collection 的质量区间。前者随安装包提供预置相似案例/分类参考；后者由审计打标实时、幂等 upsert。共同字段仅包括 `case_id`、`text`、`semantic_type`、`enabled`、`is_bad_case` 与检索 profile 元数据；`persona_id`、`persona_version`、`reply`、`cues[]`、`source_trace_id` 和人工质量分仅属于 `golden_set`。不存在 JSONL 中转或全量重建流程。`semantic_type` 必须使用正式枚举，覆盖人设相关互动、正面夸赞、有梗玩笑、互动提问、氛围带动、低价值/无互动价值及过滤类。
 
 **边界与安全原则**：明确安全风险仍由硬规则优先拦截；Qdrant 初筛不能替代个人信息、辱骂或团队关键词规则。成员名称/昵称路由继续采用确定性精确与高可信模糊匹配，不能交由稀疏语义检索。初筛阈值应以“明确可过滤才丢弃”为原则，灰区可进入后续候选流程，避免误杀有价值弹幕。
 
@@ -266,7 +266,7 @@ WebcastChatMessage
 
 FastEmbed 的另一项必须采纳的设计是**无词典 token ID**：其源码用 `abs(mmh3.hash(token))`（MurmurHash3 x86 32-bit、UTF-8、seed=0）作为 sparse index，文档侧按该 ID 写权重，查询侧以同一 hash 去重并赋值 `1`。这样不需要维护或同步 vocabulary，新增 golden 样本立即可写入。TS 暂定使用纯 JS 且支持 UTF-8 bytes 的 `murmurhash3js-revisited`，再将 unsigned 结果转换为 FastEmbed 等价的 signed 32-bit 后取绝对值；不得使用字符串 UTF-16 code unit hash。开发阶段必须以 FastEmbed/Python `mmh3` 固定 token（含中文、emoji、ASCII）输出建立 cross-language golden tests，校验 token→index、文档侧权重与 Qdrant 最终排序；测试未通过不得启用 collection。
 
-**POC 要求**：除 Windows binary sidecar + TS REST client 的启动/初始化验证外，必须在甲方真实中文弹幕样本上校准 BM25 的 `k`、`b`、`avg_len`、归一化/热词词表、TopK 和 score calibration，并测试检索延迟、分类准确率、低价值弹幕拦截率、目标互动弹幕漏召回率和 LLM 调用削减率。Qdrant 因而是 MVP 核心模块，不是后置增强能力。
+**POC 要求**：除 Windows binary sidecar + TS REST client 的启动/初始化验证外，必须在甲方真实中文弹幕样本上校准 BM25 的 `k1`、`b`、`avg_doc_len_baseline`、归一化/热词词表、TopK 和 score calibration，并测试检索延迟、分类准确率、低价值弹幕拦截率、目标互动弹幕漏召回率和 LLM 调用削减率。执行证据统一填写到 [`Echocue-Qdrant-jieba-BM25-POC记录模板-v0.1.md`](Echocue-Qdrant-jieba-BM25-POC记录模板-v0.1.md)，模板存在不代表已通过。Qdrant 因而是 MVP 核心模块，不是后置增强能力。
 
 ### 4.6 实时主链路是否采用 Agent 框架
 
@@ -282,7 +282,7 @@ MVP 采用如下**检索优先、生成兜底（retrieval-first, generation-fall
       └─ Qdrant 双路稀疏检索：`golden_set` + `pre_set`（先做 persona/version payload filter）
   → 合并结果并做最新窗口/时效校验
   ├─ Top-1 为 golden_set 且高置信：直接展示 payload 中的回复/提词
-  └─ 其余候选：PE 渲染人设 + 当前弹幕 + 合并 TopK → 单次 DeepSeek JSON 输出
+  └─ 其余候选：PE 渲染人设 + 当前弹幕 + 合并 TopK → 单次 Provider JSON 输出
   → 本地结构/安全复验 → 浮窗首帧展示
 ```
 
@@ -298,7 +298,7 @@ MVP 采用如下**检索优先、生成兜底（retrieval-first, generation-fall
 
 #### 冷启动与持续优化
 
-冷启动期 `golden_set` 为空或规模很小，预期绝大多数有效候选进入 DeepSeek 单次生成；通用 `pre_set` 仍提供语义分类和参考上下文。审计打标后，人工修正答案默认即时 upsert 至 `golden_set`；未修正 AI 答案的主观分 `>=85` 时同样即时 upsert。低分/拒绝结果不回流为可直出 payload。用户审计页面只展示未打标、已认可、已拒绝、已修正和无需打标；golden 回流与同步机制对用户不可见，由内部状态负责幂等写入和失败重试。
+冷启动期 `golden_set` 为空或规模很小，预期绝大多数有效候选进入首选 Provider 单次生成；通用 `pre_set` 仍提供语义分类和参考上下文。审计打标后，人工修正答案默认即时 upsert 至 `golden_set`；未修正 AI 答案的主观分 `>=85` 时同样即时 upsert。低分/拒绝结果不回流为可直出 payload。用户审计页面只展示未打标、已认可、已拒绝、已修正和无需打标；golden 回流与同步机制对用户不可见，由内部状态负责幂等写入和失败重试。
 
 Agent 可在后续离线环节再评估，例如辅助运营人员归类候选样本、生成标注草稿或检查配置矛盾；这些任务不在 3 秒实时 SLO 内，且产出必须人工审核。若未来出现真正需要多工具动态决策、长任务持久化或跨系统协作的需求，再单独选择 Agent 框架和安全边界。
 
@@ -336,7 +336,7 @@ DeepSeek 的官方文档说明其 API 同时兼容 OpenAI 与 Anthropic 格式�
 | --- | --- | --- |
 | 调用协议 | 同时支持 OpenAI-compatible 与 Anthropic-compatible API。 | 首选服务已满足当前和未来多协议 Provider 抽象。 |
 | TypeScript | 官方提供 Node.js `openai` SDK 示例。 | 可直接用于 Electron main process。 |
-| 输出结构 | 支持 JSON Output；文档要求设置 `response_format={type: json_object}`，并在提示中明确 JSON 格式。 | 可要求返回 `quick_reply` 与 `cue[]`，客户端仍须进行 JSON Schema 校验。 |
+| 输出结构 | 支持 JSON Output；文档要求设置 `response_format={type: json_object}`，并在提示中明确 JSON 格式。 | 可要求返回 `quick_reply` 与 `cues`，客户端仍须进行 JSON Schema 校验。 |
 | Tool Calls / 严格 Schema | DeepSeek Tool Calls 有自身的请求、响应和 strict-mode（Beta）约束，不能假设可将通用 OpenAI Tool Call 对象不经处理直接透传。 | MVP 不依赖 Tool Calls；未来启用时必须由 DeepSeek 专用适配器构建请求、解析响应和处理 strict-mode 限制。 |
 | 时延配置 | 支持流式/非流式；有非思考模式。 | MVP 优先使用非思考、短输出；流式是否改善 t3 由 POC 实测决定。 |
 | 异常 | 官方列出 400、401、402、422、429、500、503 等错误码。 | Provider 必须归一化为认证、余额、限流、服务端、超时等可诊断错误；过期建议不重试。 |
@@ -367,15 +367,15 @@ DeepSeek 的官方文档说明其 API 同时兼容 OpenAI 与 Anthropic 格式�
 - 每轮最多一次主生成调用；不采用多 Agent 串行链路；
 - 上游先完成确定性风险过滤、成员人设路由、窗口筛选和长度截断，避免让模型承担不必要分类；
 - 请求仅传：选中安全弹幕、已路由 Markdown 人设、必要团队禁忌和严格的短输出指令；
-- 要求模型返回严格结构：`quick_reply` 与 `cue[]`；客户端校验失败即丢弃，不进行长时间重试；
-- `model_id` 由本机配置提供；单次模型调用硬超时初始设为 5 秒，超时直接回到监听，避免过期建议；不实施费用上限，由甲方管理费用；
+- 要求模型返回严格结构：`quick_reply` 与 `cues`；客户端校验失败即丢弃，不进行长时间重试；
+- 服务商名称、Base URL、Model ID 与 API Key 由本机配置提供；单次模型调用硬超时初始设为 5 秒，但仍须服从 3 秒新鲜度 deadline，超时或过期直接回到监听；不实施费用上限，由甲方管理费用；
 - 仅在用户显式配置并确认后保存 API Key；密钥不写入 Markdown、日志或导出内容。
 
 #### DeepSeek Tool Calls 协议隔离
 
-1. `DeepSeekProvider` 必须独立实现 Tool Calls 请求构建、响应解析、参数校验、错误映射和 Beta strict-mode 开关；通用 `OpenAICompatibleProvider` 不得承担这些职责。
-2. 任何后续的业务工具定义都先转换为项目内部 `ToolDefinition`，再由 `DeepSeekProvider` 映射为 DeepSeek 文档要求的字段与 JSON Schema 约束；不得直接将 SDK 对象跨 Provider 复用。
-3. MVP 的“回复建议 + 提词”生成不调用 Tool Calls：使用 DeepSeek JSON Output，再通过本地 JSON Schema 校验 `quick_reply` 与 `cue[]`。这是降低协议差异、Beta 依赖和时延风险的明确边界。
+1. 完整 `DeepSeekToolCallAdapter` 属于后续 backlog，不是 MVP 完成条件，也不得接入 MVP 实时路径；MVP 若收到 `tool_calls` 响应，统一按 `PROTOCOL` 错误丢弃并审计。
+2. 未来启用时，`DeepSeekProvider` 必须独立实现 Tool Calls 请求构建、响应解析、参数校验、错误映射和 Beta strict-mode 开关；任何业务工具先转换为项目内部 `ToolDefinition`，再映射为 DeepSeek 专用格式。
+3. MVP 的“回复建议 + 提词”生成不调用 Tool Calls：使用 Provider 的 JSON Output，再通过本地 JSON Schema 校验 `quick_reply` 与 `cues`。这是降低协议差异、Beta 依赖和时延风险的明确边界。
 4. 若未来采用 DeepSeek strict mode，必须使用其文档要求的 Beta base URL、`strict: true`、受支持 Schema 子集、所有对象字段 required 以及 `additionalProperties: false` 等约束，并新增专项兼容测试。
 
 依据：[DeepSeek Tool Calls 官方文档](https://api-docs.deepseek.com/zh-cn/guides/tool_calls)。
@@ -385,15 +385,15 @@ DeepSeek 的官方文档说明其 API 同时兼容 OpenAI 与 Anthropic 格式�
 ### 6.1 计时口径
 
 ```text
-t0：LiveCommentSource 收到并标准化目标弹幕
+t0：client 的 LiveCommentSource 收到原始 WebSocket frame（单调时钟）
 t1：风险过滤、成员路由和窗口筛选完成
 t2：模型返回并通过结构校验
-t3：Electron 浮窗完成首帧展示
+t_end：Electron 浮窗返回首帧确认
 
-E2E = t3 - t0；验收目标为有效建议样本的 P95 ≤ 3 秒
+E2E = t_end - t0；验收目标为有效建议样本的 P95 ≤ 3 秒
 ```
 
-此口径不试图测量抖音用户按下发送键的时刻，因为第三方 Webcast 到达时间不可控、不可验证。
+此口径包含 frame 解析与规范化，但不试图测量抖音用户按下发送键的时刻。上游 `createTime` 单独记录为旁路指标，不计入本地 SLO。
 
 ### 6.2 初步预算（待 POC 校准）
 
@@ -413,11 +413,13 @@ E2E = t3 - t0；验收目标为有效建议样本的 P95 ≤ 3 秒
 
 **通过条件**：能连续获得普通文本弹幕；无未处理崩溃；未开播和下播时不残留本地 WS，且只能由用户再次手动启动；不将 Cookie/签名密钥写入日志。此 POC 不宣称合规认可，也不验证大规模、多房间能力。
 
+执行时必须使用 [`Echocue-douyinLive-Windows-x64-POC记录模板-v0.1.md`](Echocue-douyinLive-Windows-x64-POC记录模板-v0.1.md) 归档版本/SHA/SBOM、30 分钟计数、WS/sidecar close 时序、异常和凭证扫描证据。模板存在不等于 POC 已通过。
+
 ### 6.4 POC-02：端到端时延与内容质量
 
 **目的**：在 POC-01 通过后，验证一个候选模型在真实网络下同时满足时延与人设质量。
 
-**最小实施**：使用 30–50 条脱敏的、有标签测试弹幕（正面人设相关、成员点名、低价值、安全风险、团队禁忌），以真实到达节奏驱动 client；首先对 DeepSeek 测量 `t0–t3`，记录输出、格式校验和人工质量评审。只有 DeepSeek 未通过时延、质量、可用性或成本门槛时，才纳入甲方后续指定的第三方多协议服务商进行同口径比较。
+**最小实施**：使用 30–50 条脱敏的、有标签测试弹幕（正面人设相关、成员点名、低价值、安全风险、团队禁忌），以真实到达节奏驱动 client；首先对 DeepSeek 测量 `t0–t_end`，记录输出、格式校验和人工质量评审。只有 DeepSeek 未通过时延、质量、可用性或成本门槛时，才纳入甲方后续指定的第三方多协议服务商进行同口径比较。
 
 **评估目标**：有效建议样本 P95 ≤ 3 秒；所有硬规则风险样本在模型调用前被过滤；Qdrant 初筛能拦截明确低价值/过滤类样本且不出现不可接受的目标互动弹幕漏召回；成员路由符合 PRD；未出现展示窗口结束后补发旧建议。对 30–50 条标注样本，“可直接使用或轻微修改后可用”的建议比例以 80% 为阶段性质量目标。POC 同时输出 LLM 调用削减率、BM25 检索延迟及中文 tokenizer 误召回/漏召回样本。
 
@@ -436,22 +438,22 @@ E2E = t3 - t0；验收目标为有效建议样本的 P95 ≤ 3 秒
 | --- | --- | --- |
 | 弹幕官方数据源 | 不满足全量普通弹幕 MVP。 | 已调研，不采用 |
 | 弹幕接入方案 | `jwwsjlm/douyinLive`，以可替换适配器封装。 | 已确认，待 POC 验证 |
-| Windows client | Electron + React + TypeScript + Vite。 | 推荐，待浮窗原型验证 |
+| Windows client | Electron + React + TypeScript + Vite。 | 已确认；浏览器静态原型已认可，Electron 窗口能力待工程验证 |
 | 本地密钥保护 | Electron `safeStorage` / Windows DPAPI。 | 推荐 |
-| 模型接入协议 | OpenAI-compatible Provider 抽象。 | 推荐 |
-| 默认模型供应商 | DeepSeek。 | 已确认，待 POC 验证 |
+| 模型接入协议 | `TextGenerationProvider` 抽象；配置服务商名称、Base URL、Model ID、凭证引用；首个适配器为 DeepSeek。 | 已确认 |
+| 首选模型供应商 | DeepSeek；不是业务层硬绑定。 | 已确认，待 POC 验证 |
 | 数据与服务拓扑 | 单机 client + 随包本地适配器与 Qdrant sidecar；无独立后端。 | 已确认 |
 | Qdrant 定位 | MVP 主链路的本地语义初筛；启动/初始化失败时禁止启动 AI 服务。 | 已确认 |
 | `douyinLive` WS 生命周期 | 仅在用户启动 AI 服务时创建；未开播/下播/停止立即关闭；无自动恢复。 | 已确认 |
-| POC 数据与凭证 | 甲方提供 DeepSeek 凭证；允许使用真实人设和弹幕样本。 | 已确认 |
+| POC 数据与凭证 | 甲方提供首选 Provider 凭证；允许使用真实人设和弹幕样本。 | 已确认 |
 
 ### 本轮确认完成
 
 1. `jwwsjlm/douyinLive` 仍是当前 MVP 的 P0 外部依赖，采用可替换适配器封装，并以真实直播间 POC 验证；它不是对长期稳定性或合规性的承诺。
-2. 甲方提供 DeepSeek 账号/API Key，client 提供本机安全配置；POC 可使用甲方许可的真实人设与弹幕样本。
+2. 甲方提供模型服务账号/API Key，client 提供服务商名称、Base URL、Model ID 与凭证的本机安全配置；DeepSeek 是首个适配器而非业务层硬绑定，POC 可使用甲方许可的真实人设与弹幕样本。
 3. Qdrant 是 MVP 主链路的本地语义初筛，不参与人设路由；采用随安装包分发的 Windows sidecar + TypeScript REST client 方向验证。
 4. P95 ≤ 3 秒和 80% 建议可用率是持续优化的业务目标，而非“未达标就不得开始开发”的阻断条件；高风险过滤正确性仍为不可妥协的安全要求。
 
 ## 8. 后续交付
 
-甲方确认本报告的方向后，乙方将先编写《POC 实施与验收方案》，再输出《系统架构与详细设计说明书》。正式开发任务拆分必须建立在 POC 结果之上。
+本报告的设计结论已进入 04/06/09/11 与研发任务基线；真实接入、中文检索参数和 Provider 时延/质量仍须按 POC 模板补齐证据。POC 未达阶段目标不阻止不依赖该结论的工程开发，但不得把未测参数冻结为生产结论或宣称完整 MVP 验收通过。

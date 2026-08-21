@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "note": "Fixtures contain no credential. Authorization is injected by Main from safeStorage.",
+  "cases": [
+    {
+      "id": "deepseek-json-success",
+      "config": {
+        "providerId": "deepseek-primary",
+        "displayName": "首选模型服务",
+        "adapterType": "DEEPSEEK",
+        "baseUrl": "https://api.deepseek.com",
+        "modelId": "configured-model-id",
+        "credentialRef": "safe-storage:deepseek-primary"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "body": {
+          "model": "configured-model-id",
+          "stream": false,
+          "response_format": { "type": "json_object" },
+          "messages": [{ "role": "user", "content": "<rendered prompt>" }]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "provider-request-id",
+          "choices": [{ "message": { "content": "{\"quick_reply\":\"谢谢你一直在呀\",\"cues\":[\"回应陪伴\",\"自然带动互动\"]}" } }]
+        }
+      },
+      "expected": { "ok": true, "quick_reply": "谢谢你一直在呀", "cues": ["回应陪伴", "自然带动互动"] }
+    },
+    {
+      "id": "openai-compatible-json-success",
+      "config": {
+        "providerId": "compatible-backup",
+        "displayName": "备用兼容服务",
+        "adapterType": "OPENAI_COMPATIBLE",
+        "baseUrl": "https://llm.example.invalid/v1",
+        "modelId": "configured-compatible-model",
+        "credentialRef": "safe-storage:compatible-backup"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "body": {
+          "model": "configured-compatible-model",
+          "stream": false,
+          "response_format": { "type": "json_object" },
+          "messages": [{ "role": "user", "content": "<rendered prompt>" }]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "compatible-request-id",
+          "choices": [{ "message": { "content": "{\"quick_reply\":\"这个问题问得好\",\"cues\":[\"先给结论\",\"补充个人感受\"]}" } }]
+        }
+      },
+      "expected": { "ok": true, "quick_reply": "这个问题问得好", "cues": ["先给结论", "补充个人感受"] }
+    },
+    {
+      "id": "tool-calls-rejected-in-mvp",
+      "adapterType": "DEEPSEEK",
+      "response": {
+        "status": 200,
+        "body": { "choices": [{ "message": { "content": null, "tool_calls": [{ "id": "call-1", "type": "function" }] } }] }
+      },
+      "expected": { "ok": false, "providerError": "PROTOCOL", "domainError": "E_PROVIDER_PROTOCOL" }
+    },
+    {
+      "id": "provider-timeout",
+      "adapterType": "OPENAI_COMPATIBLE",
+      "response": { "abortAtMs": 5000 },
+      "expected": { "ok": false, "providerError": "TIMEOUT", "domainError": "E_PROVIDER_TIMEOUT", "retry": false }
+    },
+    {
+      "id": "invalid-output",
+      "adapterType": "OPENAI_COMPATIBLE",
+      "response": {
+        "status": 200,
+        "body": { "choices": [{ "message": { "content": "{\"quick_reply\":\"只有回复，没有提词\"}" } }] }
+      },
+      "expected": { "ok": false, "providerError": "OUTPUT_INVALID", "domainError": "E_PROVIDER_OUTPUT_INVALID" }
+    }
+  ]
+}

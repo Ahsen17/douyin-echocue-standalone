@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://echocue.local/schema/audit-snapshot-v1.schema.json",
+  "title": "Echocue Audit Snapshot Envelope V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["snapshot_id", "content_type", "envelope", "content_hmac", "created_at"],
+  "properties": {
+    "snapshot_id": { "type": "string", "format": "uuid" },
+    "content_type": {
+      "enum": [
+        "RAW_EVENT_JSON", "NORMALIZED_COMMENT_JSON", "DECISION_JSON",
+        "PERSONA_TEXT", "PROMPT_TEXT", "PROVIDER_META_JSON",
+        "PROVIDER_RESPONSE_JSON", "SUGGESTION_JSON",
+        "OVERLAY_RESULT_JSON", "FINAL_REASON_JSON"
+      ]
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "keyVersion", "nonceB64", "ciphertextB64", "tagB64", "aadVersion"],
+      "properties": {
+        "alg": { "const": "AES-256-GCM" },
+        "keyVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "nonceB64": { "type": "string", "minLength": 16 },
+        "ciphertextB64": { "type": "string", "minLength": 1 },
+        "tagB64": { "type": "string", "minLength": 16 },
+        "aadVersion": { "const": "1" }
+      }
+    },
+    "content_hmac": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

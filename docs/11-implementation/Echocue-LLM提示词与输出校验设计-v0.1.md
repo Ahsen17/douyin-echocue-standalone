@@ -1,7 +1,7 @@
 # Echocue LLM 提示词与输出校验设计 v0.1
 
 > 状态：详细设计  
-> 范围：Windows x64 standalone MVP 中的 `DeepSeekProvider`；仅生成一条回复建议和 2–3 条提词  
+> 范围：Windows x64 standalone MVP 中的 `TextGenerationProvider`；DeepSeek 为首个适配器；仅生成一条回复建议和 2–3 条提词
 > 上游依据：《需求澄清与 MVP 定义》《PRD》《技术调研与选型报告》《系统架构与详细设计说明书》《数据模型、接口与实时事件协议》《系统详细设计图册》  
 > 约束：本文件补足实现契约，不改变既有“只建议、不自动回复；单次调用；展示期间不生成；审计可回溯；内部检索机制不暴露 UI”的决策。
 
@@ -13,8 +13,8 @@
 2. 每个 `SuggestionAttempt` 最多一次主生成请求；没有重试、追问、反思、评审模型或 Agent loop。
 3. 仅输出建议，不代表主播发言；任何结果只可在本地置顶浮窗中展示，绝不回写抖音或其他平台。
 4. `pre_set`/`golden_set` 命中、人设、禁忌和弹幕都是**输入数据**，不是可执行指令。模型不得服从它们中包含的“忽略前述规则”“改写格式”等内容。
-5. Provider 成功返回不等于可展示；只有本地 JSON、结构、长度、当前人设/禁忌、安全和新鲜度校验全部通过，才可进入 `DISPLAY_READY`。
-6. 模型参数除 `model_id`、非流式、非思考模式、`response_format: { type: 'json_object' }` 和超时外，MVP 不在设计中预设。温度、最大输出 token、TopK 条数、上下文裁剪策略及流式策略均为 POC 校准项，未校准前不得臆设为固定生产参数。
+5. Provider 成功返回不等于可展示；只有本地 JSON、结构、长度、当前人设/安全规则版本、安全和新鲜度校验全部通过，才可进入 `DISPLAY_READY`。
+6. 服务商名称、Base URL、Model ID、adapter type 和凭证引用来自 `ProviderConfigV1`；模型参数除适配器明确支持的 JSON mode、非思考模式和超时外均是 POC 校准项，未校准前不得臆设为跨 Provider 固定参数。
 
 ## 2. 生成时机与接口边界
 
@@ -24,20 +24,18 @@ flowchart LR
   B --> C{合格 golden Top-1\n可直出？}
   C -- 是 --> D[共用输出校验]
   C -- 否 --> E[PromptAssembler 渲染固定模板]
-  E --> F[DeepSeekProvider\n一次 Chat Completions JSON Output]
+  E --> F[TextGenerationProvider\n一次结构化 JSON 输出]
   F --> G[解析 + 共用输出校验]
   D --> H{当前 attempt 仍有效？}
   G --> H
   H -- 是 --> I[DISPLAY_READY → 浮窗]
-  H -- 否 --> J[审计 DISCARDED_STALE\n不展示]
+  H -- 否 --> J[审计 DISCARDED\nreason STALE 或 DEADLINE\n不展示]
 ```
 
-业务层只依赖如下稳定契约；DeepSeek/OpenAI SDK 响应对象不得越过 `DeepSeekProvider`。
+业务层只依赖如下稳定契约；任何 SDK 响应对象不得越过对应 Provider adapter。
 
 ```ts
-type ProviderErrorCode =
-  | 'AUTH' | 'BILLING' | 'VALIDATION' | 'RATE_LIMIT' | 'SERVER'
-  | 'NETWORK' | 'TIMEOUT' | 'ABORTED' | 'PROTOCOL' | 'OUTPUT_INVALID';
+type ProviderErrorCode = ProviderErrorV1; // 唯一定义见 06 数据/接口契约
 
 interface GenerateReplyInput {
   attemptId: string;
@@ -46,7 +44,7 @@ interface GenerateReplyInput {
   modelId: string;
   targetComment: string;
   persona: { personaId: string; personaVersion: string; content: string; contentHmac: string };
-  forbiddenPolicy: { version: string; text: string; keywords: string[] };
+  safetyPolicy: { version: string; text: string; keywords: string[] };
   retrieval: { mergedTopK: PromptRetrievalCase[]; calibrationVersion: string };
   attemptDeadlineAtMonotonicMs: number;
   abortSignal: AbortSignal;
@@ -55,7 +53,7 @@ interface GenerateReplyInput {
 interface PromptRetrievalCase {
   collection: 'pre_set' | 'golden_set';
   caseId: string;
-  semanticType: string;
+  semanticType: SemanticTypeV1;
   text: string;
   description?: string;
   referenceReply?: string;
@@ -76,7 +74,7 @@ type GenerateReplyResult =
   | { ok: false; error: { code: ProviderErrorCode; providerStatus?: number; providerRequestId?: string } };
 ```
 
-`modelId` 来自本机配置；API Key 仅由 Main 从 `safeStorage` 解密并写入 HTTPS Authorization header。输入对象中不得包含 API Key、Cookie、Authorization header 或任何 UI 不应见的内部阈值。
+Provider identity、Base URL 与 Model ID 来自已验证的 `ProviderConfigV1`；API Key 仅由 Main 通过 `credentialRef` 从 `safeStorage` 解密并写入 HTTPS Authorization header。输入对象中不得包含 API Key、Cookie、Authorization header 或任何 UI 不应见的内部阈值。
 
 ## 3. Prompt 组成与确定性渲染
 
@@ -151,17 +149,17 @@ Prompt 不含 retrieval 原始分数、归一置信度、直出阈值、bad-case
 
 | POC 校准项 | 目的 |
 | --- | --- |
-| `model_id` 与可用非思考模式 | 在甲方账户、真实网络下验证质量与时延。 |
+| Model ID 与可用非思考模式 | 在甲方账户、真实网络下验证质量与时延。 |
 | TopK 数量、案例字段保留优先级、总上下文预算 | 平衡人设一致性、示例价值与 3 秒目标。 |
 | 是否使用流式传输 | 只在不破坏完整 JSON 校验和审计的前提下，以首帧/总时延实测决定。 |
 | 目标弹幕、人设、禁忌文本的长度上限/截断策略 | 防止异常配置或恶意弹幕压垮上下文。 |
 | 输出模板措辞 | 以人工质量评分、违禁率和 JSON 合规率进行 A/B 对比。 |
 
-## 4. DeepSeek 调用与协议隔离
+## 4. Provider 调用与 DeepSeek 首个适配器
 
 ### 4.1 MVP 请求
 
-`DeepSeekProvider` 固定走 DeepSeek OpenAI-compatible `POST /chat/completions`，非流式、非思考模式，且明确禁用 Tool Calls。请求的最小形态如下；`model` 使用已配置 `model_id`，不在代码中写死模型名称。
+业务层调用 `TextGenerationProvider.generateReply()`。首个 `DeepSeekProvider` 走经校验的 DeepSeek OpenAI-compatible `POST /chat/completions`，非流式、非思考模式，且明确禁用 Tool Calls；`model` 使用已配置 Model ID，不在代码中写死模型名称。其他 adapter 必须把自身协议映射到同一输入、输出与错误契约。
 
 ```ts
 const request = {
@@ -177,24 +175,11 @@ const request = {
 
 JSON Output 仅是 provider 的 JSON 模式，不等价于应用已获得严格 JSON Schema 保证；响应仍必须经第 5 节的本地校验。禁止为了“修复”模型输出而追加第二次模型调用。
 
-### 4.2 Tool Calls：保留专用封装，MVP 不调用
+### 4.2 Tool Calls：MVP 拒绝，专用封装进入后续 backlog
 
-DeepSeek 的 Tool Calls 不能当作通用 OpenAI Tool Call 对象直接透传。MVP 生成路径的 `tools`、`tool_choice` 均不得出现，且响应出现 `tool_calls` 或不含文本 JSON 时按 `PROTOCOL` 失败处理。
+DeepSeek 的 Tool Calls 不能当作通用 OpenAI Tool Call 对象直接透传。MVP 生成路径的 `tools`、`tool_choice` 均不得出现，且响应出现 `tool_calls` 或不含文本 JSON 时按 `PROTOCOL` 失败处理。MVP 只实现这一拒绝 fixture，不实现或实例化完整 Tool Call adapter。
 
-未来确有业务工具需求时，才可以实现下列独立边界，且须新增 provider 兼容性 POC：
-
-```ts
-interface ToolDefinition { name: string; description: string; inputSchema: unknown }
-interface ToolInvocation { callId: string; name: string; arguments: unknown }
-
-interface DeepSeekToolCallAdapter {
-  toDeepSeekRequest(definitions: ToolDefinition[]): unknown;
-  parseDeepSeekResponse(raw: unknown): ToolInvocation[];
-  validateArguments(call: ToolInvocation, definition: ToolDefinition): unknown;
-}
-```
-
-该 Adapter 负责 DeepSeek 特有请求构造、响应解析、参数 schema 校验、错误映射和未来 strict-mode/Beta 开关；`OpenAICompatibleProvider` 不复用或承担这项协议差异。启用 strict mode 前，必须以 DeepSeek 当期官方约束验证 base URL、`strict`、受支持 schema 子集、required 字段及 `additionalProperties`，不能以本文件的 JSON Output 代替。
+未来确有业务工具需求时，另立非阻断任务实现 `DeepSeekToolCallAdapter`，负责专用请求构造、响应解析、参数 schema 校验、错误映射和 strict-mode/Beta 开关；`OpenAICompatibleProvider` 不复用该协议差异。启用前必须重新以 DeepSeek 当期官方约束验证 Base URL、`strict`、受支持 schema 子集、required 字段及 `additionalProperties`。
 
 ## 5. 结构化输出与共用校验器
 
@@ -233,7 +218,7 @@ interface DeepSeekToolCallAdapter {
 4. **结构与长度**：执行上一节的非空、2–3 提词、去重、`80/40` 限制，以及“短回复为一句可口播表达、提词不是长段落”的可测规则。后者的精确断句/标点判定为 POC 校准项，须版本化。
 5. **安全与禁忌**：以**当前 attempt 已冻结的**硬风险规则、个人信息规则、禁忌自然语言规则及关键词/短语检查候选输出。命中即拒绝，不让模型自身安全判断替代本地规则。
 6. **人设与事实边界**：检查输出不包含非当前成员、未授权称谓或系统已知禁止承诺；不能由确定性规则证明安全时，记录 `PERSONA_REVIEW_UNCERTAIN` 并拒绝展示，而非猜测放行。人设一致性的可自动化规则覆盖率与人工抽检阈值为 POC 项。
-7. **新鲜度与取消**：校验 `AbortSignal` 未触发、`session_id`/`trace_id`/`window_version` 仍匹配且当前时间未超过 attempt deadline；失败一律 `DISCARDED_STALE`，不得展示。
+7. **新鲜度与取消**：校验 `AbortSignal` 未触发、`session_id`/`trace_id`/`window_version` 仍匹配且当前时间未超过 attempt deadline；失败进入 `DISCARDED`，并按唯一契约写 `STALE_SESSION`、`STALE_WINDOW`、`DEADLINE_EXCEEDED`、`USER_STOPPED`、`ROOM_ENDED` 或 `SOURCE_ERROR`，不得展示。
 
 校验通过才生成 `{ quickReply, cues, source: 'llm' }`。校验失败不得重试同一过期弹幕、不得降级为自动回复、不得让 Renderer 自行修正或展示原始模型文本。
 
@@ -245,7 +230,7 @@ type OutputValidationReason =
   | 'EMPTY_QUICK_REPLY' | 'QUICK_REPLY_TOO_LONG'
   | 'CUE_COUNT_INVALID' | 'CUE_EMPTY' | 'CUE_TOO_LONG' | 'CUE_DUPLICATE'
   | 'RISK_RULE_HIT' | 'PERSONAL_INFO_HIT' | 'FORBIDDEN_POLICY_HIT'
-  | 'PERSONA_REVIEW_UNCERTAIN' | 'STALE_OR_CANCELLED';
+  | 'PERSONA_REVIEW_UNCERTAIN';
 ```
 
 ## 6. 超时、取消、错误与状态迁移
@@ -254,9 +239,9 @@ type OutputValidationReason =
 
 | 触发 | Main Process 动作 | 审计状态/原因 | UI 行为 |
 | --- | --- | --- | --- |
-| 用户停止、下播、WS 断开、审计不可写 | `abort()`，不等待 provider 返回；关闭服务链路。 | `LLM_PENDING → DISCARDED`，记录停止原因。 | 隐藏浮窗；显示既有服务状态。 |
-| 展示窗口版本变化、候选过期 | `abort()`；晚到响应丢弃。 | `LLM_PENDING → DISCARDED`，`STALE_OR_CANCELLED`。 | 不展示、不排队。 |
-| 5 秒硬超时 | `abort()` HTTP 请求。 | `LLM_PENDING → FAILED`，`TIMEOUT`。 | 回监听；不向浮窗显示技术错误。 |
+| 用户停止、下播、WS 断开、审计不可写 | `abort()`，不等待 provider 返回；关闭服务链路。 | `LLM_PENDING → DISCARDED`，分别写 `USER_STOPPED`、`ROOM_ENDED`、`SOURCE_ERROR` 或 `AUDIT_FAILURE`。 | 隐藏浮窗；显示既有服务状态。 |
+| 展示窗口版本变化、候选过期 | `abort()`；晚到响应丢弃。 | `LLM_PENDING → DISCARDED`，写 `STALE_WINDOW`、`STALE_SESSION` 或 `DEADLINE_EXCEEDED`。 | 不展示、不排队。 |
+| 5 秒保险上限（或更早的新鲜度 deadline） | `abort()` HTTP 请求。 | Provider 保险超时：`LLM_PENDING → FAILED` + `PROVIDER_FAILED`；新鲜度先耗尽：`LLM_PENDING → DISCARDED` + `DEADLINE_EXCEEDED`。 | 回监听；不向浮窗显示技术错误。 |
 | 401 / 402 | 映射 `AUTH` / `BILLING`，不重试。 | `FAILED`，保留脱敏错误元数据。 | 主窗口提示检查 AI 配置/账户。 |
 | 400 / 422 | 映射 `VALIDATION`，不重试。 | `FAILED`。 | 主窗口可诊断，不泄露 prompt。 |
 | 429、5xx、网络错误 | 映射 `RATE_LIMIT` / `SERVER` / `NETWORK`，本 attempt 不重试。 | `FAILED`。 | 回监听；诊断显示可理解摘要。 |
@@ -271,7 +256,7 @@ type OutputValidationReason =
 | 生命周期阶段 | 审计 role | 最少字段 | 明确禁止字段 |
 | --- | --- | --- | --- |
 | 渲染完成 | `RENDERED_PROMPT` | `template_version`、实际 system/user 内容、截断清单、`persona_id/version/content_hmac`、禁忌版本、TopK case ID/来源及渲染字段 | API Key、Authorization、原始 BM25 score、内部阈值。 |
-| 发起请求 | `LLM_REQUEST_META` | provider=`deepseek`、endpoint 分类、`model_id`、非流式/JSON mode、开始时间、deadline、attempt/window 标识 | header、API Key、完整 URL query、未脱敏 SDK 对象。 |
+| 发起请求 | `LLM_REQUEST_META` | `provider_id`、adapter type、Base URL origin、Model ID、调用模式、开始时间、deadline、attempt/window 标识 | header、API Key、完整 URL query、未脱敏 SDK 对象。 |
 | 接收响应 | `LLM_RAW_RESPONSE` | 原始 provider body、HTTP 状态、provider request ID（若有）、完成时间 | Authorization、SDK 配置中的密钥。 |
 | 解析成功 | `LLM_PARSED_OUTPUT` | `quick_reply`、`cues`、解析器/schema 版本 | 推理文本；若 provider 混入推理或多余文本，仅保存在 raw response，绝不展示。 |
 | 校验完成 | `OUTPUT_VALIDATION` | validator 版本、通过/拒绝、reason codes、当前 persona/禁忌版本、新鲜度结论 | 用户不可见内部阈值、密钥。 |
@@ -288,13 +273,13 @@ type OutputValidationReason =
 3. **协议 fixture**：JSON object 正常、代码块、多 JSON、空 content、`tool_calls`、未知字段、错误 HTTP 状态均按本文件映射。
 4. **校验 fixture**：80/40 边界、2/3 条 cue、空白、重复、Unicode、风险/隐私/禁忌命中、陈旧 attempt，以及 golden 直出与 LLM 输出共用校验器。
 5. **取消 fixture**：停止、ROOM_ENDED、WS 断开、展示期开始、deadline 到期后迟到响应均不可显示；每条都有可回溯状态和快照。
-6. **真实 POC**：使用甲方许可的真实人设与弹幕，测量 DeepSeek 调用、JSON 合规率、校验拒绝率、人设一致性人工评分和端到端 P95。依据结果优化 prompt/模型/上下文，不得以未达标为由跳过开发或验收目标。
+6. **真实 POC**：使用甲方许可的真实人设与弹幕，先测量 DeepSeek 首个适配器，再按需以同一 contract fixture 测量替代 Provider；记录 JSON 合规率、校验拒绝率、人设一致性人工评分和端到端 P95。依据结果优化 prompt/模型/上下文，不得以未达标为由跳过开发或验收目标。
 
 ## 9. 与上游文档的契约关系
 
 | 本文内容 | 上游事实 | 下游实现 |
 | --- | --- | --- |
-| 单次 JSON Output、5 秒硬超时、禁用 MVP Tool Calls | 技术调研 5.4/5.6；数据协议 Provider 契约 | `DeepSeekProvider`、取消器、错误映射。 |
+| 单次 JSON Output、5 秒保险上限、禁用 MVP Tool Calls | 技术调研 5.4/5.6；数据协议 Provider 契约 | `TextGenerationProvider`、首个 DeepSeek adapter、取消器、统一错误映射。 |
 | 当前人设/禁忌版本与双库 TopK 上下文 | 架构 4.2/4.3；数据协议 Qdrant 契约 | `PromptAssembler`、审计快照。 |
 | 80/40、2–3 条与共用校验 | PRD FR-06；UI 打标约束；数据协议 6 节 | `SuggestionOutputValidator`、golden 回流入库前校验。 |
 | 审计 role、加密与 UI 隐私边界 | PRD FR-10；数据建模；UI 设计 | `AuditStoreWorker`、受限 IPC。 |

@@ -1,7 +1,9 @@
 # Echocue 开发文档总览与可追溯矩阵 v0.1
 
-> 状态：开发基线索引  
+> 状态：已确认开发基线索引；外部 POC gate 待关闭
 > 用途：统一各文档的权威范围、阅读顺序与交叉引用；不替代任何原始需求或设计结论。
+
+逐项双向追溯见 [《需求到验收原子追溯矩阵》](Echocue-需求到验收原子追溯矩阵-v0.1.md)。
 
 ## 1. 使用规则
 
@@ -14,19 +16,21 @@
 
 | 编号 | 文档 | 权威内容 | 开发时应优先查阅 |
 | --- | --- | --- | --- |
-| 01 | `01-requirements/Echocue-需求澄清与MVP定义-v0.1.md` | 甲方问题、MVP 边界、已确认决策、非目标。 | 任何范围/优先级判断。 |
-| 02 | `02-product/Echocue-PRD-v0.1.md` | 用户体验、功能需求、交互目标、产品验收。 | 页面功能、浮窗与运行行为。 |
-| 03 | `03-research/Echocue-技术调研与选型报告-v0.1.md` | 技术选型、POC 假设、外部依赖限制。 | 依赖、版本、技术替换和 POC。 |
-| 04 | `04-architecture/Echocue-系统架构与详细设计说明书-v0.1.md` | 进程边界、模块职责、实时工作流、安全与运行约束。 | 模块实现和时延路径。 |
-| 05 | `05-data-interface/Echocue-pre_set初始案例数据标准-v0.1.md` | 甲方提交的 `pre_set` JSONL 标准。 | 数据准备与导入器。 |
-| 06 | `06-data-interface/Echocue-数据模型、接口与实时事件协议-v0.1.md` | DDL、Qdrant、WS、Provider、IPC 和错误码契约。 | 数据库、接口、错误处理。 |
-| 07 | `07-review/Echocue-文档体系审查报告-v0.1.md` | 已识别问题、已关闭项和 release gate。 | 评审与发布风险。 |
-| 08 | `08-delivery/Echocue-研发任务拆分、测试计划与验收标准-v0.1.md` | 研发工作包、POC、测试层级和验收。 | 排期、测试和交付判定。 |
-| 09-A | `09-design/Echocue-系统详细设计图册-v0.1.md` | 功能流程、组件、DFD、时序和状态图。 | 实时工作流及模块协作。 |
-| 09-B | `09-design/Echocue-数据建模与迁移设计-v0.1.md` | ER、数据字典、迁移、加密、生命周期。 | 持久化、数据一致性和回流。 |
-| 10 | `10-ui/Echocue-UI信息架构与交互设计-v0.1.md` | 页面信息架构、窗口/浮窗/托盘交互和 UI 状态。 | renderer 及桌面交互实现。 |
-| 11-A | `11-implementation/Echocue-LLM提示词与输出校验设计-v0.1.md` | DeepSeek prompt、JSON 输出、本地校验、超时取消和审计映射。 | Provider 与生成工作流实现。 |
-| 11-B | `11-implementation/Echocue-Windows部署运行与故障处理手册-v0.1.md` | Windows 安装、sidecar、WAL、密钥、运行、升级和故障处置。 | 打包、运维与发布实现。 |
+| 01 | [需求澄清与 MVP 定义](../01-requirements/Echocue-需求澄清与MVP定义-v0.1.md) | 甲方问题、MVP 边界、已确认决策、非目标。 | 任何范围/优先级判断。 |
+| 02 | [PRD](../02-product/Echocue-PRD-v0.1.md) | 用户体验、功能需求、交互目标、产品验收。 | 页面功能、浮窗与运行行为。 |
+| 03 | [技术调研与选型](../03-research/Echocue-技术调研与选型报告-v0.1.md) / [douyinLive POC 模板](../03-research/Echocue-douyinLive-Windows-x64-POC记录模板-v0.1.md) / [BM25 POC 模板](../03-research/Echocue-Qdrant-jieba-BM25-POC记录模板-v0.1.md) / [安全与路由 POC 模板](../03-research/Echocue-安全规则与路由POC记录模板-v0.1.md) | 技术选型、POC 假设、外部依赖限制与待填证据格式。 | 依赖、版本、技术替换和 POC。 |
+| 04 | [系统架构与详细设计](../04-architecture/Echocue-系统架构与详细设计说明书-v0.1.md) | 进程边界、模块职责、实时工作流、安全与运行约束。 | 模块实现和时延路径。 |
+| 05 | [pre_set 数据标准](../05-data-interface/Echocue-pre_set初始案例数据标准-v0.1.md) / [JSON Schema](../05-data-interface/schema/pre-set-v1.schema.json) | 甲方提交的严格 JSONL 标准与 fixture。 | 数据准备与导入器。 |
+| 06 | [数据模型、接口与实时事件协议](../06-data-interface/Echocue-数据模型、接口与实时事件协议-v0.1.md) / [migration](../06-data-interface/migrations/001_initial_schema.sql) / [migration test](../06-data-interface/fixtures/migration-contract-test.mjs) / [Zod 契约](../06-data-interface/schema/contracts-v1.ts) / [审计快照 Schema](../06-data-interface/schema/audit-snapshot-v1.schema.json) / [Provider fixtures](../06-data-interface/fixtures/provider-contract-fixtures-v1.json) / [Safety fixtures](../06-data-interface/fixtures/safety-policy-fixtures-v1.json) | 唯一 canonical DDL、状态、Qdrant、WS、Provider、IPC、reason/error 契约及机器可读基线。 | 数据库、接口、错误处理；其他文档不得另造枚举。 |
+| 09-A | [系统详细设计图册](../09-design/Echocue-系统详细设计图册-v0.1.md) | 基于 06 契约的功能流程、组件、DFD、时序和状态图。 | 实时工作流及模块协作。 |
+| 09-B | [数据建模与迁移设计](../09-design/Echocue-数据建模与迁移设计-v0.1.md) | ER、数据字典、迁移、加密、容量和生命周期。 | 持久化、数据一致性和回流。 |
+| 10 | [UI 信息架构与交互设计](../10-ui/Echocue-UI信息架构与交互设计-v0.1.md) | 页面信息架构、窗口/浮窗/托盘交互和 UI 状态。 | Renderer 及桌面交互实现。 |
+| 11-A | [LLM 提示词与输出校验](../11-implementation/Echocue-LLM提示词与输出校验设计-v0.1.md) | Provider prompt、JSON 输出、本地校验、超时取消和首个 DeepSeek adapter。 | Provider 与生成工作流实现。 |
+| 11-B | [Windows 部署运行手册](../11-implementation/Echocue-Windows部署运行与故障处理手册-v0.1.md) / [安装包清单与兼容矩阵](../11-implementation/Echocue-Windows安装包清单与兼容矩阵-v0.1.md) | Windows 安装、受控 sidecar、WAL、密钥、容量、升级和故障处置。 | 打包、运维与发布实现。 |
+| 08 | [研发任务、测试与验收](../08-delivery/Echocue-研发任务拆分、测试计划与验收标准-v0.1.md) | 研发工作包、POC、测试层级和验收。 | 排期、测试和交付判定。 |
+| Review | [独立全量审查 v0.2](../07-review/Echocue-全量交付独立审查报告-v0.2.md) / [修复闭环 v0.3](../07-review/Echocue-全量交付修复闭环报告-v0.3.md) | v0.2 是修复前取证，v0.3 是逐项处置与当前门禁；均不是上游需求真值。 | 复核缺陷闭环与外部待执行证据。 |
+| Prototype | [Vite + React + TypeScript 原型](../../prototype/README.md) | 八个可运行视图、mock 状态和交互。 | UI 审查与 Renderer 演进。 |
+| Assets | [应用图标](../../svg/douyin-echocue-client-app-icon.svg) / [托盘图标](../../svg/douyin-echocue-client-tray-icon.svg) | Windows 构建图标唯一设计源。 | 打包和视觉一致性。 |
 
 ## 3. 关键需求可追溯矩阵
 
@@ -35,22 +39,25 @@
 | 真实抖音弹幕与手动启动门禁 | 01 §5/§7，02 FR-01/FR-08 | 03 §3，04 §3，06 §5，09-A | 08 A-01/A-02 |
 | 安全过滤与团队禁忌 | 01 §7.2，02 FR-04 | 04 §4，06 §2/§5，09-A | 08 A-03/W4 |
 | 团队人设和版本路由 | 01 §7.3，02 FR-02/FR-03 | 04 §4.2，06 §3，09-B/10 | 08 A-04/W3/W4 |
-| jieba-BM25 双库检索 | 01 D-15/D-16，02 FR-05 | 03 §4.5，04 §4.3，06 §4，09-A/09-B | 08 A-05/W5 |
+| jieba-BM25 双库检索 | 01 D-13/D-17，02 FR-05 | 03 §4.5，04 §4.3，06 §4，09-A/09-B | 08 A-05/W5 |
 | golden 直出、LLM fallback、无过期队列 | 01 §7.5，02 FR-05/FR-06 | 03 §4.6/§5，04 §4，06 §4/§6，09-A | 08 A-05/A-06/W6 |
-| 浮窗、托盘和窗口行为 | 01 D-10/D-21，02 FR-07/FR-11 | 04 §8.2，09-A/10 | 08 A-08/W1/W6 |
-| 全链路审计和打标回流 | 01 D-14/D-18，02 FR-10 | 03 §4.4，04 §6，06 §3/§4，09-A/09-B/10 | 08 A-07/W3/W7 |
-| Windows standalone 与本地 sidecar | 01 D-08/D-19，02 FR-08 | 03 §4，04 §2/§7，09-A | 08 A-09/W1/W5 |
-| DeepSeek 生成与输出复验 | 01 D-20，02 FR-06 | 03 §5，06 §6，11-A | 08 W6/A-06 |
-| 本机安装、升级与故障处置 | 01 D-08/D-18/D-19，02 FR-08/FR-11 | 04 §7/§8，09-B，11-B | 08 W1/W3/W5/A-09 |
+| 浮窗、托盘和窗口行为 | 01 D-07/D-07a/D-11，02 FR-07/FR-11 | 04 §8.2，09-A/10 | 08 A-08/W1/W6 |
+| 全链路审计和打标回流 | 01 D-15/D-17/D-18，02 FR-10 | 03 §4.4，04 §6，06 §3/§4，09-A/09-B/10 | 08 A-07/W3/W7 |
+| Windows standalone 与本地 sidecar | 01 D-03a/D-12/D-19，02 FR-08 | 03 §4，04 §2/§7，09-A，11-B | 08 A-01/A-02/A-09/W1/W2/W5 |
+| 可配置 Provider 与输出复验 | 01 D-14/D-20，02 FR-06/FR-08 | 03 §5，04 §5/§7，06 §6/§8，11-A | 08 W6/A-06/A-11 |
+| 安全规则可执行契约 | 01 D-06/D-08/D-08a/D-08b，02 FR-04 | 04 §4.4，06 §2/§3，09-B/10 | 08 W4/A-03 |
+| 本机安装、容量、升级与故障处置 | 01 D-03a/D-18/D-19，02 FR-08/FR-10/FR-11 | 04 §7/§8，09-B，11-B | 08 W1/W3/W5/A-09/A-12 |
+| 本地诊断、Prometheus 与 OTel | 01 D-18，02 FR-09/FR-10 | 03 §4.3，04 §6/§7，10 §9，11-B §6 | 08 W1/T-DIAG-001/A-13 |
 
 ## 4. 推荐阅读顺序
 
 1. 产品/需求：01 → 02；
-2. 技术决策：03 → 04 → 09-A；
-3. 数据与接口：05 → 06 → 09-B；
-4. 前端/桌面：02 → 10 → 06 IPC；
-5. 生成与运行实现：11-A → 11-B；
-6. 实施与验证：08 → 07。
+2. 技术决策：03 → 04；
+3. 数据与接口：05 → 06；
+4. 详细设计：09-B → 09-A（两者均以 06 canonical 契约为准）；
+5. 前端/桌面：02 → 06 IPC → 10 → `prototype/`；
+6. 生成与运行实现：11-A → 11-B；
+7. 实施与验证：08 → 07-review。
 
 ## 5. 发布前完整性检查
 
@@ -58,4 +65,4 @@
 - 所有 Mermaid 图以源码随文档保存，开发和评审以源码为准；
 - 涉及状态、数据或接口的变更同步更新 04、06、09-A/09-B、08 和本矩阵；
 - UI 行为变更同步更新 02、10、08；
-- 未完成真实 `douyinLive` POC 时，07 的 release gate 仍保持未关闭。
+- 未完成真实 `douyinLive` POC 时，只允许继续不依赖真实接入结论的工程基座/本地 POC；不得冻结真实联调结论或声明 MVP 验收通过。
