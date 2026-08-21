@@ -1,18 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
-import { FieldEncryptor } from '../crypto/field-encryptor.js';
+import { contentHmac } from '../crypto/content-hmac.js';
+import { FieldEncryptor, buildAad } from '../crypto/field-encryptor.js';
 import { CryptoKeyManager } from '../crypto/key-manager.js';
 import type { MigrationFile } from '../storage/MigrationRunner.js';
 import { MigrationRunner } from '../storage/MigrationRunner.js';
+import { uuidv7 } from '../util/uuidv7.js';
 import {
   ALIAS_KINDS_V1,
   type AliasInput,
   type AliasKind,
   type AliasRow,
+  type CreateDraftParams,
   type CreatePersonaParams,
   type PersonaSummary,
+  type PersonaVersionMeta,
+  type PersonaVersionStatus,
   type UpdateAliasParams,
   type UpdatePersonaParams,
+  type VersionComparison,
 } from './types.js';
 
 export interface PersonaStoreOptions {
@@ -86,6 +92,30 @@ export class PersonaInvalidParamsError extends Error {
   }
 }
 
+export class PersonaVersionNotFoundError extends Error {
+  readonly code = 'E_PERSONA_VERSION_NOT_FOUND';
+  constructor(personaVersion: string) {
+    super(`Persona version not found: ${personaVersion}`);
+    this.name = 'PersonaVersionNotFoundError';
+  }
+}
+
+export class PersonaVersionImmutableError extends Error {
+  readonly code = 'E_PERSONA_VERSION_IMMUTABLE';
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'PersonaVersionImmutableError';
+  }
+}
+
+export class PersonaContentDecryptionError extends Error {
+  readonly code = 'E_PERSONA_CONTENT_DECRYPTION_FAILED';
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'PersonaContentDecryptionError';
+  }
+}
+
 interface PersonaRow {
   persona_id: string;
   display_name: string;
@@ -105,9 +135,24 @@ interface AliasDbRow {
   enabled: number;
 }
 
+interface PersonaVersionMetaRow {
+  persona_version: string;
+  persona_id: string;
+  status: string;
+  content_hmac: string;
+  created_at: string;
+  published_at: string | null;
+  created_from_version: string | null;
+}
+
+interface PersonaVersionRow extends PersonaVersionMetaRow {
+  content_envelope: Buffer;
+}
+
 export class PersonaStore {
   private readonly db: DatabaseSync;
   private readonly encryptor: FieldEncryptor;
+  private readonly hmacKey: Buffer;
 
   constructor(private readonly options: PersonaStoreOptions) {
     const runner = new MigrationRunner(options.dbPath, options.migrations);
@@ -118,6 +163,7 @@ export class PersonaStore {
     }
     const dek = options.keyManager.getDek(options.keyVersion);
     this.encryptor = new FieldEncryptor(dek, options.keyVersion);
+    this.hmacKey = options.keyManager.getHmacKey(options.keyVersion);
   }
 
   close(): void {
@@ -339,6 +385,147 @@ export class PersonaStore {
     this.db.prepare('DELETE FROM persona_alias WHERE alias_id = ?').run(aliasId);
   }
 
+  createDraft(params: CreateDraftParams): PersonaVersionMeta {
+    const persona = this.getPersonaRow(params.personaId);
+    validateContent(params.content);
+
+    let fromVersion: string | null = null;
+    if (params.fromVersion !== undefined) {
+      const parent = params.fromVersion.trim();
+      if (!parent) {
+        throw new PersonaInvalidParamsError('fromVersion must be non-empty');
+      }
+      const parentRow = this.getVersionRow(parent);
+      if (parentRow.persona_id !== persona.persona_id) {
+        throw new PersonaInvalidParamsError('fromVersion must belong to the same persona');
+      }
+      fromVersion = parent;
+    }
+
+    const personaVersion = uuidv7();
+    const now = new Date().toISOString();
+    const envelope = this.encryptContent(personaVersion, params.content);
+    const hmac = contentHmac(params.content, this.hmacKey);
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO persona_version
+             (persona_version, persona_id, status, content_envelope, content_hmac, created_at, published_at, created_from_version)
+           VALUES (?,?,?,?,?,?,?,?)`,
+        )
+        .run(personaVersion, persona.persona_id, 'DRAFT', envelope, hmac, now, null, fromVersion);
+    } catch (err) {
+      throw new PersonaStoreUnavailableError(`createDraft failed: ${String(err)}`);
+    }
+    return {
+      personaVersion,
+      personaId: persona.persona_id,
+      status: 'DRAFT',
+      contentHmac: hmac,
+      createdAt: now,
+      publishedAt: null,
+      createdFromVersion: fromVersion,
+    };
+  }
+
+  updateDraftContent(personaVersion: string, content: string): void {
+    validateContent(content);
+    const existing = this.getVersionRow(personaVersion);
+    if (existing.status !== 'DRAFT') {
+      throw new PersonaVersionImmutableError(`Persona version is immutable: ${personaVersion}`);
+    }
+    try {
+      this.db
+        .prepare('UPDATE persona_version SET content_envelope = ?, content_hmac = ? WHERE persona_version = ?')
+        .run(this.encryptContent(personaVersion, content), contentHmac(content, this.hmacKey), personaVersion);
+    } catch (err) {
+      throw new PersonaStoreUnavailableError(`updateDraftContent failed: ${String(err)}`);
+    }
+  }
+
+  publishDraft(personaVersion: string): void {
+    const version = this.getVersionRow(personaVersion);
+    if (version.status !== 'DRAFT') {
+      throw new PersonaVersionImmutableError(`Only DRAFT versions can be published: ${personaVersion}`);
+    }
+    const now = new Date().toISOString();
+    this.runTransaction(() => {
+      this.db
+        .prepare(`UPDATE persona_version SET status = 'PUBLISHED', published_at = ? WHERE persona_version = ?`)
+        .run(now, personaVersion);
+      this.supersedeActiveVersion(version.persona_id, personaVersion);
+      this.db
+        .prepare('UPDATE persona SET active_version = ?, updated_at = ? WHERE persona_id = ?')
+        .run(personaVersion, now, version.persona_id);
+    });
+  }
+
+  rollbackTo(personaId: string, targetVersion: string): string {
+    const persona = this.getPersonaRow(personaId);
+    const target = this.getVersionRow(targetVersion, true);
+    if (target.persona_id !== persona.persona_id) {
+      throw new PersonaInvalidParamsError('Rollback target must belong to the same persona');
+    }
+    if (target.status === 'DRAFT') {
+      throw new PersonaInvalidParamsError('Cannot roll back to a DRAFT version');
+    }
+    const content = this.decryptContent(target);
+    const newVersion = uuidv7();
+    const now = new Date().toISOString();
+    this.runTransaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO persona_version
+             (persona_version, persona_id, status, content_envelope, content_hmac, created_at, published_at, created_from_version)
+           VALUES (?,?,?,?,?,?,?,?)`,
+        )
+        .run(
+          newVersion,
+          persona.persona_id,
+          'PUBLISHED',
+          this.encryptContent(newVersion, content),
+          contentHmac(content, this.hmacKey),
+          now,
+          now,
+          targetVersion,
+        );
+      this.supersedeActiveVersion(persona.persona_id, newVersion);
+      this.db
+        .prepare('UPDATE persona SET active_version = ?, updated_at = ? WHERE persona_id = ?')
+        .run(newVersion, now, persona.persona_id);
+    });
+    return newVersion;
+  }
+
+  compareVersions(a: string, b: string): VersionComparison {
+    const rowA = this.getVersionRow(a);
+    const rowB = this.getVersionRow(b);
+    return {
+      a: this.mapVersionRow(rowA),
+      b: this.mapVersionRow(rowB),
+      sameContent: rowA.content_hmac === rowB.content_hmac,
+    };
+  }
+
+  readVersionContent(personaVersion: string): string {
+    return this.decryptContent(this.getVersionRow(personaVersion, true));
+  }
+
+  getVersionMeta(personaVersion: string): PersonaVersionMeta {
+    return this.mapVersionRow(this.getVersionRow(personaVersion));
+  }
+
+  listVersions(personaId: string): PersonaVersionMeta[] {
+    this.getPersonaRow(personaId);
+    const rows = this.db
+      .prepare(
+        `SELECT persona_version, persona_id, status, content_hmac, created_at, published_at, created_from_version
+         FROM persona_version WHERE persona_id = ? ORDER BY created_at ASC`,
+      )
+      .all(personaId) as unknown as PersonaVersionMetaRow[];
+    return rows.map((r) => this.mapVersionRow(r));
+  }
+
   private getPersonaRow(personaId: string): PersonaRow {
     const row = this.db
       .prepare(
@@ -370,6 +557,67 @@ export class PersonaStore {
       throw new AliasNotFoundError(aliasId);
     }
     return row;
+  }
+
+  private getVersionRow(personaVersion: string, includeEnvelope = false): PersonaVersionRow {
+    // Metadata reads (compare/getVersionMeta) must not touch the encrypted column.
+    const columns = includeEnvelope
+      ? `persona_version, persona_id, status, content_envelope, content_hmac,
+         created_at, published_at, created_from_version`
+      : `persona_version, persona_id, status, content_hmac,
+         created_at, published_at, created_from_version`;
+    const row = this.db
+      .prepare(`SELECT ${columns} FROM persona_version WHERE persona_version = ?`)
+      .get(personaVersion) as PersonaVersionRow | undefined;
+    if (!row) {
+      throw new PersonaVersionNotFoundError(personaVersion);
+    }
+    if (includeEnvelope) {
+      // node:sqlite hands BLOBs back as plain Uint8Array whose .toString() is not utf-8.
+      row.content_envelope = Buffer.from(row.content_envelope);
+    }
+    return row;
+  }
+
+  private encryptContent(personaVersion: string, content: string): Buffer {
+    return this.encryptor.encrypt(
+      Buffer.from(content, 'utf-8'),
+      buildAad('persona_version', personaVersion, 'PERSONA_TEXT'),
+    );
+  }
+
+  private decryptContent(row: PersonaVersionRow): string {
+    try {
+      return this.encryptor
+        .decrypt(row.content_envelope, buildAad('persona_version', row.persona_version, 'PERSONA_TEXT'))
+        .toString('utf-8');
+    } catch (err) {
+      throw new PersonaContentDecryptionError(`Failed to decrypt persona version content: ${String(err)}`);
+    }
+  }
+
+  private supersedeActiveVersion(personaId: string, exceptVersion: string): void {
+    const row = this.db
+      .prepare('SELECT active_version FROM persona WHERE persona_id = ?')
+      .get(personaId) as { active_version: string | null } | undefined;
+    const current = row?.active_version ?? null;
+    if (current !== null && current !== exceptVersion) {
+      this.db
+        .prepare(`UPDATE persona_version SET status = 'SUPERSEDED' WHERE persona_version = ? AND status = 'PUBLISHED'`)
+        .run(current);
+    }
+  }
+
+  private mapVersionRow(r: PersonaVersionMetaRow): PersonaVersionMeta {
+    return {
+      personaVersion: r.persona_version,
+      personaId: r.persona_id,
+      status: r.status as PersonaVersionStatus,
+      contentHmac: r.content_hmac,
+      createdAt: r.created_at,
+      publishedAt: r.published_at,
+      createdFromVersion: r.created_from_version,
+    };
   }
 
   private mapPersonaRow(r: PersonaRow): PersonaSummary {
@@ -416,7 +664,10 @@ export class PersonaStore {
         err instanceof PersonaPrincipalDeletionError ||
         err instanceof AliasNotFoundError ||
         err instanceof AliasDuplicateError ||
-        err instanceof PersonaInvalidParamsError
+        err instanceof PersonaInvalidParamsError ||
+        err instanceof PersonaVersionNotFoundError ||
+        err instanceof PersonaVersionImmutableError ||
+        err instanceof PersonaContentDecryptionError
       ) {
         throw err;
       }
@@ -430,6 +681,12 @@ export class PersonaStore {
 
 function isAliasKind(v: unknown): v is AliasKind {
   return typeof v === 'string' && (ALIAS_KINDS_V1 as readonly string[]).includes(v);
+}
+
+function validateContent(content: unknown): asserts content is string {
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new PersonaInvalidParamsError('content must be a non-empty string');
+  }
 }
 
 function validateAliasInput(a: AliasInput): void {

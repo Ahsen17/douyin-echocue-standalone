@@ -46,3 +46,28 @@ export interface AliasRow {
   aliasKind: AliasKind;
   enabled: boolean;
 }
+
+export const PERSONA_VERSION_STATUSES = ['DRAFT', 'PUBLISHED', 'SUPERSEDED'] as const;
+export type PersonaVersionStatus = (typeof PERSONA_VERSION_STATUSES)[number];
+
+export interface CreateDraftParams {
+  personaId: string;
+  content: string;
+  fromVersion?: string;
+}
+
+export interface PersonaVersionMeta {
+  personaVersion: string;
+  personaId: string;
+  status: PersonaVersionStatus;
+  contentHmac: string;
+  createdAt: string;
+  publishedAt: string | null;
+  createdFromVersion: string | null;
+}
+
+export interface VersionComparison {
+  a: PersonaVersionMeta;
+  b: PersonaVersionMeta;
+  sameContent: boolean;
+}
