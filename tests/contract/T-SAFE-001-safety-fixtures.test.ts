@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { loadJsonFixture, FIXTURES } from '../fixtures/index.js';
-import { compilePolicy, SAFETY_COMPILER_VERSION } from '../../src/main/safety/index.js';
+import {
+  compilePolicy,
+  SAFETY_COMPILER_VERSION,
+  normalizeComment,
+  evaluateInputSafety,
+  type CompiledSafetyRuleV1,
+} from '../../src/main/safety/index.js';
 
 interface CompileCaseFixture {
   id: string;
@@ -9,20 +15,36 @@ interface CompileCaseFixture {
   expected: { valid: boolean; categories?: string[]; domainError?: string };
 }
 
+interface RuntimeRuleFixture {
+  ruleType: string;
+  category: string;
+  text: string;
+}
+
+interface RuntimeCaseFixture {
+  id: string;
+  stage: 'INPUT' | 'OUTPUT';
+  text?: string;
+  compiledRules?: RuntimeRuleFixture[];
+  simulateEngineFailure?: boolean;
+  expected: { allow: boolean; reason?: string; traceFinalState: string };
+}
+
 interface SafetyPolicyFixture {
   compilerVersion: string;
   compileCases: CompileCaseFixture[];
+  runtimeCases: RuntimeCaseFixture[];
 }
 
 describe('T-SAFE-001: Safety Policy Fixtures', () => {
+  const fixture = loadJsonFixture<SafetyPolicyFixture>(FIXTURES.SAFETY_POLICY);
+
   it('should load safety policy fixture', () => {
-    const fixture = loadJsonFixture<SafetyPolicyFixture>(FIXTURES.SAFETY_POLICY);
     expect(fixture).toBeDefined();
     expect(fixture.compilerVersion).toBe(SAFETY_COMPILER_VERSION);
   });
 
   it('should compile valid natural language rules', () => {
-    const fixture = loadJsonFixture<SafetyPolicyFixture>(FIXTURES.SAFETY_POLICY);
     const c = fixture.compileCases.find((x) => x.id === 'explicit-topics-valid');
     expect(c).toBeDefined();
     if (!c) return;
@@ -42,7 +64,6 @@ describe('T-SAFE-001: Safety Policy Fixtures', () => {
   });
 
   it('should reject invalid regex patterns', () => {
-    const fixture = loadJsonFixture<SafetyPolicyFixture>(FIXTURES.SAFETY_POLICY);
     const c = fixture.compileCases.find((x) => x.id === 'invalid-regex');
     expect(c).toBeDefined();
     if (!c) return;
@@ -58,7 +79,24 @@ describe('T-SAFE-001: Safety Policy Fixtures', () => {
     }
   });
 
-  it.todo('should filter PII content');
-  it.todo('should fail closed on engine error');
-  it.todo('should pass safe content through');
+  it('should run every INPUT runtime case to the fixture decision', () => {
+    const inputCases = fixture.runtimeCases.filter((r) => r.stage === 'INPUT');
+    expect(inputCases.length).toBeGreaterThan(0);
+
+    for (const c of inputCases) {
+      const compiledRules: CompiledSafetyRuleV1[] | null = c.simulateEngineFailure
+        ? null
+        : ((c.compiledRules ?? []) as CompiledSafetyRuleV1[]);
+      const decision = evaluateInputSafety({
+        normalizedText: c.text === undefined ? '' : normalizeComment(c.text),
+        compiledRules,
+      });
+      expect(decision.allow).toBe(c.expected.allow);
+      if (c.expected.allow) {
+        expect(decision.reason).toBeNull();
+      } else {
+        expect(decision.reason).toBe(c.expected.reason as never);
+      }
+    }
+  });
 });
