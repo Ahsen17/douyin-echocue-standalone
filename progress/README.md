@@ -13,3 +13,4 @@
 | M1-05 | 实现 AuditStoreWorker 单写模型 | ✅ 已完成 | 2026-08-21 | src/main/storage/AuditStoreWorker.ts, tests/integration/storage/audit-store-worker.test.ts |
 | M1-06 | 实现主窗口三按钮、托盘和显式退出 | ✅ 已完成 | 2026-08-21 | src/main/windows/{MainWindow,TrayManager}.ts, src/main/index.ts, src/preload/main-preload.ts, src/renderer/main/{App,echocue.d}.ts, tests/unit/windows/titlebar.test.ts |
 | M1-07 | 实现日志、Prometheus、OTel 和诊断数据源 | ✅ 已完成 | 2026-08-21 | src/main/telemetry/{Logger,Metrics,OtelSetup,DiagnosticsSource,index}.ts, tests/unit/telemetry/metrics-privacy.test.ts, tests/integration/telemetry/metrics.test.ts |
+| M2-01 | 实现成员、名称、昵称和别名 CRUD | ✅ 已完成 | 2026-08-21 | src/main/persona/{PersonaStore,types,index}.ts, tests/integration/persona/persona-store.test.ts |
