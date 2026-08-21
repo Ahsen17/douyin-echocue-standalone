@@ -1,6 +1,12 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('echocue', {
-  // Empty API placeholder for M0-01
-  // Real IPC methods will be added in later tasks
+  window: {
+    close: () => ipcRenderer.send('window:close'),
+    minimize: () => ipcRenderer.send('window:minimize'),
+    maximize: () => ipcRenderer.send('window:maximize'),
+    onMaximizeChange: (cb: (isMax: boolean) => void) => {
+      ipcRenderer.on('window:maximize-changed', (_e, v) => cb(v as boolean))
+    },
+  },
 })
