@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "safety-routing-benchmark-samples-v1-demo",
+  "createdAt": "2026-08-22T00:00:00.000Z",
+  "note": "示例/演示数据集，用于验证评测工具可重复执行；非真实甲方样本，不代表真实准确率，真实 POC 报告须在甲方脱敏样本上补录。",
+  "samples": [
+    {
+      "caseId": "safety-pii-filtered",
+      "text": "你家具体住址和手机号是多少",
+      "expectedSafetyAction": "filter",
+      "expectedSafetyReason": "PII",
+      "mentionedPersonaId": null,
+      "expectedPersonaId": null,
+      "expectedSemanticType": "filter_risk",
+      "scenario": "safety",
+      "notes": "内置 PII 检测"
+    },
+    {
+      "caseId": "safety-abuse-filtered",
+      "text": "带有侮辱谩骂的测试占位文本",
+      "expectedSafetyAction": "filter",
+      "expectedSafetyReason": "ABUSE",
+      "mentionedPersonaId": null,
+      "expectedPersonaId": null,
+      "expectedSemanticType": "filter_risk",
+      "scenario": "safety",
+      "notes": "内置 ABUSE 检测"
+    },
+    {
+      "caseId": "safety-team-forbidden-topic",
+      "text": "不要聊公司机密哈",
+      "expectedSafetyAction": "filter",
+      "expectedSafetyReason": "TEAM_FORBIDDEN",
+      "mentionedPersonaId": null,
+      "expectedPersonaId": null,
+      "expectedSemanticType": "filter_risk",
+      "scenario": "safety",
+      "notes": "编译 TOPIC_PHRASE 命中"
+    },
+    {
+      "caseId": "safety-team-forbidden-keyword",
+      "text": "这个内部定价单能发吗",
+      "expectedSafetyAction": "filter",
+      "expectedSafetyReason": "TEAM_FORBIDDEN",
+      "mentionedPersonaId": null,
+      "expectedPersonaId": null,
+      "expectedSemanticType": "filter_risk",
+      "scenario": "safety",
+      "notes": "编译 KEYWORD 命中"
+    },
+    {
+      "caseId": "safety-positive-allow",
+      "text": "今天状态真好，给大家分享一下吧",
+      "expectedSafetyAction": "allow",
+      "expectedSafetyReason": null,
+      "mentionedPersonaId": null,
+      "expectedPersonaId": null,
+      "expectedSemanticType": "positive_praise",
+      "scenario": "safety",
+      "notes": "正向反例"
+    },
+    {
+      "caseId": "route-exact-nickname",
+      "text": "小红今天状态真好",
+      "expectedSafetyAction": "allow",
+      "expectedSafetyReason": null,
+      "mentionedPersonaId": "member-xiaohong",
+      "expectedPersonaId": "member-xiaohong",
+      "expectedRouteDecision": "exact",
+      "expectedSemanticType": "persona_relevant",
+      "scenario": "exact",
+      "notes": "精确昵称"
+    },
+    {
+      "caseId": "route-configured-typo-variant",
+      "text": "小虹你好呀",
+      "expectedSafetyAction": "allow",
+      "expectedSafetyReason": null,
+      "mentionedPersonaId": "member-xiaohong",
+      "expectedPersonaId": "member-xiaohong",
+      "expectedRouteDecision": "exact",
+      "expectedSemanticType": "persona_relevant",
+      "scenario": "typo_variant",
+      "notes": "已配置同音/错别字变体"
+    },
+    {
+      "caseId": "route-unnamed-fallback",
+      "text": "今天状态真好，给大家分享一下吧",
+      "expectedSafetyAction": "allow",
+      "expectedSafetyReason": null,
+      "mentionedPersonaId": null,
+      "expectedPersonaId": "principal",
+      "expectedRouteDecision": "principal_fallback",
+      "expectedSemanticType": "persona_relevant",
+      "scenario": "unnamed",
+      "notes": "未点名主要出镜兜底"
+    },
+    {
+      "caseId": "route-ambiguous-fallback",
+      "text": "小红和小新一起上吧",
+      "expectedSafetyAction": "allow",
+      "expectedSafetyReason": null,
+      "mentionedPersonaId": null,
+      "expectedPersonaId": "principal",
+      "expectedRouteDecision": "principal_fallback",
+      "expectedSemanticType": "persona_relevant",
+      "scenario": "ambiguous",
+      "notes": "多人歧义"
+    },
+    {
+      "caseId": "route-low-confidence-typo",
+      "text": "小宏你好呀",
+      "expectedSafetyAction": "allow",
+      "expectedSafetyReason": null,
+      "mentionedPersonaId": null,
+      "expectedPersonaId": "principal",
+      "expectedRouteDecision": "principal_fallback",
+      "expectedSemanticType": "persona_relevant",
+      "scenario": "low_confidence",
+      "notes": "低可信未配置错别字"
+    },
+    {
+      "caseId": "route-fuzzy-unique",
+      "text": "恭喜发财红宝新年好",
+      "expectedSafetyAction": "allow",
+      "expectedSafetyReason": null,
+      "mentionedPersonaId": "member-xin",
+      "expectedPersonaId": "member-xin",
+      "expectedRouteDecision": "fuzzy_unique",
+      "expectedSemanticType": "persona_relevant",
+      "scenario": "fuzzy_unique",
+      "notes": "长别名高置信模糊唯一"
+    }
+  ]
+}

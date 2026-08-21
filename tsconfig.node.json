@@ -18,5 +18,5 @@
       "@echocue/contracts": ["./src/contracts/src/index.ts"]
     }
   },
-  "include": ["src/main", "src/preload", "vite.config.*.ts", "src/contracts/src"]
+  "include": ["src/main", "src/preload", "src/contracts/src", "scripts", "vite.config.*.ts"]
 }

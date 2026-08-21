@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "note": "示例成员词表（与示例数据集配套），非真实团队；真实 POC 应从 PersonaStore 读取 persona/alias 快照。",
+  "personas": [
+    {
+      "personaId": "principal",
+      "displayName": "阿远",
+      "isPrincipal": true,
+      "aliases": [{ "aliasText": "阿远", "aliasKind": "NAME", "enabled": true }]
+    },
+    {
+      "personaId": "member-xiaohong",
+      "displayName": "小红",
+      "isPrincipal": false,
+      "aliases": [
+        { "aliasText": "小红", "aliasKind": "NICKNAME", "enabled": true },
+        { "aliasText": "小虹", "aliasKind": "TYPO_VARIANT", "enabled": true }
+      ]
+    },
+    {
+      "personaId": "member-xin",
+      "displayName": "小新",
+      "isPrincipal": false,
+      "aliases": [{ "aliasText": "恭喜发财红包", "aliasKind": "NICKNAME", "enabled": true }]
+    }
+  ]
+}
