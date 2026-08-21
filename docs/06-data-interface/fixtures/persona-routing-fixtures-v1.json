@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "fuzzyMatchThreshold": 0.8,
+  "note": "FR-03 成员识别与人设路由验收用例；decision ∈ exact|fuzzy_unique|principal_fallback；candidates 记录 matchedAlias 与 score（精确 1，模糊 [0,1]）。",
+  "members": [
+    {
+      "personaId": "principal",
+      "displayName": "阿远",
+      "isPrincipal": true,
+      "aliases": [{ "text": "阿远", "kind": "NAME" }]
+    },
+    {
+      "personaId": "member-xiaohong",
+      "displayName": "小红",
+      "isPrincipal": false,
+      "aliases": [
+        { "text": "小红", "kind": "NICKNAME" },
+        { "text": "小虹", "kind": "TYPO_VARIANT" }
+      ]
+    },
+    {
+      "personaId": "member-xiaobai",
+      "displayName": "小白",
+      "isPrincipal": false,
+      "aliases": [
+        { "text": "小白", "kind": "NICKNAME" },
+        { "text": "白哥", "kind": "ALIAS" }
+      ]
+    },
+    {
+      "personaId": "member-xin",
+      "displayName": "小新",
+      "isPrincipal": false,
+      "aliases": [{ "text": "恭喜发财红包", "kind": "NICKNAME" }]
+    }
+  ],
+  "routingCases": [
+    {
+      "id": "exact-nickname",
+      "text": "小红今天状态真好",
+      "expected": { "personaId": "member-xiaohong", "decision": "exact" }
+    },
+    {
+      "id": "configured-typo-variant",
+      "text": "小虹你好呀",
+      "expected": { "personaId": "member-xiaohong", "decision": "exact" }
+    },
+    {
+      "id": "no-member-name",
+      "text": "今天状态真好，给大家分享一下吧",
+      "expected": { "personaId": "principal", "decision": "principal_fallback" }
+    },
+    {
+      "id": "ambiguous-alias",
+      "text": "小红和小白一起上吧",
+      "expected": { "personaId": "principal", "decision": "principal_fallback" }
+    },
+    {
+      "id": "low-confidence-typo",
+      "text": "小宏你好呀",
+      "expected": { "personaId": "principal", "decision": "principal_fallback" }
+    },
+    {
+      "id": "fuzzy-unique-long-alias",
+      "text": "恭喜发财红宝新年好",
+      "expected": { "personaId": "member-xin", "decision": "fuzzy_unique" }
+    }
+  ]
+}

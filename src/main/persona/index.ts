@@ -28,3 +28,15 @@ export {
   type UpdatePersonaParams,
   type VersionComparison,
 } from './types.js';
+export { PersonaRouter } from './PersonaRouter.js';
+export type { PersonaRoute } from './PersonaRouter.js';
+export {
+  FUZZY_MATCH_THRESHOLD,
+  PersonaRouterUnavailableError,
+  routePersona,
+  type AliasRoutingData,
+  type PersonaRouteDecision,
+  type PersonaRoutingData,
+  type RouteCandidate,
+  type RouteDecision,
+} from './router.js';

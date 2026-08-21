@@ -29,5 +29,6 @@ export function loadJsonlFixture<T = unknown>(filename: string): T[] {
 export const FIXTURES = {
   SAFETY_POLICY: 'safety-policy-fixtures-v1.json',
   PROVIDER_CONTRACT: 'provider-contract-fixtures-v1.json',
+  PERSONA_ROUTING: 'persona-routing-fixtures-v1.json',
   MIGRATION_TEST: 'migration-contract-test.mjs',
 } as const;
