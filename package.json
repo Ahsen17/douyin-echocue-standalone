@@ -25,6 +25,7 @@
     "test:coverage": "vitest run --coverage",
     "test:contracts": "tsx src/contracts/test/schemas.test.ts",
     "test:all": "npm run test:contracts && npm run test",
+    "benchmark:safety-routing": "tsx scripts/run-safety-routing-benchmark.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "start": "electron .",
     "preview": "npm run build && npm run start",

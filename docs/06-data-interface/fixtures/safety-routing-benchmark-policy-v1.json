@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "SafetyRuleCompilerV1",
+  "note": "示例编译规则（与示例数据集配套），非真实策略；真实 POC 应从已发布 SafetyPolicyVersion 读取 compiledRules。",
+  "compiledRules": [
+    { "ruleType": "TOPIC_PHRASE", "category": "TEAM_FORBIDDEN", "text": "公司机密" },
+    { "ruleType": "KEYWORD", "category": "TEAM_FORBIDDEN", "text": "内部定价单" }
+  ]
+}
