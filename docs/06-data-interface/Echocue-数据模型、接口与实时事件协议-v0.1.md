@@ -462,7 +462,7 @@ type LiveSourceEvent =
   | { type: 'LIVE_OFFLINE'; roomReference: string; receivedAt: string }
   | { type: 'LIVE_ENDED'; roomReference: string; receivedAt: string }
   | { type: 'COMMENT'; comment: SourceComment }
-  | { type: 'SOURCE_ERROR'; code: string; message: string; receivedAt: string };
+  | { type: 'SOURCE_ERROR'; code: DomainErrorV1; message: string; receivedAt: string };
 
 interface SourceComment {
   sourceMessageId: string;

@@ -14,6 +14,8 @@ import {
   AuditGetWorkflowRequestV1Schema,
   TraceStateSchema,
   DomainErrorV1Schema,
+  LiveSourceEventSchema,
+  SourceCommentSchema,
   SERVICE_LIFECYCLE_TRANSITIONS_V1,
   TRACE_TRANSITIONS_V1,
   OUTBOX_TRANSITIONS_V1,
@@ -195,6 +197,59 @@ test('rejects score > 100', () => expectInvalid(AuditSubmitLabelRequestV1Schema,
 console.log('\nEnum schemas');
 test('rejects invalid TraceState', () => expectInvalid(TraceStateSchema, 'PROCESSING', 'invalid trace state'));
 test('rejects invalid DomainErrorV1', () => expectInvalid(DomainErrorV1Schema, 'E_UNKNOWN', 'invalid domain error'));
+
+// LiveSourceEventSchema
+console.log('\nLiveSourceEventSchema');
+test('valid LIVE_ONLINE', () => expectValid(LiveSourceEventSchema, {
+  type: 'LIVE_ONLINE', roomReference: 'room-abc', platformRoomId: '7012345678901234567',
+  receivedAt: '2026-08-22T12:00:00.000Z',
+}, 'live online'));
+test('valid LIVE_OFFLINE', () => expectValid(LiveSourceEventSchema, {
+  type: 'LIVE_OFFLINE', roomReference: 'room-abc', receivedAt: '2026-08-22T12:05:00.000Z',
+}, 'live offline'));
+test('valid LIVE_ENDED', () => expectValid(LiveSourceEventSchema, {
+  type: 'LIVE_ENDED', roomReference: 'room-abc', receivedAt: '2026-08-22T12:10:00.000Z',
+}, 'live ended'));
+test('valid COMMENT', () => expectValid(LiveSourceEventSchema, {
+  type: 'COMMENT',
+  comment: {
+    sourceMessageId: '7261234567890123456',
+    rawEvent: { method: 'WebcastChatMessage', content: '主播晚上好' },
+    rawText: '主播晚上好',
+    normalizedText: '主播晚上好',
+    receivedAt: '2026-08-22T12:00:01.000Z',
+    receivedMonotonicMs: 12345.678,
+  },
+}, 'comment'));
+test('valid SOURCE_ERROR', () => expectValid(LiveSourceEventSchema, {
+  type: 'SOURCE_ERROR', code: 'E_SOURCE_UNAVAILABLE', message: 'connection lost',
+  receivedAt: '2026-08-22T12:00:02.000Z',
+}, 'source error'));
+test('rejects unknown event type', () => expectInvalid(LiveSourceEventSchema, {
+  type: 'LIVE_END', roomReference: 'room-abc', receivedAt: '2026-08-22T12:00:00.000Z',
+}, 'unknown type'));
+test('rejects gift frame (no discriminator)', () => expectInvalid(LiveSourceEventSchema, {
+  method: 'WebcastGiftMessage', gift: { giftName: '小心心' },
+  common: { msgId: 7262000000000000001, roomId: 7012345678901234567 },
+}, 'gift frame'));
+
+// SourceCommentSchema
+console.log('\nSourceCommentSchema');
+test('rejects negative receivedMonotonicMs', () => expectInvalid(SourceCommentSchema, {
+  sourceMessageId: '7261234567890123456',
+  rawEvent: {},
+  rawText: '主播晚上好',
+  normalizedText: '主播晚上好',
+  receivedAt: '2026-08-22T12:00:01.000Z',
+  receivedMonotonicMs: -1,
+}, 'negative monotonic'));
+test('rejects missing sourceMessageId', () => expectInvalid(SourceCommentSchema, {
+  rawEvent: {},
+  rawText: '主播晚上好',
+  normalizedText: '主播晚上好',
+  receivedAt: '2026-08-22T12:00:01.000Z',
+  receivedMonotonicMs: 0,
+}, 'missing message id'));
 
 // Transition constants
 console.log('\nTransition constants');

@@ -243,6 +243,49 @@ export const ServiceViewStateSchema = z.strictObject({
   }).optional(),
 });
 
+// Live source event (CONTRACT §5). Produced by the douyinLive WS adapter;
+// gift/like frames never become COMMENT events.
+export const SourceCommentSchema = z.strictObject({
+  sourceMessageId: z.string().min(1).max(68),
+  platformRoomId: z.string().min(1).max(68).optional(),
+  rawEvent: z.unknown(),
+  rawText: z.string().max(2000),
+  normalizedText: z.string().max(2000),
+  userNickname: z.string().max(64).optional(),
+  upstreamCreatedAt: z.string().max(64).optional(),
+  receivedAt: z.string().datetime({ offset: true }),
+  receivedMonotonicMs: z.number().nonnegative().finite(),
+});
+
+export const LiveSourceEventSchema = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('LIVE_ONLINE'),
+    roomReference: z.string().min(1).max(128),
+    platformRoomId: z.string().min(1).max(68).optional(),
+    receivedAt: z.string().datetime({ offset: true }),
+  }),
+  z.strictObject({
+    type: z.literal('LIVE_OFFLINE'),
+    roomReference: z.string().min(1).max(128),
+    receivedAt: z.string().datetime({ offset: true }),
+  }),
+  z.strictObject({
+    type: z.literal('LIVE_ENDED'),
+    roomReference: z.string().min(1).max(128),
+    receivedAt: z.string().datetime({ offset: true }),
+  }),
+  z.strictObject({
+    type: z.literal('COMMENT'),
+    comment: SourceCommentSchema,
+  }),
+  z.strictObject({
+    type: z.literal('SOURCE_ERROR'),
+    code: DomainErrorV1Schema,
+    message: z.string().max(512),
+    receivedAt: z.string().datetime({ offset: true }),
+  }),
+]);
+
 export const SuggestionOutputV1Schema = z.strictObject({
   quick_reply: z.string().trim().min(1).max(80),
   cues: z.array(z.string().trim().min(1).max(40)).min(2).max(3),
@@ -300,3 +343,5 @@ export type GoldenSetPayloadV1 = z.infer<typeof GoldenSetPayloadV1Schema>;
 export type SourceCollectionV1 = z.infer<typeof SourceCollectionV1Schema>;
 export type RetrievalHitV1 = z.infer<typeof RetrievalHitV1Schema>;
 export type RetrievalResultV1 = z.infer<typeof RetrievalResultV1Schema>;
+export type SourceComment = z.infer<typeof SourceCommentSchema>;
+export type LiveSourceEvent = z.infer<typeof LiveSourceEventSchema>;
