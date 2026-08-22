@@ -1,19 +1,25 @@
-import { useState, useEffect, type KeyboardEvent } from 'react'
+import { useState, useEffect, type KeyboardEvent, type ComponentType } from 'react'
+import { NAV_ITEMS, type PageName } from './nav'
+import RunPage from './pages/RunPage'
+import RoomAiPage from './pages/RoomAiPage'
+import PersonaPage from './pages/PersonaPage'
+import SafetyPage from './pages/SafetyPage'
+import PreferencesPage from './pages/PreferencesPage'
+import DiagnosticsPage from './pages/DiagnosticsPage'
+import AuditPage from './pages/AuditPage'
 
-declare global {
-  interface Window {
-    echocue: {
-      window: {
-        close: () => void
-        minimize: () => void
-        maximize: () => void
-        onMaximizeChange: (cb: (isMax: boolean) => void) => void
-      }
-    }
-  }
+const pages: Record<PageName, ComponentType> = {
+  运行: RunPage,
+  直播间: RoomAiPage,
+  团队与人设: PersonaPage,
+  安全与禁忌: SafetyPage,
+  浮窗偏好: PreferencesPage,
+  诊断: DiagnosticsPage,
+  审计追溯: AuditPage,
 }
 
 function App() {
+  const [page, setPage] = useState<PageName>('运行')
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
@@ -28,6 +34,8 @@ function App() {
       }
     }
   }
+
+  const CurrentPage = pages[page]
 
   return (
     <div className="app">
@@ -60,12 +68,23 @@ function App() {
         </div>
         <strong className="titlebar-title">Echocue</strong>
       </header>
-      <div className="content" style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-        <h1>Echocue Main Window</h1>
-        <p>Electron + Vite + React + TypeScript 工程基线已建立</p>
-        <p>Context isolation: enabled ✓</p>
-        <p>Node integration: disabled ✓</p>
-      </div>
+      <aside role="navigation">
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={item === page ? 'active' : undefined}
+            aria-current={item === page ? 'page' : undefined}
+            onClick={() => setPage(item)}
+            onKeyDown={handleKeyActivate(() => setPage(item))}
+          >
+            {item}
+          </button>
+        ))}
+      </aside>
+      <article>
+        <CurrentPage />
+      </article>
     </div>
   )
 }

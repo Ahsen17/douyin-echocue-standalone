@@ -1,33 +1,43 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ConnectionTestResultV1, ServiceViewState } from '@echocue/contracts'
+import { IpcChannel } from '../shared/ipc-channels.js'
 
-contextBridge.exposeInMainWorld('echocue', {
+const echocueApi = {
   window: {
-    close: () => ipcRenderer.send('window:close'),
-    minimize: () => ipcRenderer.send('window:minimize'),
-    maximize: () => ipcRenderer.send('window:maximize'),
+    close: () => ipcRenderer.send(IpcChannel.WindowClose),
+    minimize: () => ipcRenderer.send(IpcChannel.WindowMinimize),
+    maximize: () => ipcRenderer.send(IpcChannel.WindowMaximize),
     onMaximizeChange: (cb: (isMax: boolean) => void) => {
-      ipcRenderer.on('window:maximize-changed', (_e, v) => cb(v as boolean))
+      ipcRenderer.on(IpcChannel.WindowMaximizeChanged, (_e, v) => cb(v as boolean))
     },
   },
   service: {
     subscribe: (cb: (state: ServiceViewState) => void): (() => void) => {
       const listener = (_e: unknown, state: ServiceViewState) => cb(state)
-      ipcRenderer.on('service.state.changed', listener)
-      ipcRenderer.invoke('service.state.subscribe').catch(() => undefined)
+      ipcRenderer.on(IpcChannel.ServiceStateChanged, listener)
+      ipcRenderer.invoke(IpcChannel.ServiceStateSubscribe).catch(() => undefined)
       return () => {
-        ipcRenderer.removeListener('service.state.changed', listener)
+        ipcRenderer.removeListener(IpcChannel.ServiceStateChanged, listener)
       }
     },
-    start: () => ipcRenderer.invoke('service.start') as Promise<ServiceViewState>,
-    stop: () => ipcRenderer.invoke('service.stop') as Promise<ServiceViewState>,
+    start: () => ipcRenderer.invoke(IpcChannel.ServiceStart) as Promise<ServiceViewState>,
+    stop: () => ipcRenderer.invoke(IpcChannel.ServiceStop) as Promise<ServiceViewState>,
   },
   provider: {
     setApiKey: (providerId: string, apiKey: string) =>
-      ipcRenderer.invoke('provider.credential.set', { providerId, apiKey }),
+      ipcRenderer.invoke(IpcChannel.ProviderCredentialSet, {
+        providerId,
+        apiKey,
+      }) as Promise<{ apiKeyConfigured: boolean }>,
     clearApiKey: (providerId: string) =>
-      ipcRenderer.invoke('provider.credential.clear', { providerId }),
+      ipcRenderer.invoke(IpcChannel.ProviderCredentialClear, {
+        providerId,
+      }) as Promise<{ apiKeyConfigured: boolean }>,
     testConnection: () =>
-      ipcRenderer.invoke('provider.credential.test') as Promise<ConnectionTestResultV1>,
+      ipcRenderer.invoke(IpcChannel.ProviderCredentialTest) as Promise<ConnectionTestResultV1>,
   },
-})
+}
+
+export type EchocueApi = typeof echocueApi
+
+contextBridge.exposeInMainWorld('echocue', echocueApi)

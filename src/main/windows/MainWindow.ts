@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
+import { IpcChannel } from '../../shared/ipc-channels.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -43,19 +44,19 @@ export class MainWindow {
 
     this.window.on('maximize', () => {
       this._isMaximized = true
-      this.window?.webContents.send('window:maximize-changed', true)
+      this.window?.webContents.send(IpcChannel.WindowMaximizeChanged, true)
     })
 
     this.window.on('unmaximize', () => {
       this._isMaximized = false
-      this.window?.webContents.send('window:maximize-changed', false)
+      this.window?.webContents.send(IpcChannel.WindowMaximizeChanged, false)
     })
   }
 
   private registerIpcHandlers(): void {
-    ipcMain.on('window:close', () => this.hide())
-    ipcMain.on('window:minimize', () => this.minimize())
-    ipcMain.on('window:maximize', () => this.toggleMaximize())
+    ipcMain.on(IpcChannel.WindowClose, () => this.hide())
+    ipcMain.on(IpcChannel.WindowMinimize, () => this.minimize())
+    ipcMain.on(IpcChannel.WindowMaximize, () => this.toggleMaximize())
   }
 
   public getWindow(): BrowserWindow | null {
@@ -87,9 +88,9 @@ export class MainWindow {
   }
 
   public destroy(): void {
-    ipcMain.removeAllListeners('window:close')
-    ipcMain.removeAllListeners('window:minimize')
-    ipcMain.removeAllListeners('window:maximize')
+    ipcMain.removeAllListeners(IpcChannel.WindowClose)
+    ipcMain.removeAllListeners(IpcChannel.WindowMinimize)
+    ipcMain.removeAllListeners(IpcChannel.WindowMaximize)
     this.window?.destroy()
     this.window = null
   }

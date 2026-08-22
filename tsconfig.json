@@ -19,5 +19,5 @@
       "@echocue/contracts": ["./src/contracts/src/index.ts"]
     }
   },
-  "include": ["src/renderer", "src/contracts/src"]
+  "include": ["src/renderer", "src/contracts/src", "src/shared"]
 }
