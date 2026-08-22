@@ -10,4 +10,11 @@ export {
   docTermWeight,
 } from './bm25-weights.js';
 export type { DocumentVector, TokenCollision } from './bm25-weights.js';
-export type { Bm25Analysis } from './types.js';
+export { importPreSet } from './pre-set-importer.js';
+export type {
+  PreSetImportError,
+  PreSetImportErrorCode,
+  PreSetImportOptions,
+  PreSetImportResult,
+} from './pre-set-importer.js';
+export type { Bm25Analysis, PreSetEntryV1 } from './types.js';
