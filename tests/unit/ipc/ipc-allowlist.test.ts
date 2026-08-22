@@ -103,6 +103,9 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     for (const broadcast of BROADCAST_ONLY) {
       expect(mocks.registered.has(broadcast)).toBe(false);
     }
+    // A channel outside the allowlist has no handler, so Electron rejects an
+    // invoke with "No handler registered" — the renderer gets a rejection.
+    expect(mocks.registered.has('some.unknown.channel')).toBe(false);
   });
 
   it('wires each control to exactly its own channels', () => {

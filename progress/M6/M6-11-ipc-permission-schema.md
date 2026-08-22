@@ -38,7 +38,8 @@ IPC 权限模型已实现（`createGuardedHandler` + 9 个 `wire*Control` + over
 - `npm run typecheck`：零错误
 - `npm run test:contracts`：149 passed
 - `npm run test`：899 passed / 15 todo（todo 与 2 个 skip 均为既有、与 IPC 无关）
-- 新增/扩展 34 个测试全部通过
+- 新增 30 个用例 + 扩展 guarded-handler 2 个用例；6 个测试文件共 34 个用例全部通过
+- Subagent 严格审查第一轮：无阻断项，通过（补充未知 channel 断言后进入第二轮复核）
 
 ## 追溯
 - CONTRACT §7（IPC 白名单/发送方校验）、ARCH §8（安全与 IPC）
