@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "validatorVersion": "SuggestionOutputValidatorV1",
+  "note": "Shared output validator fixtures (T-PROV-001). Candidate fields are display content only; no credentials or trace_id in plaintext snapshots.",
+  "defaults": {
+    "persona": {
+      "personaId": "p-1",
+      "personaVersion": "01932a3b-4c5d-7000-8000-000000000002",
+      "content": "你是一个温柔、爱笑的直播出镜人员，语气亲切自然。",
+      "contentHmac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    "safety": {
+      "version": "01932a3b-4c5d-7000-8000-000000000003",
+      "policyText": "不讨论医疗、金融、政治与竞品话题。",
+      "keywords": [
+        "加微信",
+        "私聊"
+      ]
+    },
+    "members": [
+      {
+        "personaId": "p-1",
+        "displayName": "主播A",
+        "enabledAliases": [
+          "阿A",
+          "A姐"
+        ]
+      },
+      {
+        "personaId": "p-2",
+        "displayName": "主播B",
+        "enabledAliases": [
+          "小B"
+        ]
+      }
+    ],
+    "forbiddenPromiseTerms": [
+      "保证返利",
+      "承诺保本"
+    ],
+    "context": {
+      "expected": {
+        "sessionId": "01932a3b-4c5d-7000-8000-000000000100",
+        "traceId": "01932a3b-4c5d-7000-8000-000000000101",
+        "windowVersion": 1
+      },
+      "actual": {
+        "sessionId": "01932a3b-4c5d-7000-8000-000000000100",
+        "traceId": "01932a3b-4c5d-7000-8000-000000000101",
+        "windowVersion": 1
+      },
+      "nowMonotonicMs": 1000,
+      "freshnessDeadlineMonotonicMs": 10000
+    }
+  },
+  "cases": [
+    {
+      "id": "valid-llm-output",
+      "source": "llm",
+      "candidate": {
+        "quick_reply": "谢谢你一直在呀，我也很开心看到你",
+        "cues": [
+          "接住陪伴",
+          "自然带动互动"
+        ]
+      },
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "id": "valid-golden-direct-shared",
+      "source": "retrieval_payload",
+      "candidate": {
+        "quick_reply": "谢谢你！",
+        "cues": [
+          "接住夸奖",
+          "继续互动"
+        ]
+      },
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "id": "quick-reply-too-long-han",
+      "candidate": {
+        "quick_reply": "汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉汉",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "QUICK_REPLY_TOO_LONG"
+        ]
+      }
+    },
+    {
+      "id": "ext-b-han-not-double-counted",
+      "candidate": {
+        "quick_reply": "𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀𠀀",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": true
+      }
+    },
+    {
+      "id": "extra-field-rejected",
+      "candidate": {
+        "quick_reply": "谢谢你",
+        "cues": [
+          "一",
+          "二"
+        ],
+        "extra": "should be rejected"
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "JSON_SCHEMA_FAILED"
+        ]
+      }
+    },
+    {
+      "id": "empty-quick-reply-only-punctuation",
+      "candidate": {
+        "quick_reply": "！！！",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "EMPTY_QUICK_REPLY"
+        ]
+      }
+    },
+    {
+      "id": "cue-count-invalid-one",
+      "candidate": {
+        "quick_reply": "谢谢你",
+        "cues": [
+          "只有一条"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "CUE_COUNT_INVALID"
+        ]
+      }
+    },
+    {
+      "id": "cue-too-long-han",
+      "candidate": {
+        "quick_reply": "谢谢你",
+        "cues": [
+          "这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这这",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "CUE_TOO_LONG"
+        ]
+      }
+    },
+    {
+      "id": "cue-duplicate",
+      "candidate": {
+        "quick_reply": "谢谢你",
+        "cues": [
+          "重复提词",
+          "重复提词"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "CUE_DUPLICATE"
+        ]
+      }
+    },
+    {
+      "id": "unsafe-control-char",
+      "candidate": {
+        "quick_reply": "谢谢你\u0000",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "UNSAFE_CONTROL_CHAR"
+        ]
+      }
+    },
+    {
+      "id": "pii-output",
+      "candidate": {
+        "quick_reply": "加我微信号 123456",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "PERSONAL_INFO_HIT"
+        ]
+      }
+    },
+    {
+      "id": "forbidden-policy-hit",
+      "candidate": {
+        "quick_reply": "想了解就私聊我",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "FORBIDDEN_POLICY_HIT"
+        ]
+      }
+    },
+    {
+      "id": "other-member-mention",
+      "candidate": {
+        "quick_reply": "欢迎主播B来到直播间",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "PERSONA_REVIEW_UNCERTAIN"
+        ]
+      }
+    },
+    {
+      "id": "forbidden-promise-term",
+      "candidate": {
+        "quick_reply": "买了保证返利给你",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "expected": {
+        "ok": false,
+        "reasonCodes": [
+          "PERSONA_REVIEW_UNCERTAIN"
+        ]
+      }
+    },
+    {
+      "id": "stale-window",
+      "candidate": {
+        "quick_reply": "谢谢你",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "contextOverrides": {
+        "actualWindowVersion": 2
+      },
+      "expected": {
+        "ok": false,
+        "stale": "STALE_WINDOW"
+      }
+    },
+    {
+      "id": "stale-trace",
+      "candidate": {
+        "quick_reply": "谢谢你",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "contextOverrides": {
+        "actualTraceId": "01932a3b-4c5d-7000-8000-000000000222"
+      },
+      "expected": {
+        "ok": false,
+        "stale": "STALE_SESSION"
+      }
+    },
+    {
+      "id": "deadline-exceeded",
+      "candidate": {
+        "quick_reply": "谢谢你",
+        "cues": [
+          "一",
+          "二"
+        ]
+      },
+      "contextOverrides": {
+        "nowMonotonicMs": 20000
+      },
+      "expected": {
+        "ok": false,
+        "stale": "DEADLINE_EXCEEDED"
+      }
+    }
+  ]
+}

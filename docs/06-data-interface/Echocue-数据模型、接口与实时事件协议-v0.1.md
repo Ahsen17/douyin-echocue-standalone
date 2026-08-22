@@ -71,6 +71,18 @@ type TraceReasonCodeV1 =
   | 'AUDIT_FAILURE' | 'SOURCE_ERROR' | 'ROOM_ENDED' | 'USER_STOPPED';
 type OutboxJobStateV1 = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 type OutboxActionV1 = 'UPSERT' | 'SET_BAD_CASE';
+type OutputValidationReasonV1 =
+  | 'JSON_PARSE_FAILED' | 'JSON_SCHEMA_FAILED' | 'UNSAFE_CONTROL_CHAR'
+  | 'EMPTY_QUICK_REPLY' | 'QUICK_REPLY_TOO_LONG'
+  | 'CUE_COUNT_INVALID' | 'CUE_EMPTY' | 'CUE_TOO_LONG' | 'CUE_DUPLICATE'
+  | 'RISK_RULE_HIT' | 'PERSONAL_INFO_HIT' | 'FORBIDDEN_POLICY_HIT'
+  | 'PERSONA_REVIEW_UNCERTAIN';
+type SuggestionSourceV1 = 'llm' | 'retrieval_payload';
+type ValidatedSuggestionV1 = {
+  quickReply: string;
+  cues: string[];
+  source: SuggestionSourceV1;
+};
 ```
 
 ## 3. SQLite 逻辑模型与 DDL

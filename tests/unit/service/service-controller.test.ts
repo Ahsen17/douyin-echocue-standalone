@@ -330,3 +330,50 @@ describe('ServiceController lifecycle', () => {
     expect(h.sidecar.stopCount).toBe(0);
   });
 });
+
+describe('ServiceController M5-07 integration', () => {
+  it('dispatches COMMENT events to the injected onComment while running', async () => {
+    const received: string[] = [];
+    const machine = new ServiceStateMachine();
+    const sidecar = new FakeSidecar();
+    const adapter = new FakeAdapter();
+    const controller = new ServiceController({
+      stateMachine: machine,
+      sidecar,
+      createAdapter: () => adapter,
+      checks: makeChecks(),
+      createLiveSession: async () => undefined,
+      onComment: (comment) => received.push(comment.sourceMessageId),
+      cleanupOnStop: () => undefined,
+      gateTimeoutMs: 2000,
+    });
+    const startPromise = controller.start();
+    await waitForLifecycle(machine, 'GATE_CONNECTING');
+    adapter.emit(online());
+    await startPromise;
+    adapter.emit({ type: 'COMMENT', comment: { sourceMessageId: 'm1', rawEvent: {}, rawText: 'hi', normalizedText: 'hi', receivedAt: '2026-08-22T00:00:00.000Z', receivedMonotonicMs: 1 } });
+    expect(received).toEqual(['m1']);
+  });
+
+  it('forwards the stop reason to cleanupOnStop', async () => {
+    const reasons: string[] = [];
+    const machine = new ServiceStateMachine();
+    const sidecar = new FakeSidecar();
+    const adapter = new FakeAdapter();
+    const controller = new ServiceController({
+      stateMachine: machine,
+      sidecar,
+      createAdapter: () => adapter,
+      checks: makeChecks(),
+      createLiveSession: async () => undefined,
+      cleanupOnStop: (reason) => reasons.push(reason),
+      gateTimeoutMs: 2000,
+    });
+    const startPromise = controller.start();
+    await waitForLifecycle(machine, 'GATE_CONNECTING');
+    adapter.emit(online());
+    await startPromise;
+    await controller.stop('ROOM_ENDED');
+    expect(reasons).toEqual(['ROOM_ENDED']);
+  });
+});

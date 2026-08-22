@@ -320,6 +320,28 @@ export const SuggestionOutputV1Schema = z.strictObject({
   cues: z.array(z.string().trim().min(1).max(40)).min(2).max(3),
 });
 
+// Shared output validator reason codes (LLM §5.2). Mirrors TraceReasonCodeV1's
+// role as a contract-level enum; referenced by OUTPUT_VALIDATION snapshots.
+export const OutputValidationReasonV1Schema = z.enum([
+  'JSON_PARSE_FAILED', 'JSON_SCHEMA_FAILED', 'UNSAFE_CONTROL_CHAR',
+  'EMPTY_QUICK_REPLY', 'QUICK_REPLY_TOO_LONG',
+  'CUE_COUNT_INVALID', 'CUE_EMPTY', 'CUE_TOO_LONG', 'CUE_DUPLICATE',
+  'RISK_RULE_HIT', 'PERSONAL_INFO_HIT', 'FORBIDDEN_POLICY_HIT',
+  'PERSONA_REVIEW_UNCERTAIN',
+]);
+
+export const SuggestionSourceV1Schema = z.enum(['llm', 'retrieval_payload']);
+
+// Cross-process display shape (M6-07 overlay renders this over IPC), distinct
+// from the provider wire shape SuggestionOutputV1Schema (snake_case). Length is
+// owned by the shared output validator's han-count (LLM §5.1), never by JSON
+// Schema maxLength, so only min constraints live here.
+export const ValidatedSuggestionV1Schema = z.strictObject({
+  quickReply: z.string().min(1),
+  cues: z.array(z.string().min(1)).min(2).max(3),
+  source: SuggestionSourceV1Schema,
+});
+
 export const AuditSearchRequestV1Schema = z.strictObject({
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
@@ -353,6 +375,9 @@ export type OverlayPreferenceV1 = z.infer<typeof OverlayPreferenceV1Schema>;
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 export type ServiceViewState = z.infer<typeof ServiceViewStateSchema>;
 export type SuggestionOutputV1 = z.infer<typeof SuggestionOutputV1Schema>;
+export type OutputValidationReasonV1 = z.infer<typeof OutputValidationReasonV1Schema>;
+export type SuggestionSourceV1 = z.infer<typeof SuggestionSourceV1Schema>;
+export type ValidatedSuggestionV1 = z.infer<typeof ValidatedSuggestionV1Schema>;
 export type LabelStatus = z.infer<typeof LabelStatusSchema>;
 export type TraceState = z.infer<typeof TraceStateSchema>;
 export type TraceFinalState = z.infer<typeof TraceFinalStateSchema>;
