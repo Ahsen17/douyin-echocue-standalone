@@ -1,4 +1,4 @@
-import { ConfigUpdateRequestV1Schema, type ConfigViewV1, type SettingsV1 } from '@echocue/contracts';
+import { ConfigUpdateRequestV1Schema, type ConfigViewV1, type ProviderConfigV1, type SettingsV1 } from '@echocue/contracts';
 import type { ProviderConfigService } from '../provider/provider-config.js';
 import { CredentialStore } from '../credentials/index.js';
 import { ConfigCorruptError, SettingsStore } from './SettingsStore.js';
@@ -37,12 +37,34 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         throw new Error('配置内容不合法，请检查输入后再保存');
       }
       const { roomReference, provider } = parsed.data;
-      if (provider !== undefined) {
-        // Provider config write (providerId derivation + credentialRef) lands in M6-03.
-        throw new Error('提供商配置暂不可保存，请稍后再试');
-      }
-      if (roomReference !== undefined) {
-        await deps.settings.update({ roomReference });
+      try {
+        if (provider !== undefined) {
+          const currentProvider = await deps.providerConfig.getProviderConfig();
+          const providerId = slugifyProviderId(provider.displayName);
+          // Keep the stored credentialRef when the provider identity is unchanged;
+          // a host/adapter change invalidates the old key inside updateProviderConfig.
+          const credentialRef =
+            currentProvider?.providerId === providerId
+              ? currentProvider.credentialRef
+              : CredentialStore.buildCredentialRef(providerId);
+          const next: ProviderConfigV1 = {
+            providerId,
+            displayName: provider.displayName,
+            adapterType: provider.adapterType,
+            baseUrl: provider.baseUrl,
+            modelId: provider.modelId,
+            credentialRef,
+          };
+          await deps.providerConfig.updateProviderConfig(next);
+        }
+        if (roomReference !== undefined) {
+          await deps.settings.update({ roomReference });
+        }
+      } catch (err) {
+        if (err instanceof ConfigCorruptError) {
+          throw new Error('配置读取失败，请检查设置文件或恢复默认设置');
+        }
+        throw err;
       }
       return this.get();
     },
@@ -69,4 +91,15 @@ async function isApiKeyConfigured(
   const providerId = CredentialStore.parseCredentialRef(provider.credentialRef);
   if (!providerId) return false;
   return providerConfig.hasApiKey(providerId);
+}
+
+// Derive a stable providerId from the display name (CredentialStore providerId
+// rule ^[a-z0-9_-]{1,64}$); a non-ASCII/empty slug falls back to 'default'.
+function slugifyProviderId(displayName: string): string {
+  const slug = displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return slug.length > 0 ? slug : 'default';
 }

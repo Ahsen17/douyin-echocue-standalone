@@ -74,17 +74,101 @@ describe('Config IPC handlers', () => {
     expect(view.apiKeyConfigured).toBe(true);
   });
 
-  it('update rejects provider writes in this milestone (M6-03)', async () => {
+  it('update persists a provider with a derived providerId and credentialRef', async () => {
+    const view = await handlers.update({
+      provider: {
+        displayName: 'DeepSeek 首选',
+        adapterType: 'DEEPSEEK',
+        baseUrl: 'https://api.deepseek.com',
+        modelId: 'deepseek-chat',
+      },
+    });
+    expect(view.provider?.displayName).toBe('DeepSeek 首选');
+    expect(view.provider?.providerId).toBe('deepseek'); // ASCII parts survive the slug
+    expect(view.provider?.credentialRef).toContain('safe-storage:');
+  });
+
+  it('update falls back to default providerId for a fully non-ASCII name', async () => {
+    const view = await handlers.update({
+      provider: {
+        displayName: '首选模型服务',
+        adapterType: 'DEEPSEEK',
+        baseUrl: 'https://api.deepseek.com',
+        modelId: 'deepseek-chat',
+      },
+    });
+    expect(view.provider?.providerId).toBe('default');
+  });
+
+  it('update keeps the stored credentialRef when providerId is unchanged', async () => {
+    await providerConfig.updateProviderConfig(VALID_PROVIDER_CONFIG);
+    const view = await handlers.update({
+      provider: {
+        displayName: 'deepseek-primary', // slug → same providerId
+        adapterType: 'DEEPSEEK',
+        baseUrl: 'https://api.deepseek.com/v2',
+        modelId: 'deepseek-chat-v2',
+      },
+    });
+    expect(view.provider?.providerId).toBe('deepseek-primary');
+    expect(view.provider?.credentialRef).toBe('safe-storage:deepseek-primary');
+    expect(view.provider?.baseUrl).toBe('https://api.deepseek.com/v2');
+  });
+
+  it('update changes providerId and credentialRef when the slug differs', async () => {
+    await providerConfig.updateProviderConfig(VALID_PROVIDER_CONFIG);
+    const view = await handlers.update({
+      provider: {
+        displayName: 'openai-compatible',
+        adapterType: 'OPENAI_COMPATIBLE',
+        baseUrl: 'https://api.openai.com',
+        modelId: 'gpt-4o-mini',
+      },
+    });
+    expect(view.provider?.providerId).toBe('openai-compatible');
+    expect(view.provider?.credentialRef).toBe('safe-storage:openai-compatible');
+  });
+
+  it('update preserves a stored key when host/adapter are unchanged', async () => {
+    await providerConfig.updateProviderConfig(VALID_PROVIDER_CONFIG);
+    await providerConfig.setApiKey('deepseek-primary', 'sk-secret');
+    const view = await handlers.update({
+      provider: {
+        displayName: 'deepseek-primary',
+        adapterType: 'DEEPSEEK',
+        baseUrl: 'https://api.deepseek.com',
+        modelId: 'deepseek-chat',
+      },
+    });
+    expect(view.apiKeyConfigured).toBe(true);
+    expect(JSON.stringify(view)).not.toContain('sk-secret');
+  });
+
+  it('update invalidates a stored key when the host changes under the same providerId', async () => {
+    await providerConfig.updateProviderConfig(VALID_PROVIDER_CONFIG);
+    await providerConfig.setApiKey('deepseek-primary', 'sk-secret');
+    const view = await handlers.update({
+      provider: {
+        displayName: 'deepseek-primary',
+        adapterType: 'DEEPSEEK',
+        baseUrl: 'https://api.deepseek.com/v2',
+        modelId: 'deepseek-chat-v2',
+      },
+    });
+    expect(view.apiKeyConfigured).toBe(false);
+  });
+
+  it('update rejects unsupported ANTHROPIC_MESSAGES adapter', async () => {
     await expect(
       handlers.update({
         provider: {
-          displayName: 'X',
-          adapterType: 'DEEPSEEK',
-          baseUrl: 'https://api.x.com',
-          modelId: 'm',
+          displayName: 'Anthropic',
+          adapterType: 'ANTHROPIC_MESSAGES',
+          baseUrl: 'https://api.anthropic.com',
+          modelId: 'claude',
         },
       }),
-    ).rejects.toThrow(/提供商配置暂不可保存/);
+    ).rejects.toThrow(/配置内容不合法/);
   });
 
   it('update rejects empty and unknown-field payloads', async () => {
