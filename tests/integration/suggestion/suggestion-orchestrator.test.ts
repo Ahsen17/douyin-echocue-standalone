@@ -250,14 +250,21 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
       displayDurationMs: 30,
     });
     orchestrator.handleComment(makeComment());
-    // Wait past the display duration so the timer drives finishDisplay.
-    await new Promise((resolve) => setTimeout(resolve, 80));
     const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
     try {
-      const row = reader
-        .prepare(`SELECT to_state, reason_code FROM audit_transition WHERE to_state = 'HIDDEN'`)
-        .get() as { to_state: string; reason_code: string } | undefined;
-      expect(row?.reason_code).toBe('DISPLAY_DURATION_ELAPSED');
+      // Poll until the display timer drives finishDisplay; a fixed wait is flaky
+      // on slow CI runners where DISPLAYED lands close to the read deadline.
+      const deadline = Date.now() + 5000;
+      let row: { to_state: string; reason_code: string } | undefined;
+      while (row === undefined) {
+        row = reader
+          .prepare(`SELECT to_state, reason_code FROM audit_transition WHERE to_state = 'HIDDEN'`)
+          .get() as { to_state: string; reason_code: string } | undefined;
+        if (row !== undefined) break;
+        if (Date.now() > deadline) throw new Error('HIDDEN not written within timeout');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(row.reason_code).toBe('DISPLAY_DURATION_ELAPSED');
     } finally {
       reader.close();
     }
