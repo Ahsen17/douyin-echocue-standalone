@@ -401,6 +401,7 @@ test('valid diagnostic summary with storage capacity (M6-08)', () => expectValid
   lifecycle: 'RUNNING',
   activity: 'LISTENING',
   storageAvailableBytes: 12_884_901_888,
+  storageLowSpace: false,
 }, 'with storage bytes'));
 test('rejects negative storage capacity', () => expectInvalid(DiagnosticSummaryV1Schema, {
   lifecycle: 'STOPPED',
@@ -605,6 +606,7 @@ test('valid trace summary', () => expectValid(AuditTraceSummaryV1Schema, {
   labelStatus: 'UNLABELED',
   hasSuggestion: true,
   commentText: '主播晚上好',
+  revisionCount: 0,
 }, 'valid summary'));
 test('valid trace summary without final state', () => expectValid(AuditTraceSummaryV1Schema, {
   traceId: '01932a3b-4c5d-7000-8000-000000000001',
@@ -613,13 +615,23 @@ test('valid trace summary without final state', () => expectValid(AuditTraceSumm
   labelStatus: 'NOT_APPLICABLE',
   hasSuggestion: false,
   commentText: '',
+  revisionCount: 0,
 }, 'no final state'));
 test('rejects trace summary with missing labelStatus', () => expectInvalid(AuditTraceSummaryV1Schema, {
   traceId: '01932a3b-4c5d-7000-8000-000000000001',
   receivedAt: '2026-08-22T00:00:00.000Z',
   finalState: 'FILTERED',
   hasSuggestion: false,
+  revisionCount: 0,
 }, 'missing labelStatus'));
+test('rejects trace summary with missing revisionCount', () => expectInvalid(AuditTraceSummaryV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  receivedAt: '2026-08-22T00:00:00.000Z',
+  finalState: 'FILTERED',
+  labelStatus: 'UNLABELED',
+  hasSuggestion: false,
+  commentText: '',
+}, 'missing revisionCount'));
 test('rejects trace summary with extra field', () => expectInvalid(AuditTraceSummaryV1Schema, {
   traceId: '01932a3b-4c5d-7000-8000-000000000001',
   receivedAt: '2026-08-22T00:00:00.000Z',
@@ -627,6 +639,7 @@ test('rejects trace summary with extra field', () => expectInvalid(AuditTraceSum
   labelStatus: 'UNLABELED',
   hasSuggestion: false,
   commentText: '',
+  revisionCount: 0,
   leaked: 'trace-secret',
 }, 'extra field'));
 
@@ -640,6 +653,7 @@ test('valid search response', () => expectValid(AuditSearchResponseV1Schema, {
     labelStatus: 'UNLABELED',
     hasSuggestion: true,
     commentText: '主播晚上好',
+    revisionCount: 0,
   }],
   total: 1,
   page: 1,

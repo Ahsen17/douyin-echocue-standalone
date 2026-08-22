@@ -10,6 +10,7 @@ import { useAsyncAction } from '../hooks/useAsyncAction'
 import { ErrorState, LoadingState } from '../components/StateViews'
 import {
   buildTimeline,
+  defaultRevisionCount,
   localizeFinalState,
   localizeLabelStatus,
   pageCount,
@@ -24,7 +25,7 @@ export default function AuditPage() {
   const [page, setPage] = useState(1)
   const [finalState, setFinalState] = useState<TraceFinalState | ''>('')
   const [labelStatus, setLabelStatus] = useState<LabelStatus | ''>('')
-  const [selected, setSelected] = useState<AuditTraceSummaryV1 | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [workflow, setWorkflow] = useState<AuditWorkflowV1 | null>(null)
   const [workflowError, setWorkflowError] = useState<string | null>(null)
 
@@ -79,7 +80,10 @@ export default function AuditPage() {
   }
 
   const items = result.items
-  const selectedRow = selected ?? items[0] ?? null
+  // Derive the selected row fresh from the page each render so a label save
+  // (which re-runs search) surfaces the updated labelStatus/revisionCount
+  // without an explicit local copy going stale.
+  const selectedRow = (selectedId !== null ? items.find((r) => r.traceId === selectedId) : undefined) ?? items[0] ?? null
   const totalPages = pageCount(result.total, result.pageSize)
 
   const applyFilters = (nextFinal: TraceFinalState | '', nextLabel: LabelStatus | '') => {
@@ -89,7 +93,7 @@ export default function AuditPage() {
   }
 
   const openRow = (row: AuditTraceSummaryV1) => {
-    setSelected(row)
+    setSelectedId(row.traceId)
     setWorkflow(null)
     setWorkflowError(null)
     void loadWorkflow.run(row.traceId)
@@ -269,13 +273,16 @@ function LabelForm({ row, onSaved }: { row: AuditTraceSummaryV1; onSaved: (statu
   const [saved, setSaved] = useState<LabelStatus | null>(row.labelStatus === 'UNLABELED' ? null : row.labelStatus)
 
   const submit = useAsyncAction(async () => {
-    const isRejected = !approve && !corrected
+    // A checked-but-empty correction is a plain rejection (UI §8.2): without a
+    // non-empty reply the label must never be recorded as CORRECTED/ACCEPTED.
+    const hasCorrection = corrected && reply.trim() !== ''
+    const isRejected = !approve && !hasCorrection
     const res = await window.echocue.audit.submitLabel({
       traceId: row.traceId,
-      expectedRevisionNo: row.labelStatus === 'UNLABELED' ? 0 : 1,
+      expectedRevisionNo: defaultRevisionCount(row),
       score: isRejected ? 0 : Number(score),
-      correctedQuickReply: corrected && reply.trim() !== '' ? reply.trim() : undefined,
-      correctedCues: corrected ? cues.split(/[，,·\s]+/).filter(Boolean) : undefined,
+      correctedQuickReply: hasCorrection ? reply.trim() : undefined,
+      correctedCues: hasCorrection ? cues.split(/[，,·\s]+/).filter(Boolean) : undefined,
     })
     setSaved(res.labelStatus)
     onSaved(res.labelStatus)

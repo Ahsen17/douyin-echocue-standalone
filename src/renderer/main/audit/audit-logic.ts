@@ -61,8 +61,7 @@ export function buildTimeline(workflow: AuditWorkflowV1): TimelineItem[] {
 }
 
 export function defaultRevisionCount(summary: AuditTraceSummaryV1 | null): number {
-  // Optimistic lock baseline: revision count the page observed. A loaded summary
-  // that is UNLABELED starts from 0; labeled rows start at 1 (one revision).
-  if (summary === null) return 0
-  return summary.labelStatus === 'UNLABELED' ? 0 : 1
+  // Optimistic lock baseline: the exact revision count the page observed, so
+  // edits keep succeeding after re-saves (audit.submitLabel rejects a mismatch).
+  return summary?.revisionCount ?? 0
 }

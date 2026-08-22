@@ -302,15 +302,21 @@ export class AuditStoreWorker {
    */
   searchTraces(params: AuditSearchRequestV1): AuditSearchResponseV1 {
     try {
+      // Defensive clamp: the IPC schema enforces 1-100, but direct callers must
+      // not be able to over-read.
+      const pageSize = Math.min(Math.max(params.pageSize, 1), 100);
+      const page = Math.max(params.page, 1);
       const where: string[] = [];
       const binds: Array<string | number> = [];
+      // received_at is persisted as UTC (toISOString); normalize offset datetimes
+      // to UTC so a caller sending +08:00 compares on the same timeline.
       if (params.from !== undefined) {
         where.push('received_at >= ?');
-        binds.push(params.from);
+        binds.push(new Date(params.from).toISOString());
       }
       if (params.to !== undefined) {
         where.push('received_at <= ?');
-        binds.push(params.to);
+        binds.push(new Date(params.to).toISOString());
       }
       if (params.finalState !== undefined) {
         where.push('final_state = ?');
@@ -321,7 +327,7 @@ export class AuditStoreWorker {
         binds.push(params.labelStatus);
       }
       const whereSql = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
-      const offset = (params.page - 1) * params.pageSize;
+      const offset = (page - 1) * pageSize;
 
       const countRow = this.db.prepare(`SELECT COUNT(*) as total FROM audit_trace${whereSql}`)
         .get(...binds) as { total: number };
@@ -330,7 +336,7 @@ export class AuditStoreWorker {
          FROM audit_trace${whereSql}
          ORDER BY received_at DESC
          LIMIT ? OFFSET ?`,
-      ).all(...binds, params.pageSize, offset) as Array<{
+      ).all(...binds, pageSize, offset) as Array<{
         trace_id: string;
         received_at: string;
         final_state: TraceFinalState | null;
@@ -340,6 +346,7 @@ export class AuditStoreWorker {
       const items = rows.map((row) => {
         const commentText = this.readCommentPreview(row.trace_id);
         const hasSuggestion = this.traceHasSuggestion(row.trace_id);
+        const revisionCount = this.traceRevisionCount(row.trace_id);
         return {
           traceId: row.trace_id,
           receivedAt: row.received_at,
@@ -347,9 +354,10 @@ export class AuditStoreWorker {
           labelStatus: row.label_status,
           hasSuggestion,
           commentText,
+          revisionCount,
         };
       });
-      return { items, total: countRow.total, page: params.page, pageSize: params.pageSize };
+      return { items, total: countRow.total, page, pageSize };
     } catch (err) {
       throw new AuditUnavailableError(`searchTraces failed: ${String(err)}`);
     }
@@ -412,7 +420,7 @@ export class AuditStoreWorker {
       const revisionNo = countRow.revision_count + 1;
       const feedbackId = uuidv7();
       const createdAt = new Date().toISOString();
-      const correction = this.buildCorrection(input);
+      const correction = this.buildCorrection(input, feedbackId);
       this.db.prepare(
         `INSERT INTO suggestion_feedback
           (feedback_id, trace_id, revision_no, persona_id, persona_version, quality_score,
@@ -446,16 +454,17 @@ export class AuditStoreWorker {
     }
   }
 
-  private buildCorrection(input: AuditSubmitLabelRequestV1): Uint8Array | null {
+  private buildCorrection(input: AuditSubmitLabelRequestV1, feedbackId: string): Uint8Array | null {
     if (input.correctedQuickReply === undefined || input.correctedCues === undefined) return null;
     const plaintext = Buffer.from(JSON.stringify({
       correctedQuickReply: input.correctedQuickReply,
       correctedCues: input.correctedCues,
     }), 'utf-8');
-    const snapshotId = uuidv7();
+    // AAD is the persisted row primary key (feedback_id) so the envelope stays
+    // decryptable by M7-01 reflux — never a throwaway random value.
     const envelope = this.encryptor.encrypt(
       plaintext,
-      buildAad('suggestion_feedback', snapshotId, 'CORRECTION_JSON'),
+      buildAad('suggestion_feedback', feedbackId, 'CORRECTION_JSON'),
     );
     return Buffer.from(envelope);
   }
@@ -521,6 +530,17 @@ export class AuditStoreWorker {
       return row !== undefined;
     } catch {
       return false;
+    }
+  }
+
+  private traceRevisionCount(traceId: string): number {
+    try {
+      const row = this.db.prepare(
+        `SELECT COUNT(*) as n FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(traceId) as { n: number };
+      return row.n;
+    } catch {
+      return 0;
     }
   }
 

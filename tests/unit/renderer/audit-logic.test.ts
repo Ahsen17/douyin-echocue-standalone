@@ -68,11 +68,10 @@ describe('audit-logic', () => {
   })
 
   describe('defaultRevisionCount', () => {
-    it('starts unlabeled at 0', () => {
-      expect(defaultRevisionCount({ labelStatus: 'UNLABELED' } as never)).toBe(0)
-    })
-    it('starts labeled at 1', () => {
-      expect(defaultRevisionCount({ labelStatus: 'ACCEPTED' } as never)).toBe(1)
+    it('returns the exact observed revision count (M-1 fix)', () => {
+      expect(defaultRevisionCount({ labelStatus: 'UNLABELED', revisionCount: 0 } as never)).toBe(0)
+      expect(defaultRevisionCount({ labelStatus: 'ACCEPTED', revisionCount: 1 } as never)).toBe(1)
+      expect(defaultRevisionCount({ labelStatus: 'CORRECTED', revisionCount: 2 } as never)).toBe(2)
     })
     it('handles null', () => expect(defaultRevisionCount(null)).toBe(0))
   })

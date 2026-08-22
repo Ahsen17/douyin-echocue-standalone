@@ -433,6 +433,7 @@ export const DiagnosticSummaryV1Schema = z.strictObject({
   lastE2eLatencyMs: z.number().nonnegative().optional(),
   lastDomainError: DomainErrorV1Schema.optional(),
   storageAvailableBytes: z.number().nonnegative().int().optional(),
+  storageLowSpace: z.boolean().optional(),
 });
 
 export const ServiceViewStateSchema = z.strictObject({
@@ -561,6 +562,9 @@ export const AuditTraceSummaryV1Schema = z.strictObject({
   labelStatus: LabelStatusSchema,
   hasSuggestion: z.boolean(),
   commentText: z.string().max(2000),
+  // Existing feedback revision count; the label form uses it as the optimistic
+  // lock baseline (expectedRevisionNo) so edits keep succeeding after re-save.
+  revisionCount: z.number().int().nonnegative(),
 });
 
 export const AuditSearchResponseV1Schema = z.strictObject({

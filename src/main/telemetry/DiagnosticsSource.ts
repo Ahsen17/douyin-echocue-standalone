@@ -9,6 +9,7 @@ export interface DiagnosticSummary {
   lastE2eLatencyMs?: number
   lastDomainError?: DomainErrorV1
   storageAvailableBytes?: number
+  storageLowSpace?: boolean
 }
 
 export interface StorageCapacity {
@@ -67,10 +68,9 @@ export class DiagnosticsSource {
     if (storage !== undefined && storage !== null) {
       summary.storageAvailableBytes = storage.availableBytes
       const threshold = Math.max(LOW_SPACE_MIN_BYTES, storage.totalBytes * LOW_SPACE_RATIO)
-      if (storage.availableBytes < threshold) {
-        // UI §8.1: warn but never auto-delete; keep the code visible to the operator.
-        summary.lastDomainError = 'E_STORAGE_LOW'
-      }
+      // UI §8.1: warn but never auto-delete. Kept separate from lastDomainError
+      // so a low-space warning never masks the real latest domain error.
+      summary.storageLowSpace = storage.availableBytes < threshold
     }
     return summary
   }

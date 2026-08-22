@@ -53,13 +53,15 @@ describe('T-DIAG-001: Diagnostic Data Privacy', () => {
     expect(['displayed', 'filtered', 'discarded', 'failed']).toContain(parsed.lastSuggestionResult);
   });
 
-  it('reports storage capacity and sets E_STORAGE_LOW below threshold (M6-08)', () => {
+  it('reports storage capacity and flags storageLowSpace below threshold (M6-08)', () => {
     const diagnostics = new DiagnosticsSource({
       readStorage: () => ({ availableBytes: 512 * 1024 * 1024, totalBytes: 8 * 1024 ** 3 }),
     });
     const summary = diagnostics.getSummary();
     expect(summary.storageAvailableBytes).toBe(512 * 1024 * 1024);
-    expect(summary.lastDomainError).toBe('E_STORAGE_LOW');
+    expect(summary.storageLowSpace).toBe(true);
+    // Low-space must not mask a real latest domain error.
+    expect(summary.lastDomainError).toBeUndefined();
     DiagnosticSummaryV1Schema.parse(summary);
   });
 
@@ -67,6 +69,17 @@ describe('T-DIAG-001: Diagnostic Data Privacy', () => {
     const diagnostics = new DiagnosticsSource({ readStorage: () => null });
     const summary = diagnostics.getSummary();
     expect(summary.storageAvailableBytes).toBeUndefined();
+    expect(summary.storageLowSpace).toBeUndefined();
     expect(summary.lastDomainError).toBeUndefined();
+  });
+
+  it('keeps lastDomainError intact when storage is low (M6-08)', () => {
+    const diagnostics = new DiagnosticsSource({
+      readStorage: () => ({ availableBytes: 512 * 1024 * 1024, totalBytes: 8 * 1024 ** 3 }),
+    });
+    diagnostics.recordDomainError('E_PROVIDER_TIMEOUT');
+    const summary = diagnostics.getSummary();
+    expect(summary.lastDomainError).toBe('E_PROVIDER_TIMEOUT');
+    expect(summary.storageLowSpace).toBe(true);
   });
 });

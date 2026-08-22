@@ -46,6 +46,9 @@ export default function DiagnosticsPage() {
   }
 
   const errorHint = localizeDomainError(summary.lastDomainError)
+  const lowSpaceHint = summary.storageLowSpace === true
+    ? '本机存储空间不足，可能影响后续直播。不会自动删除审计，请释放其他文件或扩容。'
+    : null
   const metrics = [
     ['运行状态', `${summary.lifecycle} / ${summary.activity}`],
     ['最近接收弹幕', summary.lastCommentReceivedAt ?? '暂无'],
@@ -70,6 +73,12 @@ export default function DiagnosticsPage() {
           </button>
         </div>
       </div>
+      {lowSpaceHint !== null ? (
+        <section className="card warning" role="alert">
+          <b>E_STORAGE_LOW</b>
+          <p>{lowSpaceHint}</p>
+        </section>
+      ) : null}
       {errorHint !== null ? (
         <section className="card warning" role="alert">
           <b>{summary.lastDomainError}</b>

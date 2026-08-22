@@ -1,6 +1,7 @@
 import {
   AuditGetWorkflowRequestV1Schema,
   AuditSearchRequestV1Schema,
+  AuditSearchResponseV1Schema,
   AuditSubmitLabelRequestV1Schema,
   AuditSubmitLabelResponseV1Schema,
 } from '@echocue/contracts';
@@ -28,7 +29,9 @@ export function createAuditControlHandlers(deps: AuditControlDeps): AuditControl
     async search(raw) {
       const parsed = AuditSearchRequestV1Schema.safeParse(raw);
       if (!parsed.success) throw new Error('审计查询参数不合法');
-      return deps.audit.searchTraces(parsed.data);
+      const result = deps.audit.searchTraces(parsed.data);
+      // Defensive: a worker bug must not leak a malformed response across IPC.
+      return AuditSearchResponseV1Schema.parse(result);
     },
     async getWorkflow(raw) {
       const parsed = AuditGetWorkflowRequestV1Schema.safeParse(raw);
