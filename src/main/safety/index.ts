@@ -36,3 +36,7 @@ export {
   type SafetyPolicyVersionMeta,
   type SafetyRuleType,
 } from './types.js';
+export { createSafetyControlHandlers } from './safety-control-handlers.js';
+export type { SafetyControlDeps, SafetyControlHandlers } from './safety-control-handlers.js';
+export { wireSafetyControl } from './safety-control-ipc.js';
+export type { SafetyControlIpcOptions } from './safety-control-ipc.js';

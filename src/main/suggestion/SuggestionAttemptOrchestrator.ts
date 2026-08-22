@@ -148,6 +148,7 @@ export class SuggestionAttemptOrchestrator {
    */
   handleComment(comment: SourceComment): void {
     if (this.session === null) return;
+    this.deps.onCommentReceived?.();
     const sessionId = this.session.sessionId;
     const traceId = uuidv7();
     const windowVersion = this.window.version;
@@ -216,6 +217,7 @@ export class SuggestionAttemptOrchestrator {
         this.snap('DECISION_JSON', 'FILTER_DECISION', safety),
         this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: safety.reason }),
       ]);
+      this.deps.onSuggestionResult?.('filtered');
       return;
     }
 
@@ -614,6 +616,10 @@ export class SuggestionAttemptOrchestrator {
           e2eMs: show.firstFrameAtMonotonicMs - attempt.comment.receivedMonotonicMs,
         }),
       ]);
+      this.deps.onSuggestionResult?.(
+        'displayed',
+        show.firstFrameAtMonotonicMs - attempt.comment.receivedMonotonicMs,
+      );
       // Display window: auto-hide after the configured duration; unref so a
       // pending timer never holds the process during tests/shutdown.
       const timer = setTimeout(
@@ -631,6 +637,7 @@ export class SuggestionAttemptOrchestrator {
   }
 
   private fail(attempt: SuggestionAttempt, reason: TraceReasonCodeV1): void {
+    this.deps.onSuggestionResult?.('failed');
     // Terminal from LLM_PENDING (the only FAILED edge).
     this.transition(attempt.comment, 'LLM_PENDING', 'FAILED', reason, [
       this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason }),
@@ -639,6 +646,7 @@ export class SuggestionAttemptOrchestrator {
   }
 
   private discard(attempt: SuggestionAttempt, reason: TraceReasonCodeV1): void {
+    this.deps.onSuggestionResult?.('discarded');
     // Close from the actual last written state (GENERATED / DISPLAY_READY / …).
     this.closeChain(attempt.comment, reason);
     this.clearAttempt();

@@ -15,6 +15,7 @@ import { SuggestionOutputValidator } from '../validation/index.js';
 import { SuggestionAttemptOrchestrator } from '../suggestion/index.js';
 import type { SuggestionDisplaySink } from '../suggestion/index.js';
 import type { CancelTraceReason } from '../validation/index.js';
+import { DiagnosticsSource } from '../telemetry/index.js';
 import { ServiceController } from './ServiceController.js';
 import type { ServiceControllerOptions } from './ServiceController.js';
 import { createLiveSessionWriter, createServiceGateChecks } from './service-gate.js';
@@ -36,6 +37,10 @@ export interface CreatedServiceController {
   readonly controller: ServiceController;
   readonly stateMachine: ServiceStateMachine;
   readonly providerConfig: ProviderConfigService;
+  readonly settings: SettingsStore;
+  readonly persona: PersonaStore;
+  readonly safety: SafetyPolicyStore;
+  readonly diagnostics: DiagnosticsSource;
   readonly shutdown: () => void;
 }
 
@@ -77,6 +82,7 @@ export async function createServiceController(
     url: `http://${QDRANT_LOOPBACK_HOST}:${QDRANT_HTTP_PORT}`,
   });
 
+  const diagnostics = new DiagnosticsSource();
   const stateMachine = new ServiceStateMachine();
   const checks = createServiceGateChecks({
     settings,
@@ -118,6 +124,9 @@ export async function createServiceController(
       // Audit down ⇒ stop producing suggestions; service must not continue.
       void controller.stop('AUDIT_UNAVAILABLE');
     },
+    // Diagnostics (M6-02): feed the anonymous run summary from the real-time path.
+    onCommentReceived: () => diagnostics.recordCommentReceived(),
+    onSuggestionResult: (result, e2eLatencyMs) => diagnostics.recordSuggestion(result, e2eLatencyMs),
   });
 
   const createLiveSession = async (params: { roomReference: string; platformRoomId?: string }) => {
@@ -146,7 +155,7 @@ export async function createServiceController(
     safety.close();
   };
 
-  return { controller, stateMachine, providerConfig, shutdown };
+  return { controller, stateMachine, providerConfig, settings, persona, safety, diagnostics, shutdown };
 }
 
 /** M5-07 stub: acknowledges first frame immediately; M6-07 replaces it. */

@@ -1,4 +1,6 @@
 import { ipcMain, type WebContents } from 'electron';
+import { IpcChannel } from '../../shared/ipc-channels.js';
+import { createGuardedHandler } from '../ipc/guarded-handler.js';
 import type { ServiceController } from './ServiceController.js';
 
 export interface ServiceControlIpcOptions {
@@ -10,17 +12,7 @@ export interface ServiceControlIpcOptions {
 export function wireServiceControl(options: ServiceControlIpcOptions): void {
   const { controller, isTrustedSender } = options;
 
-  ipcMain.handle('service.start', (event) => {
-    if (!isTrustedSender(event.sender)) {
-      throw new Error('service.start rejected: untrusted sender');
-    }
-    return controller.start();
-  });
+  ipcMain.handle(IpcChannel.ServiceStart, createGuardedHandler(isTrustedSender, () => controller.start()));
 
-  ipcMain.handle('service.stop', (event) => {
-    if (!isTrustedSender(event.sender)) {
-      throw new Error('service.stop rejected: untrusted sender');
-    }
-    return controller.stop();
-  });
+  ipcMain.handle(IpcChannel.ServiceStop, createGuardedHandler(isTrustedSender, () => controller.stop()));
 }

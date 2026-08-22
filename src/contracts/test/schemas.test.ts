@@ -7,6 +7,26 @@ import {
   SettingsV1Schema,
   ServiceViewStateSchema,
   ProviderConfigV1Schema,
+  ConfigViewV1Schema,
+  ConfigUpdateRequestV1Schema,
+  ProviderConfigInputV1Schema,
+  PersonaSummaryV1Schema,
+  AliasInputV1Schema,
+  AliasRowV1Schema,
+  PersonaVersionMetaV1Schema,
+  VersionComparisonV1Schema,
+  PersonaDetailV1Schema,
+  PersonaCreateRequestV1Schema,
+  PersonaSaveDraftRequestV1Schema,
+  PersonaUpdateAliasesRequestV1Schema,
+  CompileErrorV1Schema,
+  SafetyPolicyVersionMetaV1Schema,
+  SafetyPolicyCurrentV1Schema,
+  SafetyPolicyViewV1Schema,
+  SafetySaveDraftRequestV1Schema,
+  SafetyPublishRequestV1Schema,
+  SafetySaveDraftResultV1Schema,
+  DiagnosticSummaryV1Schema,
   ConnectionTestResultV1Schema,
   ProviderFixtureCaseV1Schema,
   ProviderFixtureResponseV1Schema,
@@ -94,6 +114,292 @@ test('valid minimal settings', () => expectValid(SettingsV1Schema, VALID_SETTING
 test('valid settings with provider', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, provider: VALID_PROVIDER }, 'with provider'));
 test('rejects wrong schemaVersion', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, schemaVersion: 2 }, 'schemaVersion 2'));
 test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, extra: true }, 'extra field'));
+
+// ConfigViewV1 (UI §7.1 view)
+console.log('\nConfigViewV1Schema');
+test('valid config view', () => expectValid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+  apiKeyConfigured: false,
+}, 'valid'));
+test('valid config view with provider', () => expectValid(ConfigViewV1Schema, {
+  roomReference: 'room-1',
+  provider: VALID_PROVIDER,
+  overlay: VALID_OVERLAY,
+  apiKeyConfigured: true,
+}, 'with provider'));
+test('rejects internalRetrieval in config view', () => expectInvalid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+  apiKeyConfigured: false,
+  internalRetrieval: { calibrationVersion: 'v1', directPushThreshold: 0.85, windowMaxAgeMs: 5000, candidateMaxCount: 10 },
+}, 'internalRetrieval leaks'));
+test('rejects missing apiKeyConfigured', () => expectInvalid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+}, 'missing apiKeyConfigured'));
+
+// ProviderConfigInputV1 (user-submitted provider fields)
+console.log('\nProviderConfigInputV1Schema');
+test('valid provider input', () => expectValid(ProviderConfigInputV1Schema, {
+  displayName: 'DeepSeek',
+  adapterType: 'DEEPSEEK',
+  baseUrl: 'https://api.deepseek.com',
+  modelId: 'deepseek-chat',
+}, 'valid'));
+test('rejects ANTHROPIC_MESSAGES adapter input', () => expectInvalid(ProviderConfigInputV1Schema, {
+  displayName: 'Anthropic',
+  adapterType: 'ANTHROPIC_MESSAGES',
+  baseUrl: 'https://api.anthropic.com',
+  modelId: 'claude',
+}, 'anthropic adapter'));
+test('rejects http provider input baseUrl', () => expectInvalid(ProviderConfigInputV1Schema, {
+  displayName: 'DeepSeek',
+  adapterType: 'DEEPSEEK',
+  baseUrl: 'http://api.deepseek.com',
+  modelId: 'deepseek-chat',
+}, 'http url'));
+test('rejects provider input with credentialRef', () => expectInvalid(ProviderConfigInputV1Schema, {
+  displayName: 'DeepSeek',
+  adapterType: 'DEEPSEEK',
+  baseUrl: 'https://api.deepseek.com',
+  modelId: 'deepseek-chat',
+  credentialRef: 'safe-storage:x',
+}, 'credentialRef not user-submitted'));
+
+// ConfigUpdateRequestV1
+console.log('\nConfigUpdateRequestV1Schema');
+test('valid roomReference-only update', () => expectValid(ConfigUpdateRequestV1Schema, { roomReference: 'room-1' }, 'room only'));
+test('valid provider-only update', () => expectValid(ConfigUpdateRequestV1Schema, {
+  provider: {
+    displayName: 'DeepSeek',
+    adapterType: 'DEEPSEEK',
+    baseUrl: 'https://api.deepseek.com',
+    modelId: 'deepseek-chat',
+  },
+}, 'provider only'));
+test('rejects empty update', () => expectInvalid(ConfigUpdateRequestV1Schema, {}, 'empty'));
+test('rejects unknown field', () => expectInvalid(ConfigUpdateRequestV1Schema, { roomReference: 'room-1', foo: 1 }, 'unknown field'));
+
+// PersonaSummaryV1 (M6-02 run page, M6-04 persona page)
+console.log('\nPersonaSummaryV1Schema');
+test('valid persona summary', () => expectValid(PersonaSummaryV1Schema, {
+  personaId: 'p-1',
+  displayName: '小A',
+  isPrincipal: true,
+  activeVersion: null,
+  createdAt: '2026-08-22T00:00:00.000Z',
+  updatedAt: '2026-08-22T00:00:00.000Z',
+  aliasCount: 0,
+  versionCount: 1,
+}, 'valid'));
+test('rejects persona summary missing isPrincipal', () => expectInvalid(PersonaSummaryV1Schema, {
+  personaId: 'p-1',
+  displayName: '小A',
+  activeVersion: null,
+  createdAt: '2026-08-22T00:00:00.000Z',
+  updatedAt: '2026-08-22T00:00:00.000Z',
+  aliasCount: 0,
+  versionCount: 1,
+}, 'missing isPrincipal'));
+
+// Persona aliases and versions (M6-04)
+console.log('\nPersona alias schemas');
+test('valid alias input', () => expectValid(AliasInputV1Schema, {
+  aliasText: '阿A', aliasKind: 'NICKNAME', enabled: true,
+}, 'valid'));
+test('rejects alias input with unknown kind', () => expectInvalid(AliasInputV1Schema, {
+  aliasText: 'x', aliasKind: 'DISPLAY',
+}, 'unknown kind'));
+test('valid alias row', () => expectValid(AliasRowV1Schema, {
+  aliasId: 'a-1', personaId: 'p-1', aliasText: '阿A', aliasKind: 'NICKNAME', enabled: true,
+}, 'valid'));
+test('rejects alias row missing enabled', () => expectInvalid(AliasRowV1Schema, {
+  aliasId: 'a-1', personaId: 'p-1', aliasText: '阿A', aliasKind: 'NICKNAME',
+}, 'missing enabled'));
+
+console.log('\nPersonaVersionMetaV1Schema');
+test('valid version meta', () => expectValid(PersonaVersionMetaV1Schema, {
+  personaVersion: 'v-1', personaId: 'p-1', status: 'PUBLISHED',
+  contentHmac: 'hmac', createdAt: '2026-08-22T00:00:00.000Z',
+  publishedAt: '2026-08-22T00:00:00.000Z', createdFromVersion: null,
+}, 'valid'));
+test('rejects unknown version status', () => expectInvalid(PersonaVersionMetaV1Schema, {
+  personaVersion: 'v-1', personaId: 'p-1', status: 'ACTIVE',
+  contentHmac: 'hmac', createdAt: '2026-08-22T00:00:00.000Z',
+  publishedAt: null, createdFromVersion: null,
+}, 'unknown status'));
+test('valid version comparison', () => expectValid(VersionComparisonV1Schema, {
+  a: { personaVersion: 'v1', personaId: 'p-1', status: 'PUBLISHED', contentHmac: 'h1', createdAt: '2026-08-22T00:00:00.000Z', publishedAt: null, createdFromVersion: null },
+  b: { personaVersion: 'v2', personaId: 'p-1', status: 'SUPERSEDED', contentHmac: 'h2', createdAt: '2026-08-22T00:00:00.000Z', publishedAt: null, createdFromVersion: 'v1' },
+  sameContent: false,
+}, 'valid'));
+test('valid persona detail', () => expectValid(PersonaDetailV1Schema, {
+  summary: {
+    personaId: 'p-1', displayName: '小A', isPrincipal: true, activeVersion: null,
+    createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:00:00.000Z',
+    aliasCount: 0, versionCount: 0,
+  },
+  aliases: [],
+  versions: [],
+  editableContent: '',
+}, 'valid'));
+test('rejects persona detail missing editableContent', () => expectInvalid(PersonaDetailV1Schema, {
+  summary: {
+    personaId: 'p-1', displayName: '小A', isPrincipal: true, activeVersion: null,
+    createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:00:00.000Z',
+    aliasCount: 0, versionCount: 0,
+  },
+  aliases: [],
+  versions: [],
+}, 'missing editableContent'));
+
+console.log('\nPersona request schemas');
+test('valid persona create with aliases', () => expectValid(PersonaCreateRequestV1Schema, {
+  displayName: '小A',
+  aliases: [{ aliasText: '阿A', aliasKind: 'NICKNAME' }],
+}, 'with aliases'));
+test('rejects persona create with empty name', () => expectInvalid(PersonaCreateRequestV1Schema, {
+  displayName: '   ',
+}, 'empty name'));
+test('valid saveDraft with content', () => expectValid(PersonaSaveDraftRequestV1Schema, {
+  personaId: 'p-1', content: '温柔',
+}, 'content'));
+test('valid saveDraft with fromVersion', () => expectValid(PersonaSaveDraftRequestV1Schema, {
+  personaId: 'p-1', fromVersion: 'v-1',
+}, 'fromVersion'));
+test('rejects saveDraft with neither content nor fromVersion', () => expectInvalid(PersonaSaveDraftRequestV1Schema, {
+  personaId: 'p-1',
+}, 'neither'));
+test('valid updateAliases request', () => expectValid(PersonaUpdateAliasesRequestV1Schema, {
+  personaId: 'p-1',
+  aliases: [{ aliasText: '阿A', aliasKind: 'NICKNAME' }],
+}, 'valid'));
+test('accepts empty alias list to clear all aliases', () => expectValid(PersonaUpdateAliasesRequestV1Schema, {
+  personaId: 'p-1', aliases: [],
+}, 'clear all'));
+test('rejects updateAliases with an invalid alias kind', () => expectInvalid(PersonaUpdateAliasesRequestV1Schema, {
+  personaId: 'p-1',
+  aliases: [{ aliasText: 'x', aliasKind: 'DISPLAY' }],
+}, 'invalid kind'));
+
+// Safety policy view and requests (UI §7.2)
+console.log('\nCompileErrorV1Schema');
+test('valid clause compile error', () => expectValid(CompileErrorV1Schema, {
+  clauseIndex: 2, message: 'topic is ambiguous or vague',
+}, 'clause error'));
+test('valid keyword-level compile error', () => expectValid(CompileErrorV1Schema, {
+  clauseIndex: -1, message: 'invalid regex pattern for keyword #0',
+}, 'keyword error'));
+test('rejects clauseIndex below -1', () => expectInvalid(CompileErrorV1Schema, {
+  clauseIndex: -2, message: 'x',
+}, 'clauseIndex -2'));
+test('rejects fractional clauseIndex', () => expectInvalid(CompileErrorV1Schema, {
+  clauseIndex: 1.5, message: 'x',
+}, 'fractional index'));
+test('rejects empty error message', () => expectInvalid(CompileErrorV1Schema, {
+  clauseIndex: 0, message: '',
+}, 'empty message'));
+
+const SAFETY_META = {
+  safetyPolicyVersion: 'sp-1', status: 'DRAFT', compilerVersion: 'SafetyRuleCompilerV1',
+  createdAt: '2026-08-22T00:00:00.000Z', publishedAt: null,
+};
+
+console.log('\nSafetyPolicyVersionMetaV1Schema');
+test('valid safety version meta', () => expectValid(SafetyPolicyVersionMetaV1Schema, SAFETY_META, 'valid'));
+test('valid meta for every status', () => {
+  for (const status of ['DRAFT', 'PUBLISHED', 'SUPERSEDED', 'INVALID']) {
+    expectValid(SafetyPolicyVersionMetaV1Schema, {
+      ...SAFETY_META, status,
+      publishedAt: status === 'PUBLISHED' ? '2026-08-22T00:00:01.000Z' : null,
+    }, status);
+  }
+});
+test('rejects unknown safety status', () => expectInvalid(SafetyPolicyVersionMetaV1Schema, {
+  ...SAFETY_META, status: 'ACTIVE',
+}, 'unknown status'));
+
+console.log('\nSafetyPolicyCurrentV1Schema');
+test('valid safety current content', () => expectValid(SafetyPolicyCurrentV1Schema, {
+  versionId: 'sp-1', policyText: '不要讨论主播住址；禁止提及价格。', keywords: ['直播间'], validationErrors: [],
+}, 'valid'));
+test('valid current content with validation errors', () => expectValid(SafetyPolicyCurrentV1Schema, {
+  versionId: 'sp-1', policyText: '不合适的话题都不要说。', keywords: [],
+  validationErrors: [{ clauseIndex: 0, message: 'topic is ambiguous or vague' }],
+}, 'invalid draft content'));
+test('rejects keyword over 64 chars', () => expectInvalid(SafetyPolicyCurrentV1Schema, {
+  versionId: 'sp-1', policyText: '', keywords: ['x'.repeat(65)], validationErrors: [],
+}, 'keyword too long'));
+
+console.log('\nSafetyPolicyViewV1Schema');
+test('valid empty safety view', () => expectValid(SafetyPolicyViewV1Schema, {
+  activeVersion: null, current: null, versions: [],
+}, 'empty'));
+test('valid safety view with active and current', () => expectValid(SafetyPolicyViewV1Schema, {
+  activeVersion: { ...SAFETY_META, status: 'PUBLISHED', publishedAt: '2026-08-22T00:00:01.000Z' },
+  current: { versionId: 'sp-2', policyText: '', keywords: [], validationErrors: [] },
+  versions: [SAFETY_META],
+}, 'full view'));
+test('rejects compiledRules in safety view', () => expectInvalid(SafetyPolicyViewV1Schema, {
+  activeVersion: null, current: null, versions: [], compiledRules: [],
+}, 'compiledRules must not cross IPC'));
+
+console.log('\nSafety request/result schemas');
+test('valid safety saveDraft request', () => expectValid(SafetySaveDraftRequestV1Schema, {
+  policyText: '不要讨论主播住址和真实手机号；禁止回应具体交易价格。', keywords: ['直播间', 'regex:^a+$'],
+}, 'valid'));
+test('accepts empty policy and keywords', () => expectValid(SafetySaveDraftRequestV1Schema, {
+  policyText: '', keywords: [],
+}, 'empty'));
+test('rejects policy over 50000 chars', () => expectInvalid(SafetySaveDraftRequestV1Schema, {
+  policyText: 'x'.repeat(50001), keywords: [],
+}, 'policy too long'));
+test('rejects 51 keywords', () => expectInvalid(SafetySaveDraftRequestV1Schema, {
+  policyText: '', keywords: Array.from({ length: 51 }, (_, i) => `k${i}`),
+}, 'too many keywords'));
+test('rejects whitespace-only keyword', () => expectInvalid(SafetySaveDraftRequestV1Schema, {
+  policyText: '', keywords: ['   '],
+}, 'blank keyword'));
+test('valid safety publish request', () => expectValid(SafetyPublishRequestV1Schema, {
+  safetyPolicyVersion: 'sp-1',
+}, 'valid'));
+test('rejects empty safety publish version', () => expectInvalid(SafetyPublishRequestV1Schema, {
+  safetyPolicyVersion: '',
+}, 'empty version'));
+test('valid safety saveDraft result', () => expectValid(SafetySaveDraftResultV1Schema, {
+  versionMeta: SAFETY_META, valid: true, errors: [],
+}, 'valid result'));
+test('valid safety saveDraft result with errors', () => expectValid(SafetySaveDraftResultV1Schema, {
+  versionMeta: SAFETY_META, valid: false,
+  errors: [{ clauseIndex: 0, message: 'topic is ambiguous or vague' }],
+}, 'invalid result'));
+test('rejects compiledRules in saveDraft result', () => expectInvalid(SafetySaveDraftResultV1Schema, {
+  versionMeta: SAFETY_META, valid: true, errors: [], compiledRules: [],
+}, 'compiledRules leaks'));
+
+// DiagnosticSummaryV1 (UI §8.1)
+console.log('\nDiagnosticSummaryV1Schema');
+test('valid diagnostic summary minimal', () => expectValid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'STOPPED',
+  activity: 'IDLE',
+}, 'minimal'));
+test('valid diagnostic summary with activity fields', () => expectValid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'RUNNING',
+  activity: 'DISPLAYING',
+  lastCommentReceivedAt: '2026-08-22T12:00:01.000Z',
+  lastSuggestionAt: '2026-08-22T12:00:02.000Z',
+  lastSuggestionResult: 'displayed',
+  lastE2eLatencyMs: 1800,
+  lastDomainError: 'E_PROVIDER_TIMEOUT',
+}, 'with activity'));
+test('rejects diagnostic summary with comment text', () => expectInvalid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'RUNNING',
+  activity: 'LISTENING',
+  lastCommentText: '主播晚上好',
+}, 'comment text leaks'));
+test('rejects unknown lastSuggestionResult', () => expectInvalid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'STOPPED',
+  activity: 'IDLE',
+  lastSuggestionResult: 'shown',
+}, 'unknown result'));
 
 // ServiceViewStateSchema
 console.log('\nServiceViewStateSchema');

@@ -29,6 +29,10 @@ export {
   type VersionComparison,
 } from './types.js';
 export { PersonaRouter } from './PersonaRouter.js';
+export { createPersonaControlHandlers } from './persona-control-handlers.js';
+export type { PersonaControlDeps, PersonaControlHandlers } from './persona-control-handlers.js';
+export { wirePersonaControl } from './persona-control-ipc.js';
+export type { PersonaControlIpcOptions } from './persona-control-ipc.js';
 export type { PersonaRoute } from './PersonaRouter.js';
 export {
   FUZZY_MATCH_THRESHOLD,

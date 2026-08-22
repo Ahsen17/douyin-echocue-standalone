@@ -9,8 +9,11 @@ import {
   wireStateBroadcast,
   type CreatedServiceController,
 } from './service/index.js'
-import { DiagnosticsSource } from './telemetry/index.js'
+import { wireDiagnosticsControl } from './telemetry/index.js'
 import { wireProviderControl } from './provider/index.js'
+import { wireConfigControl } from './config/index.js'
+import { wirePersonaControl } from './persona/index.js'
+import { wireSafetyControl } from './safety/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -67,13 +70,20 @@ app.whenReady().then(async () => {
         /* overlay/candidates/in-flight are wired by M5/M6 */
       },
     })
-    const diagnostics = new DiagnosticsSource()
     services.stateMachine.onChanged((state) => {
-      diagnostics.updateLifecycle(state.lifecycle, state.activity)
+      services?.diagnostics.updateLifecycle(state.lifecycle, state.activity)
     })
     wireStateBroadcast({ stateMachine: services.stateMachine, isTrustedSender })
     wireServiceControl({ controller: services.controller, isTrustedSender })
     wireProviderControl({ configService: services.providerConfig, isTrustedSender })
+    wireConfigControl({
+      settings: services.settings,
+      providerConfig: services.providerConfig,
+      isTrustedSender,
+    })
+    wirePersonaControl({ persona: services.persona, isTrustedSender })
+    wireSafetyControl({ safety: services.safety, isTrustedSender })
+    wireDiagnosticsControl({ diagnostics: services.diagnostics, isTrustedSender })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble
     console.error('service bootstrap failed', err)

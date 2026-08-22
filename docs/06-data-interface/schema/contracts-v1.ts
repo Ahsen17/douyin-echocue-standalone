@@ -260,6 +260,180 @@ export const SettingsV1Schema = z.strictObject({
   }),
 });
 
+// Renderer-facing config view (UI §7.1): internalRetrieval never crosses IPC,
+// the API key surfaces only as a boolean, never its value.
+export const ConfigViewV1Schema = z.strictObject({
+  roomReference: z.string().min(1).max(128).optional(),
+  provider: ProviderConfigV1Schema.optional(),
+  activeSafetyPolicyVersion: uuidV7.optional(),
+  overlay: OverlayPreferenceV1Schema,
+  apiKeyConfigured: z.boolean(),
+});
+
+// Provider fields a user submits; providerId/credentialRef are derived by the
+// handler. ANTHROPIC_MESSAGES has no adapter (M5-04), so it is not offerable.
+export const ProviderConfigInputV1Schema = z.strictObject({
+  displayName: z.string().min(1).max(80),
+  adapterType: z.enum(['DEEPSEEK', 'OPENAI_COMPATIBLE']),
+  baseUrl: z.string().url().superRefine((value, ctx) => {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+      ctx.addIssue({ code: 'custom', message: 'Base URL must be HTTPS without userinfo, query, or fragment' });
+    }
+  }),
+  modelId: z.string().min(1).max(128),
+});
+
+export const ConfigUpdateRequestV1Schema = z.strictObject({
+  roomReference: z.string().min(1).max(128).optional(),
+  provider: ProviderConfigInputV1Schema.optional(),
+}).superRefine((value, ctx) => {
+  if (value.roomReference === undefined && value.provider === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'at least one of roomReference or provider is required' });
+  }
+});
+
+// Persona summary for list views (M6-02 run page, M6-04 persona page). Mirrors
+// PersonaStore.PersonaSummary without internal fields.
+export const PersonaSummaryV1Schema = z.strictObject({
+  personaId: z.string().min(1).max(64),
+  displayName: z.string().min(1).max(80),
+  isPrincipal: z.boolean(),
+  activeVersion: z.string().min(1).max(128).nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
+  aliasCount: z.number().int().min(0),
+  versionCount: z.number().int().min(0),
+});
+
+export const AliasKindV1Schema = z.enum(['NAME', 'NICKNAME', 'ALIAS', 'TYPO_VARIANT']);
+
+export const AliasInputV1Schema = z.strictObject({
+  aliasText: z.string().trim().min(1).max(64),
+  aliasKind: AliasKindV1Schema,
+  enabled: z.boolean().optional(),
+});
+
+export const AliasRowV1Schema = z.strictObject({
+  aliasId: z.string().min(1).max(64),
+  personaId: z.string().min(1).max(64),
+  aliasText: z.string().min(1).max(64),
+  aliasKind: AliasKindV1Schema,
+  enabled: z.boolean(),
+});
+
+export const PersonaVersionMetaV1Schema = z.strictObject({
+  personaVersion: z.string().min(1).max(128),
+  personaId: z.string().min(1).max(64),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'SUPERSEDED']),
+  contentHmac: z.string().min(1).max(128),
+  createdAt: z.string().datetime({ offset: true }),
+  publishedAt: z.string().datetime({ offset: true }).nullable(),
+  createdFromVersion: z.string().min(1).max(128).nullable(),
+});
+
+export const VersionComparisonV1Schema = z.strictObject({
+  a: PersonaVersionMetaV1Schema,
+  b: PersonaVersionMetaV1Schema,
+  sameContent: z.boolean(),
+});
+
+export const PersonaDetailV1Schema = z.strictObject({
+  summary: PersonaSummaryV1Schema,
+  aliases: z.array(AliasRowV1Schema),
+  versions: z.array(PersonaVersionMetaV1Schema),
+  // Decrypted persona content for the authorized editing page: the latest draft,
+  // else the active published version, else empty.
+  editableContent: z.string().max(50000),
+});
+
+export const PersonaGetRequestV1Schema = z.strictObject({ personaId: z.string().min(1).max(64) });
+export const PersonaDeleteRequestV1Schema = z.strictObject({ personaId: z.string().min(1).max(64) });
+export const PersonaSetPrincipalRequestV1Schema = z.strictObject({ personaId: z.string().min(1).max(64) });
+
+export const PersonaCreateRequestV1Schema = z.strictObject({
+  displayName: z.string().trim().min(1).max(80),
+  aliases: z.array(AliasInputV1Schema).max(50).optional(),
+});
+
+export const PersonaSaveDraftRequestV1Schema = z.strictObject({
+  personaId: z.string().min(1).max(64),
+  content: z.string().max(50000).optional(),
+  fromVersion: z.string().min(1).max(128).optional(),
+}).superRefine((value, ctx) => {
+  if (value.content === undefined && value.fromVersion === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'content or fromVersion is required' });
+  }
+});
+
+export const PersonaPublishRequestV1Schema = z.strictObject({ personaVersion: z.string().min(1).max(128) });
+export const PersonaListVersionsRequestV1Schema = z.strictObject({ personaId: z.string().min(1).max(64) });
+export const PersonaCompareRequestV1Schema = z.strictObject({
+  a: z.string().min(1).max(128),
+  b: z.string().min(1).max(128),
+});
+
+export const PersonaUpdateAliasesRequestV1Schema = z.strictObject({
+  personaId: z.string().min(1).max(64),
+  aliases: z.array(AliasInputV1Schema).max(50),
+});
+
+// Safety policy view for the authorized settings page (UI §7.2). `current` is
+// the editable content (latest draft else the active published version);
+// compiled rules never cross this boundary.
+export const CompileErrorV1Schema = z.strictObject({
+  clauseIndex: z.number().int().min(-1),
+  message: z.string().min(1),
+});
+
+export const SafetyPolicyVersionMetaV1Schema = z.strictObject({
+  safetyPolicyVersion: z.string().min(1).max(128),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'SUPERSEDED', 'INVALID']),
+  compilerVersion: z.string().min(1).max(64),
+  createdAt: z.string().datetime({ offset: true }),
+  publishedAt: z.string().datetime({ offset: true }).nullable(),
+});
+
+export const SafetyPolicyCurrentV1Schema = z.strictObject({
+  versionId: z.string().min(1).max(128),
+  policyText: z.string().max(50000),
+  keywords: z.array(z.string().trim().min(1).max(64)).max(50),
+  validationErrors: z.array(CompileErrorV1Schema),
+});
+
+export const SafetyPolicyViewV1Schema = z.strictObject({
+  activeVersion: SafetyPolicyVersionMetaV1Schema.nullable(),
+  current: SafetyPolicyCurrentV1Schema.nullable(),
+  versions: z.array(SafetyPolicyVersionMetaV1Schema),
+});
+
+export const SafetySaveDraftRequestV1Schema = z.strictObject({
+  policyText: z.string().max(50000),
+  keywords: z.array(z.string().trim().min(1).max(64)).max(50),
+});
+
+export const SafetyPublishRequestV1Schema = z.strictObject({
+  safetyPolicyVersion: z.string().min(1).max(128),
+});
+
+export const SafetySaveDraftResultV1Schema = z.strictObject({
+  versionMeta: SafetyPolicyVersionMetaV1Schema,
+  valid: z.boolean(),
+  errors: z.array(CompileErrorV1Schema),
+});
+
+// Anonymous run summary for the diagnostics source (UI §8.1); no comment text,
+// persona text, keys, or trace ids cross this boundary.
+export const DiagnosticSummaryV1Schema = z.strictObject({
+  lifecycle: ServiceLifecycleSchema,
+  activity: ServiceActivitySchema,
+  lastCommentReceivedAt: z.string().datetime({ offset: true }).optional(),
+  lastSuggestionAt: z.string().datetime({ offset: true }).optional(),
+  lastSuggestionResult: z.enum(['displayed', 'filtered', 'discarded', 'failed']).optional(),
+  lastE2eLatencyMs: z.number().nonnegative().optional(),
+  lastDomainError: DomainErrorV1Schema.optional(),
+});
+
 export const ServiceViewStateSchema = z.strictObject({
   lifecycle: ServiceLifecycleSchema,
   activity: ServiceActivitySchema,
@@ -367,6 +541,28 @@ export const AuditSubmitLabelRequestV1Schema = z.strictObject({
 });
 
 export type ProviderConfigV1 = z.infer<typeof ProviderConfigV1Schema>;
+export type ConfigViewV1 = z.infer<typeof ConfigViewV1Schema>;
+export type ProviderConfigInputV1 = z.infer<typeof ProviderConfigInputV1Schema>;
+export type ConfigUpdateRequestV1 = z.infer<typeof ConfigUpdateRequestV1Schema>;
+export type PersonaSummaryV1 = z.infer<typeof PersonaSummaryV1Schema>;
+export type AliasKindV1 = z.infer<typeof AliasKindV1Schema>;
+export type AliasInputV1 = z.infer<typeof AliasInputV1Schema>;
+export type AliasRowV1 = z.infer<typeof AliasRowV1Schema>;
+export type PersonaVersionMetaV1 = z.infer<typeof PersonaVersionMetaV1Schema>;
+export type VersionComparisonV1 = z.infer<typeof VersionComparisonV1Schema>;
+export type PersonaDetailV1 = z.infer<typeof PersonaDetailV1Schema>;
+export type PersonaCreateRequestV1 = z.infer<typeof PersonaCreateRequestV1Schema>;
+export type PersonaSaveDraftRequestV1 = z.infer<typeof PersonaSaveDraftRequestV1Schema>;
+export type PersonaPublishRequestV1 = z.infer<typeof PersonaPublishRequestV1Schema>;
+export type PersonaUpdateAliasesRequestV1 = z.infer<typeof PersonaUpdateAliasesRequestV1Schema>;
+export type CompileErrorV1 = z.infer<typeof CompileErrorV1Schema>;
+export type SafetyPolicyVersionMetaV1 = z.infer<typeof SafetyPolicyVersionMetaV1Schema>;
+export type SafetyPolicyCurrentV1 = z.infer<typeof SafetyPolicyCurrentV1Schema>;
+export type SafetyPolicyViewV1 = z.infer<typeof SafetyPolicyViewV1Schema>;
+export type SafetySaveDraftRequestV1 = z.infer<typeof SafetySaveDraftRequestV1Schema>;
+export type SafetyPublishRequestV1 = z.infer<typeof SafetyPublishRequestV1Schema>;
+export type SafetySaveDraftResultV1 = z.infer<typeof SafetySaveDraftResultV1Schema>;
+export type DiagnosticSummaryV1 = z.infer<typeof DiagnosticSummaryV1Schema>;
 export type ConnectionTestResultV1 = z.infer<typeof ConnectionTestResultV1Schema>;
 export type ProviderFixtureResponseV1 = z.infer<typeof ProviderFixtureResponseV1Schema>;
 export type ProviderFixtureExpectedV1 = z.infer<typeof ProviderFixtureExpectedV1Schema>;

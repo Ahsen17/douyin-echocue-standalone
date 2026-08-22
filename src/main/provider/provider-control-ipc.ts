@@ -1,4 +1,6 @@
 import { ipcMain, type WebContents } from 'electron';
+import { IpcChannel } from '../../shared/ipc-channels.js';
+import { createGuardedHandler } from '../ipc/guarded-handler.js';
 import type { ProviderConfigService } from './provider-config.js';
 import { createProviderCredentialHandlers } from './provider-control-handlers.js';
 
@@ -14,24 +16,7 @@ export function wireProviderControl(options: ProviderControlIpcOptions): void {
   const { configService, isTrustedSender } = options;
   const handlers = createProviderCredentialHandlers(configService);
 
-  ipcMain.handle('provider.credential.set', async (event, raw: unknown) => {
-    if (!isTrustedSender(event.sender)) {
-      throw new Error('provider.credential.set rejected: untrusted sender');
-    }
-    return handlers.set(raw);
-  });
-
-  ipcMain.handle('provider.credential.clear', async (event, raw: unknown) => {
-    if (!isTrustedSender(event.sender)) {
-      throw new Error('provider.credential.clear rejected: untrusted sender');
-    }
-    return handlers.clear(raw);
-  });
-
-  ipcMain.handle('provider.credential.test', async (event) => {
-    if (!isTrustedSender(event.sender)) {
-      throw new Error('provider.credential.test rejected: untrusted sender');
-    }
-    return handlers.test();
-  });
+  ipcMain.handle(IpcChannel.ProviderCredentialSet, createGuardedHandler(isTrustedSender, (raw) => handlers.set(raw)));
+  ipcMain.handle(IpcChannel.ProviderCredentialClear, createGuardedHandler(isTrustedSender, (raw) => handlers.clear(raw)));
+  ipcMain.handle(IpcChannel.ProviderCredentialTest, createGuardedHandler(isTrustedSender, () => handlers.test()));
 }
