@@ -30,7 +30,7 @@ Echocue 是一款面向抖音直播主播与运营团队的 Windows 独立桌面
 - [x] M3 Qdrant 与 BM25 — 随包 Qdrant sidecar、jieba-BM25 流水线、`pre_set`/`golden_set` 双库检索及 calibration 与跨库 rerank。*（POC 阻塞：依赖真实中文检索样本）*
 - [x] M4 douyinLive 接入与状态机 — 随包 douyinLive sidecar、本地 WebSocket adapter、lifecycle/activity 状态机。*（POC 阻塞：依赖真实开播房间）*
 - [x] M5 Provider 与实时编排 — Provider 配置/连接测试、稳定的 `TextGenerationProvider`、DeepSeek 与 OpenAI-compatible 双 adapter、确定性 PromptAssembler、实时 `SuggestionAttempt` 编排。*（9/9 任务完成）*
-- [ ] M6 正式 Renderer 与独立浮窗 — 七个正式功能入口与独立置顶浮窗。*（10/11 任务完成：M6-01..10 已完成）*
+- [x] M6 正式 Renderer 与独立浮窗 — 七个正式功能入口与独立置顶浮窗。*（11/11 任务完成）*
 - [ ] M7 回流、集成、验收与发布 — `golden_set` 回流闭环、集成/E2E 验收、Windows 打包与签核。
 
 ### 总体架构
