@@ -1,8 +1,9 @@
 import { cut_for_search } from 'jieba-wasm';
-import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
+import {
+  BM25_NORMALIZATION_VERSION_V1,
+  BM25_TOKENIZER_VERSION_V1,
+} from '@echocue/contracts';
 import type { Bm25Analysis } from './types.js';
-
-export const BM25_NORMALIZATION_VERSION_V1 = 'zh_bm25_normalize_v1';
 
 // Versioned hotword/synonym map; POC-calibrated. Longest key applied first.
 const DEFAULT_HOTWORD_MAP_V1: Readonly<Record<string, string>> = {};
