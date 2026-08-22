@@ -40,4 +40,5 @@ export const FIXTURES = {
   QDRANT_QUERY: 'qdrant-query-fixtures-v1.json',
   RETRIEVAL_CALIBRATION: 'retrieval-calibration-fixtures-v1.json',
   RETRIEVAL_DIRECT_PUSH: 'retrieval-direct-push-fixtures-v1.json',
+  WS_EVENTS: 'ws-event-fixtures-v1.json',
 } as const;

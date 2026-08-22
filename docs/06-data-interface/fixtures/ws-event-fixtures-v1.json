@@ -1,0 +1,56 @@
+{
+  "version": "1",
+  "description": "douyinLive WS event fixtures for LiveSourceEvent mapping (T-CON-001): valid domain events plus gift/like raw frames that must never become COMMENT.",
+  "validEvents": [
+    {
+      "type": "LIVE_ONLINE",
+      "roomReference": "room-abc",
+      "platformRoomId": "7012345678901234567",
+      "receivedAt": "2026-08-22T12:00:00.000Z"
+    },
+    {
+      "type": "LIVE_OFFLINE",
+      "roomReference": "room-abc",
+      "receivedAt": "2026-08-22T12:05:00.000Z"
+    },
+    {
+      "type": "LIVE_ENDED",
+      "roomReference": "room-abc",
+      "receivedAt": "2026-08-22T12:10:00.000Z"
+    },
+    {
+      "type": "COMMENT",
+      "comment": {
+        "sourceMessageId": "7261234567890123456",
+        "platformRoomId": "7012345678901234567",
+        "rawEvent": {
+          "method": "WebcastChatMessage",
+          "content": "主播晚上好",
+          "common": {
+            "msgId": "7261234567890123456",
+            "roomId": "7012345678901234567",
+            "createTime": 1724304000
+          }
+        },
+        "rawText": "主播晚上好",
+        "normalizedText": "主播晚上好",
+        "userNickname": "观众A",
+        "upstreamCreatedAt": "1724304000",
+        "receivedAt": "2026-08-22T12:00:01.000Z",
+        "receivedMonotonicMs": 12345.678
+      }
+    }
+  ],
+  "giftLikeFrames": [
+    {
+      "method": "WebcastGiftMessage",
+      "gift": { "giftName": "小心心" },
+      "common": { "msgId": "7262000000000000001", "roomId": "7012345678901234567" }
+    },
+    {
+      "method": "WebcastLikeMessage",
+      "likeCount": 5,
+      "common": { "msgId": "7262000000000000002", "roomId": "7012345678901234567" }
+    }
+  ]
+}

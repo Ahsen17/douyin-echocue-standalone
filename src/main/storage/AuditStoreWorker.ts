@@ -84,6 +84,16 @@ export class AuditStoreWorker {
     this.db.close();
   }
 
+  healthCheck(): boolean {
+    try {
+      this.db.exec('BEGIN IMMEDIATE');
+      this.db.exec('ROLLBACK');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   createSession(p: CreateSessionParams): void {
     try {
       this.db.prepare(
