@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
   GoldenSetPayloadV1,
+  OverlayDisplayPayloadV1,
   SourceComment,
   TraceState,
   ValidatedSuggestionV1,
@@ -139,11 +140,11 @@ interface TextGenerationProviderLike {
 }
 
 function makeSink() {
-  const shown: ValidatedSuggestionV1[] = [];
+  const shown: OverlayDisplayPayloadV1[] = [];
   return {
     shown,
-    async show(output: ValidatedSuggestionV1) {
-      shown.push(output);
+    async show(payload: OverlayDisplayPayloadV1) {
+      shown.push(payload);
       return { ok: true, firstFrameAtMonotonicMs: 100 };
     },
     async hide() {},
@@ -682,6 +683,17 @@ describe('SuggestionAttemptOrchestrator', () => {
       await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
       await new Promise((resolve) => setTimeout(resolve, 60));
       expect(audit.transitions.some((t) => t.to === 'HIDDEN')).toBe(false);
+    });
+
+    it('passes the triggering comment and suggestion to the display sink (M6-07)', async () => {
+      const { sink, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment({ userNickname: '观众B', normalizedText: '主播真棒' }));
+      await waitFor(() => sink.shown.length === 1);
+      expect(sink.shown[0].comment).toEqual({ nickname: '观众B', text: '主播真棒' });
+      expect(sink.shown[0].suggestion.quickReply.length).toBeGreaterThan(0);
     });
 
     it('cancels the display timer on abort so it never fires late (M5-08)', async () => {

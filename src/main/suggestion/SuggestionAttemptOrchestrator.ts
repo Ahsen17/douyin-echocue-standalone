@@ -2,6 +2,7 @@ import type {
   AuditContentTypeV1,
   AuditSnapshotRoleV1,
   GoldenSetPayloadV1,
+  OverlayDisplayPayloadV1,
   SourceComment,
   TraceReasonCodeV1,
   TraceState,
@@ -601,7 +602,16 @@ export class SuggestionAttemptOrchestrator {
     const pre = this.attemptFreshness(attempt);
     if (!pre.ok) return this.cancelAttempt(attempt, pre.reason);
     this.enterDisplaying();
-    const show = await this.deps.displaySink.show(output, {
+    // UI §5: the overlay shows @nickname + comment text beside the suggestion.
+    // An empty nickname is the same as absent (no "@" placeholder line).
+    const payload: OverlayDisplayPayloadV1 = {
+      comment: {
+        nickname: attempt.comment.userNickname || undefined,
+        text: attempt.comment.normalizedText,
+      },
+      suggestion: output,
+    };
+    const show = await this.deps.displaySink.show(payload, {
       sessionId: attempt.sessionId,
       traceId: attempt.traceId,
       windowVersion: attempt.windowVersion,

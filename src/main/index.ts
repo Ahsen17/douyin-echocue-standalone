@@ -2,6 +2,7 @@ import { app, safeStorage, type WebContents } from 'electron'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { MainWindow } from './windows/MainWindow.js'
+import { OverlayWindow } from './windows/OverlayWindow.js'
 import { TrayManager } from './windows/TrayManager.js'
 import {
   createServiceController,
@@ -14,11 +15,13 @@ import { wireProviderControl } from './provider/index.js'
 import { wireConfigControl } from './config/index.js'
 import { wirePersonaControl } from './persona/index.js'
 import { wireSafetyControl } from './safety/index.js'
+import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 let mainWindowInstance: MainWindow | null = null
+let overlayWindowInstance: OverlayWindow | null = null
 let trayManager: TrayManager | null = null
 let services: CreatedServiceController | null = null
 let isExplicitQuit = false
@@ -40,6 +43,7 @@ async function doQuit(): Promise<void> {
     /* best-effort stop before exit */
   }
   services?.shutdown()
+  overlayWindowInstance?.destroy()
   const win = mainWindowInstance?.getWindow()
   if (win && !win.isDestroyed()) {
     win.destroy()
@@ -58,6 +62,21 @@ app.whenReady().then(async () => {
   const isTrustedSender = (contents: WebContents) =>
     contents === mainWindowInstance?.getWindow()?.webContents
 
+  // M6-07: eager overlay window; settings are read lazily once services exist.
+  overlayWindowInstance = new OverlayWindow({
+    getSettings: async () => {
+      try {
+        return (await services?.settings?.get()) ?? null
+      } catch {
+        // corrupt/missing settings fall back to visual defaults inside the window
+        return null
+      }
+    },
+  })
+  const isOverlayTrustedSender = (contents: WebContents) =>
+    contents === overlayWindowInstance?.getWindow()?.webContents
+  wireOverlayControl({ overlayWindow: overlayWindowInstance, isOverlayTrustedSender })
+
   try {
     services = await createServiceController({
       dataDir: app.getPath('userData'),
@@ -66,8 +85,9 @@ app.whenReady().then(async () => {
       qdrantBinaryPath: resolveAssetBinary('qdrant'),
       migrationPath: join(process.cwd(), 'docs/06-data-interface/migrations/001_initial_schema.sql'),
       keyVersion: '1',
+      displaySink: createOverlayDisplaySink({ overlayWindow: overlayWindowInstance }),
       cleanupOnStop: () => {
-        /* overlay/candidates/in-flight are wired by M5/M6 */
+        overlayWindowInstance?.hideSuggestion()
       },
     })
     services.stateMachine.onChanged((state) => {
@@ -79,6 +99,7 @@ app.whenReady().then(async () => {
     wireConfigControl({
       settings: services.settings,
       providerConfig: services.providerConfig,
+      overlayWindow: overlayWindowInstance,
       isTrustedSender,
     })
     wirePersonaControl({ persona: services.persona, isTrustedSender })

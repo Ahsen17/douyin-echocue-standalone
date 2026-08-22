@@ -1,4 +1,5 @@
 import type {
+  OverlayDisplayPayloadV1,
   ProviderConfigV1,
   SourceComment,
   ValidatedSuggestionV1,
@@ -74,7 +75,7 @@ export interface SuggestionAttempt {
 /** Overlay port; M6-07 implements the real Electron window. */
 export interface SuggestionDisplaySink {
   show(
-    suggestion: ValidatedSuggestionV1,
+    payload: OverlayDisplayPayloadV1,
     meta: { sessionId: string; traceId: string; windowVersion: number },
   ): Promise<{ ok: true; firstFrameAtMonotonicMs: number } | { ok: false; reason: string }>;
   hide(): Promise<void>;
