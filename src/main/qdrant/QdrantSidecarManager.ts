@@ -170,17 +170,15 @@ export class QdrantSidecarManager {
       if (this.expectedVersion !== undefined) {
         const version = await fetchVersion(this.host, this.httpPort);
         if (version === null) {
-          void this.stop();
           throw new SidecarStartFailedError('qdrant version endpoint unreachable');
         }
         if (!gteVersion(version, this.expectedVersion)) {
-          void this.stop();
           throw new SidecarStartFailedError(`qdrant version ${version} < expected ${this.expectedVersion}`);
         }
       }
       return { pid: child.pid ?? 0, httpPort: this.httpPort };
     } catch (err) {
-      void this.stop();
+      await this.stop();
       throw err;
     }
   }

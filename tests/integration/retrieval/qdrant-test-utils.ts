@@ -71,7 +71,7 @@ export async function startTestQdrant(): Promise<TestQdrant> {
     dataDir,
     stop: async () => {
       await manager.stop();
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     },
   };
 }

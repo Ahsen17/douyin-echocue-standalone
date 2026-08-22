@@ -52,7 +52,7 @@ function makeManager(dataDir: string, httpPort: number, grpcPort: number): Qdran
       expect(await manager.isHealthy()).toBe(false);
       expect(manager.pid).toBeNull();
     } finally {
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   });
 
@@ -65,7 +65,7 @@ function makeManager(dataDir: string, httpPort: number, grpcPort: number): Qdran
       await manager.stop();
       expect(await manager.isHealthy()).toBe(false);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   });
 
@@ -83,7 +83,7 @@ function makeManager(dataDir: string, httpPort: number, grpcPort: number): Qdran
       await expect(manager.start()).rejects.toBeInstanceOf(SidecarStartFailedError);
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   });
 
@@ -101,7 +101,7 @@ function makeManager(dataDir: string, httpPort: number, grpcPort: number): Qdran
     try {
       await expect(manager.start()).rejects.toBeInstanceOf(QdrantUnavailableError);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   });
 
@@ -119,7 +119,7 @@ function makeManager(dataDir: string, httpPort: number, grpcPort: number): Qdran
     try {
       await expect(manager.start()).rejects.toBeInstanceOf(SidecarStartFailedError);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   });
 
@@ -137,7 +137,7 @@ function makeManager(dataDir: string, httpPort: number, grpcPort: number): Qdran
       }
       expect(await manager.isHealthy()).toBe(false);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   });
 });
