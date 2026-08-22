@@ -9,6 +9,12 @@ import type {
   TraceReasonCodeV1,
   AuditSnapshotRoleV1,
   AuditContentTypeV1,
+  AuditSearchRequestV1,
+  AuditSearchResponseV1,
+  AuditTraceSummaryV1,
+  AuditWorkflowV1,
+  LabelStatus,
+  TraceFinalState,
 } from '@echocue/contracts';
 import { FieldEncryptor, buildAad } from '../crypto/field-encryptor.js';
 import { CryptoKeyManager } from '../crypto/key-manager.js';
@@ -283,6 +289,123 @@ export class AuditStoreWorker {
       return workflow;
     } catch (err) {
       throw new AuditUnavailableError(`getTraceWorkflow failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Paginated audit list (CONTRACT §7 / UI §8.2): time range, final result,
+   * label status filters, received_at DESC. commentText is decrypted on demand
+   * from each row's first NORMALIZED_COMMENT snapshot. Read-only: a failure here
+   * never stops the service.
+   */
+  searchTraces(params: AuditSearchRequestV1): AuditSearchResponseV1 {
+    try {
+      const where: string[] = [];
+      const binds: Array<string | number> = [];
+      if (params.from !== undefined) {
+        where.push('received_at >= ?');
+        binds.push(params.from);
+      }
+      if (params.to !== undefined) {
+        where.push('received_at <= ?');
+        binds.push(params.to);
+      }
+      if (params.finalState !== undefined) {
+        where.push('final_state = ?');
+        binds.push(params.finalState);
+      }
+      if (params.labelStatus !== undefined) {
+        where.push('label_status = ?');
+        binds.push(params.labelStatus);
+      }
+      const whereSql = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
+      const offset = (params.page - 1) * params.pageSize;
+
+      const countRow = this.db.prepare(`SELECT COUNT(*) as total FROM audit_trace${whereSql}`)
+        .get(...binds) as { total: number };
+      const rows = this.db.prepare(
+        `SELECT trace_id, received_at, final_state, label_status
+         FROM audit_trace${whereSql}
+         ORDER BY received_at DESC
+         LIMIT ? OFFSET ?`,
+      ).all(...binds, params.pageSize, offset) as Array<{
+        trace_id: string;
+        received_at: string;
+        final_state: TraceFinalState | null;
+        label_status: LabelStatus;
+      }>;
+
+      const items = rows.map((row) => {
+        const commentText = this.readCommentPreview(row.trace_id);
+        const hasSuggestion = this.traceHasSuggestion(row.trace_id);
+        return {
+          traceId: row.trace_id,
+          receivedAt: row.received_at,
+          finalState: row.final_state,
+          labelStatus: row.label_status,
+          hasSuggestion,
+          commentText,
+        };
+      });
+      return { items, total: countRow.total, page: params.page, pageSize: params.pageSize };
+    } catch (err) {
+      throw new AuditUnavailableError(`searchTraces failed: ${String(err)}`);
+    }
+  }
+
+  /** Serializable workflow projection for IPC (Buffer plaintext → utf-8 string). */
+  getTraceWorkflowV1(traceId: string): AuditWorkflowV1 | null {
+    const workflow = this.getTraceWorkflow(traceId);
+    if (workflow === null) return null;
+    return {
+      traceId: workflow.traceId,
+      transitions: workflow.transitions.map((t) => ({
+        sequenceNo: t.sequenceNo,
+        fromState: t.fromState,
+        toState: t.toState,
+        reasonCode: t.reasonCode,
+        occurredAt: t.occurredAt,
+        snapshots: t.snapshots.map((s) => ({
+          snapshotId: s.snapshotId,
+          role: s.role,
+          contentType: s.contentType,
+          plaintext: s.plaintext.toString('utf-8'),
+        })),
+      })),
+    };
+  }
+
+  private readCommentPreview(traceId: string): string {
+    try {
+      const row = this.db.prepare(
+        `SELECT s.snapshot_id, s.content_type, s.envelope
+         FROM audit_reference r JOIN audit_snapshot s ON s.snapshot_id = r.snapshot_id
+         WHERE r.trace_id = ? AND r.role = 'NORMALIZED_COMMENT'
+         ORDER BY r.sequence_no LIMIT 1`,
+      ).get(traceId) as { snapshot_id: string; content_type: AuditContentTypeV1; envelope: Uint8Array } | undefined;
+      if (row === undefined) return '';
+      const plaintext = this.encryptor.decrypt(
+        Buffer.from(row.envelope),
+        buildAad('audit_snapshot', row.snapshot_id, row.content_type),
+      );
+      const parsed = JSON.parse(plaintext.toString('utf-8')) as { normalizedText?: unknown };
+      return typeof parsed.normalizedText === 'string' ? parsed.normalizedText : '';
+    } catch {
+      // A decrypt/parse failure must not corrupt the whole page; show no preview.
+      return '';
+    }
+  }
+
+  private traceHasSuggestion(traceId: string): boolean {
+    try {
+      const row = this.db.prepare(
+        `SELECT 1 FROM audit_transition
+         WHERE trace_id = ? AND to_state IN ('DISPLAYED', 'HIDDEN')
+         LIMIT 1`,
+      ).get(traceId) as { '1': number } | undefined;
+      return row !== undefined;
+    } catch {
+      return false;
     }
   }
 

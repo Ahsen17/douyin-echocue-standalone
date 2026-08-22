@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AliasRowV1,
+  AuditGetWorkflowRequestV1,
+  AuditSearchRequestV1,
+  AuditSearchResponseV1,
+  AuditWorkflowV1,
   ConfigUpdateRequestV1,
   ConfigViewV1,
   ConnectionTestResultV1,
@@ -91,6 +95,12 @@ const echocueApi = {
   diagnostics: {
     getSummary: () =>
       ipcRenderer.invoke(IpcChannel.DiagnosticsGetSummary) as Promise<DiagnosticSummaryV1>,
+  },
+  audit: {
+    search: (req: AuditSearchRequestV1) =>
+      ipcRenderer.invoke(IpcChannel.AuditSearch, req) as Promise<AuditSearchResponseV1>,
+    getWorkflow: (req: AuditGetWorkflowRequestV1) =>
+      ipcRenderer.invoke(IpcChannel.AuditGetWorkflow, req) as Promise<AuditWorkflowV1>,
   },
   overlay: {
     updatePreferences: (prefs: OverlayPreferenceV1) =>

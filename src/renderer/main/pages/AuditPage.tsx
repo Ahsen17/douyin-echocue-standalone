@@ -1,5 +1,276 @@
-import { PagePlaceholder } from '../components/StateViews'
+import { useEffect, useState } from 'react'
+import type {
+  AuditSearchResponseV1,
+  AuditTraceSummaryV1,
+  AuditWorkflowV1,
+  LabelStatus,
+  TraceFinalState,
+} from '@echocue/contracts'
+import { useAsyncAction } from '../hooks/useAsyncAction'
+import { ErrorState, LoadingState } from '../components/StateViews'
+import {
+  buildTimeline,
+  localizeFinalState,
+  localizeLabelStatus,
+  pageCount,
+  shortTime,
+} from '../audit/audit-logic'
+
+const PAGE_SIZE = 50
 
 export default function AuditPage() {
-  return <PagePlaceholder name="审计追溯" />
+  const [authorized, setAuthorized] = useState(false)
+  const [result, setResult] = useState<AuditSearchResponseV1 | null>(null)
+  const [page, setPage] = useState(1)
+  const [finalState, setFinalState] = useState<TraceFinalState | ''>('')
+  const [labelStatus, setLabelStatus] = useState<LabelStatus | ''>('')
+  const [selected, setSelected] = useState<AuditTraceSummaryV1 | null>(null)
+  const [workflow, setWorkflow] = useState<AuditWorkflowV1 | null>(null)
+  const [workflowError, setWorkflowError] = useState<string | null>(null)
+
+  const search = useAsyncAction(async (nextPage: number, nextFinal: TraceFinalState | '', nextLabel: LabelStatus | '') => {
+    const res = await window.echocue.audit.search({
+      page: nextPage,
+      pageSize: PAGE_SIZE,
+      finalState: nextFinal === '' ? undefined : nextFinal,
+      labelStatus: nextLabel === '' ? undefined : nextLabel,
+    })
+    setResult(res)
+    setPage(res.page)
+    return true
+  })
+
+  const loadWorkflow = useAsyncAction(async (traceId: string) => {
+    setWorkflowError(null)
+    setWorkflow(null)
+    const wf = await window.echocue.audit.getWorkflow({ traceId })
+    setWorkflow(wf)
+    return true
+  })
+
+  useEffect(() => {
+    if (authorized) void search.run(1, '', '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorized])
+
+  if (!authorized) {
+    return (
+      <>
+        <h1>审计追溯</h1>
+        <section className="card privacy-notice">
+          <h2>本机审计访问提示</h2>
+          <p>此处包含直播审计原文，请仅由获授权配置人员在本机查看。MVP 不提供导出或清空。</p>
+          <button type="button" onClick={() => setAuthorized(true)}>
+            我已获授权，进入审计
+          </button>
+        </section>
+      </>
+    )
+  }
+
+  if (search.error !== null) {
+    return <ErrorState code="E_AUDIT_QUERY" message={search.error} onRetry={() => void search.run(page, finalState, labelStatus)} />
+  }
+  if (search.running && result === null) {
+    return <LoadingState label="正在查询并按需解密详情…" />
+  }
+  if (result === null) {
+    return <LoadingState label="正在查询并按需解密详情…" />
+  }
+
+  const items = result.items
+  const selectedRow = selected ?? items[0] ?? null
+  const totalPages = pageCount(result.total, result.pageSize)
+
+  const applyFilters = (nextFinal: TraceFinalState | '', nextLabel: LabelStatus | '') => {
+    setFinalState(nextFinal)
+    setLabelStatus(nextLabel)
+    void search.run(1, nextFinal, nextLabel)
+  }
+
+  const openRow = (row: AuditTraceSummaryV1) => {
+    setSelected(row)
+    setWorkflow(null)
+    setWorkflowError(null)
+    void loadWorkflow.run(row.traceId)
+  }
+
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <h1>审计追溯</h1>
+          <p>完整 workflow 与主观打标是同一工作区的两个入口。</p>
+        </div>
+        <span className="badge">本机加密 · 永久保存 · 不可导出</span>
+      </div>
+
+      <section className="card filters">
+        <label>
+          处理结果
+          <select value={finalState} onChange={(e) => applyFilters(e.target.value as TraceFinalState | '', labelStatus)}>
+            <option value="">全部</option>
+            <option value="HIDDEN">已展示后隐藏</option>
+            <option value="FILTERED">已过滤</option>
+            <option value="FAILED">未生成</option>
+            <option value="DISCARDED">展示前失效</option>
+          </select>
+        </label>
+        <label>
+          打标状态
+          <select value={labelStatus} onChange={(e) => applyFilters(finalState, e.target.value as LabelStatus | '')}>
+            <option value="">全部</option>
+            <option value="UNLABELED">未打标</option>
+            <option value="ACCEPTED">已认可</option>
+            <option value="REJECTED">已拒绝</option>
+            <option value="CORRECTED">已修正</option>
+            <option value="NOT_APPLICABLE">无需打标</option>
+          </select>
+        </label>
+        <button type="button" className="secondary" onClick={() => void search.run(page, finalState, labelStatus)}>
+          查询
+        </button>
+      </section>
+
+      {items.length === 0 ? (
+        <section className="card empty-state">
+          <b>没有匹配记录</b>
+          <p>调整筛选条件后重试；不会自动清除历史审计。</p>
+        </section>
+      ) : (
+        <div className="split audit-layout">
+          <section className="card audit-list">
+            <h2>审计记录</h2>
+            {items.map((row) => (
+              <button
+                type="button"
+                key={row.traceId}
+                className={row.traceId === selectedRow.traceId ? 'selected' : ''}
+                onClick={() => openRow(row)}
+              >
+                <small>
+                  {shortTime(row.receivedAt)} · {localizeFinalState(row.finalState)}
+                </small>
+                <strong>{row.commentText || '（无正文快照）'}</strong>
+                <span>{localizeLabelStatus(row.labelStatus)}</span>
+              </button>
+            ))}
+            <div className="pager">
+              <button
+                type="button"
+                className="secondary"
+                disabled={page <= 1}
+                onClick={() => void search.run(page - 1, finalState, labelStatus)}
+              >
+                上一页
+              </button>
+              <span>
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className="secondary"
+                disabled={page >= totalPages}
+                onClick={() => void search.run(page + 1, finalState, labelStatus)}
+              >
+                下一页
+              </button>
+            </div>
+          </section>
+
+          <section className="card grow">
+            {selectedRow === null ? (
+              <div className="empty-state">
+                <b>选择一条记录查看详情</b>
+              </div>
+            ) : (
+              <>
+                <h2>记录详情 · {shortTime(selectedRow.receivedAt)}</h2>
+                <DetailTabs
+                  row={selectedRow}
+                  workflow={workflow}
+                  workflowLoading={loadWorkflow.running}
+                  workflowError={workflowError}
+                />
+              </>
+            )}
+          </section>
+        </div>
+      )}
+    </>
+  )
+}
+
+function DetailTabs({ row, workflow, workflowLoading, workflowError }: {
+  row: AuditTraceSummaryV1
+  workflow: AuditWorkflowV1 | null
+  workflowLoading: boolean
+  workflowError: string | null
+}) {
+  const [tab, setTab] = useState<'workflow' | 'label'>('workflow')
+  return (
+    <>
+      <div className="tabs">
+        <button type="button" className={tab === 'workflow' ? 'active' : ''} onClick={() => setTab('workflow')}>
+          工作流上下文
+        </button>
+        <button type="button" className={tab === 'label' ? 'active' : ''} onClick={() => setTab('label')}>
+          {row.labelStatus === 'UNLABELED' ? '进入打标' : '查看 / 编辑打标'}
+        </button>
+      </div>
+      {tab === 'workflow' ? (
+        <WorkflowPanel workflow={workflow} loading={workflowLoading} error={workflowError} />
+      ) : (
+        <LabelStatusPanel row={row} />
+      )}
+    </>
+  )
+}
+
+function WorkflowPanel({ workflow, loading, error }: {
+  workflow: AuditWorkflowV1 | null
+  loading: boolean
+  error: string | null
+}) {
+  if (loading && workflow === null) return <LoadingState label="正在加载 workflow 上下文…" />
+  if (error !== null) return <ErrorState code="E_AUDIT_READ" message={error} />
+  if (workflow === null) return <div className="empty-state"><b>暂无 workflow 数据</b></div>
+  const timeline = buildTimeline(workflow)
+  return (
+    <div className="workflow">
+      {timeline.map((item) => (
+        <section key={item.sequenceNo}>
+          <small>
+            {shortTime(item.occurredAt)} · {item.stateLabel}
+          </small>
+          <b>{item.reasonCode}</b>
+          {item.snapshots.map((snap) => (
+            <details key={snap.snapshotId}>
+              <summary>
+                {snap.role} · {snap.contentType}
+              </summary>
+              <pre>{snap.plaintext}</pre>
+            </details>
+          ))}
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function LabelStatusPanel({ row }: { row: AuditTraceSummaryV1 }) {
+  if (!row.hasSuggestion) {
+    return (
+      <div className="empty-state">
+        <b>无需打标</b>
+        <p>本条没有最终建议，仅可查看 workflow 上下文。</p>
+      </div>
+    )
+  }
+  return (
+    <div className="label-summary">
+      <b>当前打标状态：{localizeLabelStatus(row.labelStatus)}</b>
+      <p>{row.labelStatus === 'UNLABELED' ? '尚未打标。' : '已保存为当前有效打标；编辑会产生新修订，不覆盖历史。'}</p>
+    </div>
+  )
 }

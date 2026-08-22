@@ -41,6 +41,7 @@ export interface CreatedServiceController {
   readonly settings: SettingsStore;
   readonly persona: PersonaStore;
   readonly safety: SafetyPolicyStore;
+  readonly audit: AuditStoreWorker;
   readonly diagnostics: DiagnosticsSource;
   readonly shutdown: () => void;
 }
@@ -175,7 +176,7 @@ export async function createServiceController(
     safety.close();
   };
 
-  return { controller, stateMachine, providerConfig, settings, persona, safety, diagnostics, shutdown };
+  return { controller, stateMachine, providerConfig, settings, persona, safety, audit, diagnostics, shutdown };
 }
 
 /** M5-07 stub: acknowledges first frame immediately; M6-07 replaces it. */

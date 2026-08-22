@@ -537,9 +537,13 @@ export const OverlayAckRequestV1Schema = z.strictObject({
   requestId: z.string().min(1).max(64),
 });
 
+// CONTRACT §7: audit.search filters by time range (from/to), final result
+// (finalState, UI §8.2 结果筛选), user-visible labelStatus, and pagination.
+// pageSize is clamped to 1-100 and rows default to received_at DESC.
 export const AuditSearchRequestV1Schema = z.strictObject({
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
+  finalState: TraceFinalStateSchema.optional(),
   labelStatus: LabelStatusSchema.optional(),
   page: z.number().int().min(1).default(1),
   pageSize: z.number().int().min(1).max(100).default(20),
@@ -547,8 +551,51 @@ export const AuditSearchRequestV1Schema = z.strictObject({
 
 export const AuditGetWorkflowRequestV1Schema = z.strictObject({ traceId: uuidV7 });
 
+// M6-09: one paginated audit-list row (UI §8.2). commentText is decrypted
+// on demand from the trace's NORMALIZED_COMMENT snapshot; it never reaches the
+// overlay, only the authorized main-window audit page.
+export const AuditTraceSummaryV1Schema = z.strictObject({
+  traceId: z.string().min(1).max(64),
+  receivedAt: z.string().datetime({ offset: true }),
+  finalState: TraceFinalStateSchema.nullable(),
+  labelStatus: LabelStatusSchema,
+  hasSuggestion: z.boolean(),
+  commentText: z.string().max(2000),
+});
+
+export const AuditSearchResponseV1Schema = z.strictObject({
+  items: z.array(AuditTraceSummaryV1Schema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1).max(100),
+});
+
+// M6-09: serializable workflow context (Buffer plaintext → utf-8 string).
+export const AuditWorkflowSnapshotV1Schema = z.strictObject({
+  snapshotId: z.string().min(1),
+  role: AuditSnapshotRoleV1Schema,
+  contentType: AuditContentTypeV1Schema,
+  plaintext: z.string(),
+});
+
+export const AuditWorkflowTransitionV1Schema = z.strictObject({
+  sequenceNo: z.number().int().nonnegative(),
+  fromState: TraceStateSchema.nullable(),
+  toState: TraceStateSchema,
+  reasonCode: TraceReasonCodeV1Schema,
+  occurredAt: z.string().datetime({ offset: true }),
+  snapshots: z.array(AuditWorkflowSnapshotV1Schema),
+});
+
+export const AuditWorkflowV1Schema = z.strictObject({
+  traceId: z.string().min(1).max(64),
+  transitions: z.array(AuditWorkflowTransitionV1Schema),
+});
+
 export const AuditSubmitLabelRequestV1Schema = z.strictObject({
   traceId: uuidV7,
+  // Optimistic lock (DATA §4.3 修订而非覆盖): the revision count the caller
+  // observed; a concurrent edit bumps it and the write is rejected.
   expectedRevisionNo: z.number().int().min(0),
   score: z.number().int().min(0).max(100),
   correctedQuickReply: z.string().trim().min(1).max(80).optional(),
@@ -559,6 +606,11 @@ export const AuditSubmitLabelRequestV1Schema = z.strictObject({
   if (hasReply !== hasCues) {
     ctx.addIssue({ code: 'custom', message: 'corrected reply and cues must be submitted together' });
   }
+});
+
+// CONTRACT §7: audit.submitLabel returns only the user-visible labelStatus.
+export const AuditSubmitLabelResponseV1Schema = z.strictObject({
+  labelStatus: LabelStatusSchema,
 });
 
 export type ProviderConfigV1 = z.infer<typeof ProviderConfigV1Schema>;
@@ -614,7 +666,13 @@ export type OutboxJobStateV1 = z.infer<typeof OutboxJobStateV1Schema>;
 export type OutboxActionV1 = z.infer<typeof OutboxActionV1Schema>;
 export type AuditSearchRequestV1 = z.infer<typeof AuditSearchRequestV1Schema>;
 export type AuditGetWorkflowRequestV1 = z.infer<typeof AuditGetWorkflowRequestV1Schema>;
+export type AuditTraceSummaryV1 = z.infer<typeof AuditTraceSummaryV1Schema>;
+export type AuditSearchResponseV1 = z.infer<typeof AuditSearchResponseV1Schema>;
+export type AuditWorkflowV1 = z.infer<typeof AuditWorkflowV1Schema>;
+export type AuditWorkflowTransitionV1 = z.infer<typeof AuditWorkflowTransitionV1Schema>;
+export type AuditWorkflowSnapshotV1 = z.infer<typeof AuditWorkflowSnapshotV1Schema>;
 export type AuditSubmitLabelRequestV1 = z.infer<typeof AuditSubmitLabelRequestV1Schema>;
+export type AuditSubmitLabelResponseV1 = z.infer<typeof AuditSubmitLabelResponseV1Schema>;
 export type Bm25ZhJiebaProfileV1 = z.infer<typeof Bm25ZhJiebaProfileV1Schema>;
 export type PreSetPayloadV1 = z.infer<typeof PreSetPayloadV1Schema>;
 export type GoldenSetPayloadV1 = z.infer<typeof GoldenSetPayloadV1Schema>;

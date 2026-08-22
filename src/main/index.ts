@@ -11,6 +11,7 @@ import {
   type CreatedServiceController,
 } from './service/index.js'
 import { wireDiagnosticsControl } from './telemetry/index.js'
+import { wireAuditControl } from './audit/index.js'
 import { wireProviderControl } from './provider/index.js'
 import { wireConfigControl } from './config/index.js'
 import { wirePersonaControl } from './persona/index.js'
@@ -104,6 +105,7 @@ app.whenReady().then(async () => {
     })
     wirePersonaControl({ persona: services.persona, isTrustedSender })
     wireSafetyControl({ safety: services.safety, isTrustedSender })
+    wireAuditControl({ audit: services.audit, isTrustedSender })
     wireDiagnosticsControl({ diagnostics: services.diagnostics, isTrustedSender })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble
