@@ -8,9 +8,14 @@ import { freePort } from '../retrieval/qdrant-test-utils.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../..');
 
-// Windows keeps a killed process's cwd handle briefly; tolerate EBUSY on cleanup
+// Windows keeps a killed process's cwd handle past the retry window; best-effort
+// cleanup so a lingering temp dir never fails a test (tmp is OS-reclaimed).
 export function removeTestDir(dir: string): void {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch {
+    // leave the temp dir for OS cleanup
+  }
 }
 
 export function resolveDouyinLiveBinary(): string | null {
