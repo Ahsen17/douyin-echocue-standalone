@@ -1,5 +1,5 @@
 import { createServer } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,7 +8,7 @@ import {
   SidecarStartFailedError,
 } from '../../../src/main/douyin/index.js';
 import { freePort } from '../retrieval/qdrant-test-utils.js';
-import { resolveDouyinLiveBinary } from './douyin-test-utils.js';
+import { removeTestDir, resolveDouyinLiveBinary } from './douyin-test-utils.js';
 
 const binary = resolveDouyinLiveBinary();
 const stopped: DouyinLiveSidecarManager[] = [];
@@ -45,7 +45,7 @@ function makeManager(dataDir: string, port: number): DouyinLiveSidecarManager {
       expect(await manager.isHealthy()).toBe(false);
       expect(manager.pid).toBeNull();
     } finally {
-      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removeTestDir(dataDir);
     }
   });
 
@@ -58,7 +58,7 @@ function makeManager(dataDir: string, port: number): DouyinLiveSidecarManager {
       await manager.stop();
       expect(await manager.isHealthy()).toBe(false);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removeTestDir(dataDir);
     }
   });
 
@@ -74,7 +74,7 @@ function makeManager(dataDir: string, port: number): DouyinLiveSidecarManager {
       expect(manager.pid).toBeNull();
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
-      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removeTestDir(dataDir);
     }
   });
 
@@ -91,7 +91,7 @@ function makeManager(dataDir: string, port: number): DouyinLiveSidecarManager {
     try {
       await expect(manager.start()).rejects.toBeInstanceOf(SidecarStartFailedError);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removeTestDir(dataDir);
     }
   });
 
@@ -108,7 +108,7 @@ function makeManager(dataDir: string, port: number): DouyinLiveSidecarManager {
     try {
       await expect(manager.start()).rejects.toBeInstanceOf(SidecarStartFailedError);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removeTestDir(dataDir);
     }
   });
 
@@ -126,7 +126,7 @@ function makeManager(dataDir: string, port: number): DouyinLiveSidecarManager {
       }
       expect(await manager.isHealthy()).toBe(false);
     } finally {
-      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removeTestDir(dataDir);
     }
   });
 });

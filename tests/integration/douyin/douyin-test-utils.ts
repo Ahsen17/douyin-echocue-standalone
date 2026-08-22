@@ -8,6 +8,11 @@ import { freePort } from '../retrieval/qdrant-test-utils.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '../../..');
 
+// Windows keeps a killed process's cwd handle briefly; tolerate EBUSY on cleanup
+export function removeTestDir(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+}
+
 export function resolveDouyinLiveBinary(): string | null {
   const fromEnv = process.env.DOUYINLIVE_BINARY_PATH;
   if (fromEnv) return existsSync(fromEnv) ? fromEnv : null;
@@ -44,7 +49,7 @@ export async function startTestDouyinLive(): Promise<TestDouyinLive> {
     dataDir,
     stop: async () => {
       await manager.stop();
-      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      removeTestDir(dataDir);
     },
   };
 }
