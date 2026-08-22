@@ -63,8 +63,9 @@ function makeManager(dataDir: string, port: number): DouyinLiveSidecarManager {
   });
 
   it('rejects startup when the ws port is already occupied', async () => {
+    // bind all interfaces so the binary's 0.0.0.0 bind conflicts on both Linux and Windows
     const blocker = createServer();
-    await new Promise<void>((resolve) => blocker.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>((resolve) => blocker.listen(0, '0.0.0.0', resolve));
     const address = blocker.address();
     const port = typeof address === 'object' && address !== null ? address.port : 0;
     const dataDir = mkdtempSync(join(tmpdir(), 'echocue-douyin-'));
