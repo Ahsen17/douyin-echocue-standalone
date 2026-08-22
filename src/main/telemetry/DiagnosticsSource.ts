@@ -31,9 +31,10 @@ export class DiagnosticsSource {
   ): void {
     this.summary.lastSuggestionAt = new Date().toISOString()
     this.summary.lastSuggestionResult = result
-    if (e2eLatencyMs !== undefined) {
-      this.summary.lastE2eLatencyMs = e2eLatencyMs
-    }
+    // E2E only applies to a displayed suggestion; a filtered/discarded/failed
+    // result must not keep a stale latency from a previous display.
+    this.summary.lastE2eLatencyMs =
+      result === 'displayed' && e2eLatencyMs !== undefined ? e2eLatencyMs : undefined
   }
 
   recordDomainError(code: DomainErrorV1): void {

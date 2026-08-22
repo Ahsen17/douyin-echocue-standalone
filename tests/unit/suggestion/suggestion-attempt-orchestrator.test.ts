@@ -274,6 +274,40 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(reasons).toContain('INPUT_SAFETY_FILTERED');
   });
 
+  it('feeds the diagnostics hooks from the real-time path (display)', async () => {
+    const received: number[] = [];
+    const results: Array<[string, number | undefined]> = [];
+    const { orchestrator } = harness({
+      retriever: makeRetriever([goldenHit(0.98)]) as never,
+      displaySink: {
+        show: async () => ({ ok: true, firstFrameAtMonotonicMs: 2000 }),
+        hide: async () => {},
+      } as never,
+      onCommentReceived: () => received.push(received.length),
+      onSuggestionResult: (result, e2e) => results.push([result, e2e]),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await waitFor(() => results.length > 0);
+    expect(received.length).toBe(1);
+    expect(results[0][0]).toBe('displayed');
+    expect(results[0][1]).toBe(1000);
+  });
+
+  it('feeds the filtered outcome when input safety filters', async () => {
+    const received: number[] = [];
+    const results: string[] = [];
+    const { orchestrator } = harness({
+      onCommentReceived: () => received.push(received.length),
+      onSuggestionResult: (result) => results.push(result),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment({ normalizedText: '想加微信私聊' }));
+    await flush();
+    expect(received.length).toBe(1);
+    expect(results).toContain('filtered');
+  });
+
   it('dedups repeated source_message_id within a session', async () => {
     const { audit, orchestrator } = harness();
     await orchestrator.startSession({ sessionId: 's1' });

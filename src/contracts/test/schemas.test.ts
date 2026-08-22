@@ -7,6 +7,11 @@ import {
   SettingsV1Schema,
   ServiceViewStateSchema,
   ProviderConfigV1Schema,
+  ConfigViewV1Schema,
+  ConfigUpdateRequestV1Schema,
+  ProviderConfigInputV1Schema,
+  PersonaSummaryV1Schema,
+  DiagnosticSummaryV1Schema,
   ConnectionTestResultV1Schema,
   ProviderFixtureCaseV1Schema,
   ProviderFixtureResponseV1Schema,
@@ -94,6 +99,117 @@ test('valid minimal settings', () => expectValid(SettingsV1Schema, VALID_SETTING
 test('valid settings with provider', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, provider: VALID_PROVIDER }, 'with provider'));
 test('rejects wrong schemaVersion', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, schemaVersion: 2 }, 'schemaVersion 2'));
 test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, extra: true }, 'extra field'));
+
+// ConfigViewV1 (UI §7.1 view)
+console.log('\nConfigViewV1Schema');
+test('valid config view', () => expectValid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+  apiKeyConfigured: false,
+}, 'valid'));
+test('valid config view with provider', () => expectValid(ConfigViewV1Schema, {
+  roomReference: 'room-1',
+  provider: VALID_PROVIDER,
+  overlay: VALID_OVERLAY,
+  apiKeyConfigured: true,
+}, 'with provider'));
+test('rejects internalRetrieval in config view', () => expectInvalid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+  apiKeyConfigured: false,
+  internalRetrieval: { calibrationVersion: 'v1', directPushThreshold: 0.85, windowMaxAgeMs: 5000, candidateMaxCount: 10 },
+}, 'internalRetrieval leaks'));
+test('rejects missing apiKeyConfigured', () => expectInvalid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+}, 'missing apiKeyConfigured'));
+
+// ProviderConfigInputV1 (user-submitted provider fields)
+console.log('\nProviderConfigInputV1Schema');
+test('valid provider input', () => expectValid(ProviderConfigInputV1Schema, {
+  displayName: 'DeepSeek',
+  adapterType: 'DEEPSEEK',
+  baseUrl: 'https://api.deepseek.com',
+  modelId: 'deepseek-chat',
+}, 'valid'));
+test('rejects ANTHROPIC_MESSAGES adapter input', () => expectInvalid(ProviderConfigInputV1Schema, {
+  displayName: 'Anthropic',
+  adapterType: 'ANTHROPIC_MESSAGES',
+  baseUrl: 'https://api.anthropic.com',
+  modelId: 'claude',
+}, 'anthropic adapter'));
+test('rejects http provider input baseUrl', () => expectInvalid(ProviderConfigInputV1Schema, {
+  displayName: 'DeepSeek',
+  adapterType: 'DEEPSEEK',
+  baseUrl: 'http://api.deepseek.com',
+  modelId: 'deepseek-chat',
+}, 'http url'));
+test('rejects provider input with credentialRef', () => expectInvalid(ProviderConfigInputV1Schema, {
+  displayName: 'DeepSeek',
+  adapterType: 'DEEPSEEK',
+  baseUrl: 'https://api.deepseek.com',
+  modelId: 'deepseek-chat',
+  credentialRef: 'safe-storage:x',
+}, 'credentialRef not user-submitted'));
+
+// ConfigUpdateRequestV1
+console.log('\nConfigUpdateRequestV1Schema');
+test('valid roomReference-only update', () => expectValid(ConfigUpdateRequestV1Schema, { roomReference: 'room-1' }, 'room only'));
+test('valid provider-only update', () => expectValid(ConfigUpdateRequestV1Schema, {
+  provider: {
+    displayName: 'DeepSeek',
+    adapterType: 'DEEPSEEK',
+    baseUrl: 'https://api.deepseek.com',
+    modelId: 'deepseek-chat',
+  },
+}, 'provider only'));
+test('rejects empty update', () => expectInvalid(ConfigUpdateRequestV1Schema, {}, 'empty'));
+test('rejects unknown field', () => expectInvalid(ConfigUpdateRequestV1Schema, { roomReference: 'room-1', foo: 1 }, 'unknown field'));
+
+// PersonaSummaryV1 (M6-02 run page, M6-04 persona page)
+console.log('\nPersonaSummaryV1Schema');
+test('valid persona summary', () => expectValid(PersonaSummaryV1Schema, {
+  personaId: 'p-1',
+  displayName: '小A',
+  isPrincipal: true,
+  activeVersion: null,
+  createdAt: '2026-08-22T00:00:00.000Z',
+  updatedAt: '2026-08-22T00:00:00.000Z',
+  aliasCount: 0,
+  versionCount: 1,
+}, 'valid'));
+test('rejects persona summary missing isPrincipal', () => expectInvalid(PersonaSummaryV1Schema, {
+  personaId: 'p-1',
+  displayName: '小A',
+  activeVersion: null,
+  createdAt: '2026-08-22T00:00:00.000Z',
+  updatedAt: '2026-08-22T00:00:00.000Z',
+  aliasCount: 0,
+  versionCount: 1,
+}, 'missing isPrincipal'));
+
+// DiagnosticSummaryV1 (UI §8.1)
+console.log('\nDiagnosticSummaryV1Schema');
+test('valid diagnostic summary minimal', () => expectValid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'STOPPED',
+  activity: 'IDLE',
+}, 'minimal'));
+test('valid diagnostic summary with activity fields', () => expectValid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'RUNNING',
+  activity: 'DISPLAYING',
+  lastCommentReceivedAt: '2026-08-22T12:00:01.000Z',
+  lastSuggestionAt: '2026-08-22T12:00:02.000Z',
+  lastSuggestionResult: 'displayed',
+  lastE2eLatencyMs: 1800,
+  lastDomainError: 'E_PROVIDER_TIMEOUT',
+}, 'with activity'));
+test('rejects diagnostic summary with comment text', () => expectInvalid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'RUNNING',
+  activity: 'LISTENING',
+  lastCommentText: '主播晚上好',
+}, 'comment text leaks'));
+test('rejects unknown lastSuggestionResult', () => expectInvalid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'STOPPED',
+  activity: 'IDLE',
+  lastSuggestionResult: 'shown',
+}, 'unknown result'));
 
 // ServiceViewStateSchema
 console.log('\nServiceViewStateSchema');

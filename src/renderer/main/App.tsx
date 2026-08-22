@@ -1,5 +1,5 @@
 import { useState, useEffect, type KeyboardEvent, type ComponentType } from 'react'
-import { NAV_ITEMS, type PageName } from './nav'
+import { NAV_ITEMS, type PageName, type PageProps } from './nav'
 import RunPage from './pages/RunPage'
 import RoomAiPage from './pages/RoomAiPage'
 import PersonaPage from './pages/PersonaPage'
@@ -8,7 +8,7 @@ import PreferencesPage from './pages/PreferencesPage'
 import DiagnosticsPage from './pages/DiagnosticsPage'
 import AuditPage from './pages/AuditPage'
 
-const pages: Record<PageName, ComponentType> = {
+const pages: Record<PageName, ComponentType<PageProps>> = {
   运行: RunPage,
   直播间: RoomAiPage,
   团队与人设: PersonaPage,
@@ -83,7 +83,7 @@ function App() {
         ))}
       </aside>
       <article>
-        <CurrentPage />
+        <CurrentPage onNavigate={setPage} />
       </article>
     </div>
   )

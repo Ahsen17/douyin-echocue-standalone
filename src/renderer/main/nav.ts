@@ -15,3 +15,7 @@ export type PageName = (typeof NAV_ITEMS)[number]
 export function isNavItem(value: string): value is PageName {
   return (NAV_ITEMS as readonly string[]).includes(value)
 }
+
+export interface PageProps {
+  onNavigate: (page: PageName) => void
+}

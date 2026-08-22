@@ -260,6 +260,64 @@ export const SettingsV1Schema = z.strictObject({
   }),
 });
 
+// Renderer-facing config view (UI §7.1): internalRetrieval never crosses IPC,
+// the API key surfaces only as a boolean, never its value.
+export const ConfigViewV1Schema = z.strictObject({
+  roomReference: z.string().min(1).max(128).optional(),
+  provider: ProviderConfigV1Schema.optional(),
+  activeSafetyPolicyVersion: uuidV7.optional(),
+  overlay: OverlayPreferenceV1Schema,
+  apiKeyConfigured: z.boolean(),
+});
+
+// Provider fields a user submits; providerId/credentialRef are derived by the
+// handler. ANTHROPIC_MESSAGES has no adapter (M5-04), so it is not offerable.
+export const ProviderConfigInputV1Schema = z.strictObject({
+  displayName: z.string().min(1).max(80),
+  adapterType: z.enum(['DEEPSEEK', 'OPENAI_COMPATIBLE']),
+  baseUrl: z.string().url().superRefine((value, ctx) => {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+      ctx.addIssue({ code: 'custom', message: 'Base URL must be HTTPS without userinfo, query, or fragment' });
+    }
+  }),
+  modelId: z.string().min(1).max(128),
+});
+
+export const ConfigUpdateRequestV1Schema = z.strictObject({
+  roomReference: z.string().min(1).max(128).optional(),
+  provider: ProviderConfigInputV1Schema.optional(),
+}).superRefine((value, ctx) => {
+  if (value.roomReference === undefined && value.provider === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'at least one of roomReference or provider is required' });
+  }
+});
+
+// Persona summary for list views (M6-02 run page, M6-04 persona page). Mirrors
+// PersonaStore.PersonaSummary without internal fields.
+export const PersonaSummaryV1Schema = z.strictObject({
+  personaId: z.string().min(1).max(64),
+  displayName: z.string().min(1).max(80),
+  isPrincipal: z.boolean(),
+  activeVersion: z.string().min(1).max(128).nullable(),
+  createdAt: z.string().datetime({ offset: true }),
+  updatedAt: z.string().datetime({ offset: true }),
+  aliasCount: z.number().int().min(0),
+  versionCount: z.number().int().min(0),
+});
+
+// Anonymous run summary for the diagnostics source (UI §8.1); no comment text,
+// persona text, keys, or trace ids cross this boundary.
+export const DiagnosticSummaryV1Schema = z.strictObject({
+  lifecycle: ServiceLifecycleSchema,
+  activity: ServiceActivitySchema,
+  lastCommentReceivedAt: z.string().datetime({ offset: true }).optional(),
+  lastSuggestionAt: z.string().datetime({ offset: true }).optional(),
+  lastSuggestionResult: z.enum(['displayed', 'filtered', 'discarded', 'failed']).optional(),
+  lastE2eLatencyMs: z.number().nonnegative().optional(),
+  lastDomainError: DomainErrorV1Schema.optional(),
+});
+
 export const ServiceViewStateSchema = z.strictObject({
   lifecycle: ServiceLifecycleSchema,
   activity: ServiceActivitySchema,
@@ -367,6 +425,11 @@ export const AuditSubmitLabelRequestV1Schema = z.strictObject({
 });
 
 export type ProviderConfigV1 = z.infer<typeof ProviderConfigV1Schema>;
+export type ConfigViewV1 = z.infer<typeof ConfigViewV1Schema>;
+export type ProviderConfigInputV1 = z.infer<typeof ProviderConfigInputV1Schema>;
+export type ConfigUpdateRequestV1 = z.infer<typeof ConfigUpdateRequestV1Schema>;
+export type PersonaSummaryV1 = z.infer<typeof PersonaSummaryV1Schema>;
+export type DiagnosticSummaryV1 = z.infer<typeof DiagnosticSummaryV1Schema>;
 export type ConnectionTestResultV1 = z.infer<typeof ConnectionTestResultV1Schema>;
 export type ProviderFixtureResponseV1 = z.infer<typeof ProviderFixtureResponseV1Schema>;
 export type ProviderFixtureExpectedV1 = z.infer<typeof ProviderFixtureExpectedV1Schema>;

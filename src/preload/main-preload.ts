@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ConnectionTestResultV1, ServiceViewState } from '@echocue/contracts'
+import type {
+  ConfigUpdateRequestV1,
+  ConfigViewV1,
+  ConnectionTestResultV1,
+  DiagnosticSummaryV1,
+  PersonaSummaryV1,
+  ServiceViewState,
+} from '@echocue/contracts'
 import { IpcChannel } from '../shared/ipc-channels.js'
 
 const echocueApi = {
@@ -35,6 +42,18 @@ const echocueApi = {
       }) as Promise<{ apiKeyConfigured: boolean }>,
     testConnection: () =>
       ipcRenderer.invoke(IpcChannel.ProviderCredentialTest) as Promise<ConnectionTestResultV1>,
+  },
+  config: {
+    get: () => ipcRenderer.invoke(IpcChannel.ConfigGet) as Promise<ConfigViewV1>,
+    update: (input: ConfigUpdateRequestV1) =>
+      ipcRenderer.invoke(IpcChannel.ConfigUpdate, input) as Promise<ConfigViewV1>,
+  },
+  persona: {
+    list: () => ipcRenderer.invoke(IpcChannel.PersonaList) as Promise<PersonaSummaryV1[]>,
+  },
+  diagnostics: {
+    getSummary: () =>
+      ipcRenderer.invoke(IpcChannel.DiagnosticsGetSummary) as Promise<DiagnosticSummaryV1>,
   },
 }
 

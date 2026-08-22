@@ -101,4 +101,10 @@ export interface SuggestionOrchestratorDeps {
   calibrationArtifact?: CalibrationArtifactV1;
   maxContextBudget?: number;
   onAuditFailure: () => void;
+  /** Diagnostics hooks (M6-02): feed the anonymous run summary. */
+  onCommentReceived?: () => void;
+  onSuggestionResult?: (
+    result: 'displayed' | 'filtered' | 'discarded' | 'failed',
+    e2eLatencyMs?: number,
+  ) => void;
 }
