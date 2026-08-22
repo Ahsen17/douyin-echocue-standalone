@@ -37,3 +37,4 @@
 | M5-02 | 实现 TextGenerationProvider 稳定接口 | ✅ 已完成 | 2026-08-22 | src/main/provider/{types,errors,TextGenerationProvider,index}.ts, tests/unit/provider/{errors,interface}.test.ts |
 | M5-03 | 实现 DeepSeek 首个 adapter | ✅ 已完成 | 2026-08-22 | src/main/provider/{openai-compat,deepseek,parse,index}.ts, docs/06-data-interface/schema/contracts-v1.ts(ProviderFixtureCaseV1Schema+嵌套), src/contracts/src/schemas.ts(同步), src/contracts/test/schemas.test.ts, tests/contract/T-PROV-001, tests/unit/provider/{parse,deepseek}.test.ts, tests/integration/provider/deepseek.test.ts |
 | M5-04 | 实现 OpenAI-compatible 替代 adapter | ✅ 已完成 | 2026-08-22 | src/main/provider/{openai-compatible,openai-compat,index}.ts, tests/unit/provider/openai-compatible.test.ts, tests/integration/provider/openai-compatible.test.ts |
+| M5-05 | 实现确定性 PromptAssembler | ✅ 已完成 | 2026-08-22 | src/main/prompt/{PromptAssembler,types,index}.ts, tests/unit/prompt/prompt-assembler.test.ts |
