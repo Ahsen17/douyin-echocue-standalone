@@ -39,4 +39,12 @@ export type {
   CreateCollectionWithSparseOptions,
   StagedPreSet,
 } from './bootstrap.js';
+export { SuggestionRetriever, normalizeHits } from './retriever.js';
+export type {
+  RetrievalRawHit,
+  RetrievalSearchOptions,
+  RetrievalSearchResult,
+  SourceCollection,
+  SuggestionRetrieverOptions,
+} from './retriever.js';
 export type { Bm25Analysis, PreSetEntryV1 } from './types.js';

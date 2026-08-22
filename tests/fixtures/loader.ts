@@ -37,4 +37,5 @@ export const FIXTURES = {
   BM25_HASH_FIXTURES: 'bm25-token-hash-fixtures-v1.json',
   PRE_SET_VALID: 'pre-set-valid-v1.jsonl',
   PRE_SET_INVALID: 'pre-set-invalid-v1.jsonl',
+  QDRANT_QUERY: 'qdrant-query-fixtures-v1.json',
 } as const;
