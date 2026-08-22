@@ -1,0 +1,87 @@
+{
+  "version": "1",
+  "description": "Golden direct-push decision fixtures (T-RET-001, M3-08). DirectPushContext + mergedTopK scenarios with expected decisions.",
+  "context": {
+    "personaId": "p-1",
+    "personaVersion": "01932a3b-4c5d-7000-8000-000000000002",
+    "directPushThreshold": 0.85
+  },
+  "goldenPayload": {
+    "case_id": "golden-000001",
+    "tokenizer_version": "zh_jieba_search_v1",
+    "source_trace_id": "01932a3b-4c5d-7000-8000-000000000001",
+    "persona_id": "p-1",
+    "persona_version": "01932a3b-4c5d-7000-8000-000000000002",
+    "text": "今天状态真好",
+    "semantic_type": "positive_praise",
+    "reply": "谢谢你！",
+    "cues": ["接住夸奖", "继续互动"],
+    "quality_score": 90,
+    "enabled": true,
+    "is_bad_case": false,
+    "created_at": "2026-08-22T00:00:00.000Z",
+    "updated_at": "2026-08-22T00:00:00.000Z"
+  },
+  "prePayload": {
+    "schema_version": "1.0",
+    "case_id": "pre-000001",
+    "tokenizer_version": "zh_jieba_search_v1",
+    "text": "今天状态真好",
+    "semantic_type": "positive_praise",
+    "description": "夸赞",
+    "enabled": true,
+    "is_bad_case": false
+  },
+  "scenarios": [
+    {
+      "name": "golden high-confidence top1 is direct-eligible",
+      "topK": [
+        {
+          "pointId": "golden-000001",
+          "caseId": "golden-000001",
+          "collection": "golden_set",
+          "rawScore": 9.5,
+          "retrievalConfidence": 0.98,
+          "rank": 1,
+          "payloadRef": "goldenPayload"
+        }
+      ],
+      "expected": { "eligible": true, "pointId": "golden-000001", "reason": "GOLDEN_DIRECT_ELIGIBLE" }
+    },
+    {
+      "name": "pre_set top1 cannot be pushed directly",
+      "topK": [
+        {
+          "pointId": "pre-000001",
+          "caseId": "pre-000001",
+          "collection": "pre_set",
+          "rawScore": 12.5,
+          "retrievalConfidence": 0.998,
+          "rank": 1,
+          "payloadRef": "prePayload"
+        }
+      ],
+      "expected": { "eligible": false, "reason": "LLM_REQUIRED" }
+    },
+    {
+      "name": "golden confidence below threshold routes to LLM",
+      "topK": [
+        {
+          "pointId": "golden-000001",
+          "caseId": "golden-000001",
+          "collection": "golden_set",
+          "rawScore": 1,
+          "retrievalConfidence": 0.5,
+          "rank": 1,
+          "payloadRef": "goldenPayload"
+        }
+      ],
+      "expected": { "eligible": false, "reason": "LLM_REQUIRED" }
+    },
+    {
+      "name": "empty mergedTopK routes to LLM",
+      "topK": [],
+      "expected": { "eligible": false, "reason": "LLM_REQUIRED" }
+    }
+  ]
+}

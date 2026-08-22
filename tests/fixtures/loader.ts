@@ -38,4 +38,6 @@ export const FIXTURES = {
   PRE_SET_VALID: 'pre-set-valid-v1.jsonl',
   PRE_SET_INVALID: 'pre-set-invalid-v1.jsonl',
   QDRANT_QUERY: 'qdrant-query-fixtures-v1.json',
+  RETRIEVAL_CALIBRATION: 'retrieval-calibration-fixtures-v1.json',
+  RETRIEVAL_DIRECT_PUSH: 'retrieval-direct-push-fixtures-v1.json',
 } as const;

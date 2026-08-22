@@ -48,3 +48,18 @@ export type {
   SuggestionRetrieverOptions,
 } from './retriever.js';
 export type { Bm25Analysis, PreSetEntryV1 } from './types.js';
+export {
+  DEFAULT_CALIBRATION_ARTIFACT_V1,
+  calibrateHits,
+  calibrateScore,
+  validateCalibrationArtifact,
+} from './calibration.js';
+export type { CalibrationArtifactV1, SigmoidCalibrationV1 } from './calibration.js';
+export { rerank } from './rerank.js';
+export type { RerankInput, RerankOptions, RerankResult } from './rerank.js';
+export { POSITIVE_SEMANTIC_TYPES, evaluateSemanticFilter } from './semantic-filter.js';
+export type { SemanticFilterDecision } from './semantic-filter.js';
+export { evaluateRetrieval } from './evaluate.js';
+export type { CalibratedRetrieval, EvaluateOptions } from './evaluate.js';
+export { buildRetrievalResult, evaluateDirectPush } from './direct-push.js';
+export type { BuildRetrievalResultArgs, DirectPushContext, DirectPushDecision } from './direct-push.js';

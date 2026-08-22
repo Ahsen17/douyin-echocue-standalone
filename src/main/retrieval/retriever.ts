@@ -1,11 +1,11 @@
 import type { QdrantClient } from '@qdrant/js-client-rest';
-import type { GoldenSetPayloadV1, PreSetPayloadV1 } from '@echocue/contracts';
+import type { GoldenSetPayloadV1, PreSetPayloadV1, SourceCollectionV1 } from '@echocue/contracts';
 import { BM25_VECTOR_NAME_V1 } from '@echocue/contracts';
 import { createBm25TextPipeline, type Bm25TextPipeline } from './Bm25TextPipeline.js';
 import { tokenId } from './token-id.js';
 import { QDRANT_ALIAS_GOLDEN_SET, QDRANT_ALIAS_PRE_SET } from './bootstrap.js';
 
-export type SourceCollection = 'pre_set' | 'golden_set';
+export type SourceCollection = SourceCollectionV1;
 
 export interface RetrievalRawHit {
   readonly pointId: string;
