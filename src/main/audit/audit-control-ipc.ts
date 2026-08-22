@@ -24,4 +24,8 @@ export function wireAuditControl(options: AuditControlIpcOptions): void {
     IpcChannel.AuditGetWorkflow,
     createGuardedHandler(isTrustedSender, (raw) => handlers.getWorkflow(raw)),
   );
+  ipcMain.handle(
+    IpcChannel.AuditSubmitLabel,
+    createGuardedHandler(isTrustedSender, (raw) => handlers.submitLabel(raw)),
+  );
 }

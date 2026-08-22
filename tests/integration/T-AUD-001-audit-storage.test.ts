@@ -3,10 +3,12 @@ import { mkdtemp, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import {
   AuditStoreWorker,
   type AppendSnapshotInput,
 } from '../../src/main/storage/index.js';
+import { PersonaStore } from '../../src/main/persona/index.js';
 import { CryptoKeyManager } from '../../src/main/crypto/key-manager.js';
 import { CredentialStore } from '../../src/main/credentials/CredentialStore.js';
 
@@ -32,11 +34,12 @@ function snap(
 describe('T-AUD-001: Audit Storage', () => {
   let testDir: string;
   let worker: AuditStoreWorker;
+  let keyManager: CryptoKeyManager;
 
   beforeEach(async () => {
     testDir = await mkdtemp(join(tmpdir(), 'echocue-taud001-'));
     const credStore = new CredentialStore(testDir, mockStorage);
-    const keyManager = new CryptoKeyManager(credStore);
+    keyManager = new CryptoKeyManager(credStore);
     await keyManager.ensureKeys('v1');
     worker = new AuditStoreWorker({
       dbPath: join(testDir, 'audit.sqlite'),
@@ -50,6 +53,25 @@ describe('T-AUD-001: Audit Storage', () => {
     worker.close();
     await rm(testDir, { recursive: true, force: true });
   });
+
+  // Creates a persona + one published version so submitLabel's FK to
+  // persona_version(persona_id, persona_version) resolves.
+  function setupPersonaAndVersion(): { personaId: string; personaVersion: string } {
+    const personaStore = new PersonaStore({
+      dbPath: join(testDir, 'audit.sqlite'),
+      migrations: [{ version: 1, path: MIGRATION_PATH }],
+      keyManager,
+      keyVersion: 'v1',
+    });
+    try {
+      personaStore.createPersona({ personaId: 'p-1', displayName: '主播A', isPrincipal: true });
+      const draft = personaStore.createDraft({ personaId: 'p-1', content: '你是一个温柔的主播。' });
+      personaStore.publishDraft(draft.personaVersion);
+      return { personaId: 'p-1', personaVersion: draft.personaVersion };
+    } finally {
+      personaStore.close();
+    }
+  }
 
   it.todo('should write and read audit traces');
   it.todo('should enforce hash chain integrity');
@@ -217,6 +239,156 @@ describe('T-AUD-001: Audit Storage', () => {
 
   it('getTraceWorkflowV1 returns null for an unknown trace', () => {
     expect(worker.getTraceWorkflowV1(randomUUID())).toBeNull();
+  });
+
+  it('submitLabel writes a revision, updates trace status, and creates no outbox job (M6-10)', () => {
+    const { personaVersion } = setupPersonaAndVersion();
+    const sessionId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    const traceId = randomUUID();
+    worker.createTrace({ traceId, sessionId, sourceMessageId: 'msg-1', receivedAt: now });
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED', [
+      snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', {
+        sourceMessageId: 'msg-1',
+        rawText: '主播晚上好',
+        normalizedText: '主播晚上好',
+        receivedAt: now,
+        receivedMonotonicMs: 1,
+      }),
+    ]);
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED', [
+      snap('DECISION_JSON', 'PERSONA_ROUTE', { personaId: 'p-1' }),
+      snap('PERSONA_TEXT', 'PERSONA_VERSION_SNAPSHOT', {
+        personaId: 'p-1',
+        personaVersion,
+        content: '你是主播。',
+        contentHmac: 'hmac-v1',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'ROUTED', 'RETRIEVING', 'RETRIEVAL_STARTED');
+    worker.appendTransition(traceId, 'RETRIEVING', 'PROMPT_RENDERED', 'LLM_REQUIRED');
+    worker.appendTransition(traceId, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED');
+    worker.appendTransition(traceId, 'LLM_PENDING', 'GENERATED', 'PROVIDER_SUCCEEDED');
+    worker.appendTransition(traceId, 'GENERATED', 'DISPLAY_READY', 'OUTPUT_VALIDATED');
+    worker.appendTransition(traceId, 'DISPLAY_READY', 'DISPLAYED', 'OVERLAY_RENDERED');
+    worker.appendTransition(traceId, 'DISPLAYED', 'HIDDEN', 'DISPLAY_DURATION_ELAPSED');
+
+    const status = worker.submitLabel({
+      traceId,
+      expectedRevisionNo: 0,
+      score: 90,
+    });
+    expect(status).toBe('ACCEPTED');
+
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    try {
+      const feedback = reader.prepare(
+        `SELECT revision_no, label_status, quality_score, source_collection, source_point_id, is_bad_case
+         FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(traceId) as {
+        revision_no: number;
+        label_status: string;
+        quality_score: number;
+        source_collection: string | null;
+        source_point_id: string | null;
+        is_bad_case: number;
+      };
+      expect(feedback.revision_no).toBe(1);
+      expect(feedback.label_status).toBe('ACCEPTED');
+      expect(feedback.quality_score).toBe(90);
+      expect(feedback.source_collection).toBeNull();
+      // No outbox job is created by M6-10 (reflux is M7-01).
+      const jobs = reader.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
+      expect(jobs.n).toBe(0);
+
+      const trace = reader.prepare(
+        `SELECT label_status, current_feedback_id FROM audit_trace WHERE trace_id = ?`,
+      ).get(traceId) as { label_status: string; current_feedback_id: string };
+      expect(trace.label_status).toBe('ACCEPTED');
+      expect(trace.current_feedback_id).toBeTruthy();
+    } finally {
+      reader.close();
+    }
+  });
+
+  it('submitLabel increments revisions on edits and rejects a stale optimistic lock (M6-10)', () => {
+    const { personaVersion } = setupPersonaAndVersion();
+    const sessionId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    const traceId = randomUUID();
+    worker.createTrace({ traceId, sessionId, sourceMessageId: 'msg-1', receivedAt: now });
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED', [
+      snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', {
+        sourceMessageId: 'msg-1',
+        rawText: '主播晚上好',
+        normalizedText: '主播晚上好',
+        receivedAt: now,
+        receivedMonotonicMs: 1,
+      }),
+    ]);
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED', [
+      snap('DECISION_JSON', 'PERSONA_ROUTE', { personaId: 'p-1' }),
+      snap('PERSONA_TEXT', 'PERSONA_VERSION_SNAPSHOT', {
+        personaId: 'p-1',
+        personaVersion,
+        content: '你是主播。',
+        contentHmac: 'hmac-v1',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'ROUTED', 'RETRIEVING', 'RETRIEVAL_STARTED');
+    worker.appendTransition(traceId, 'RETRIEVING', 'PROMPT_RENDERED', 'LLM_REQUIRED');
+    worker.appendTransition(traceId, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED');
+    worker.appendTransition(traceId, 'LLM_PENDING', 'GENERATED', 'PROVIDER_SUCCEEDED');
+    worker.appendTransition(traceId, 'GENERATED', 'DISPLAY_READY', 'OUTPUT_VALIDATED');
+    worker.appendTransition(traceId, 'DISPLAY_READY', 'DISPLAYED', 'OVERLAY_RENDERED');
+    worker.appendTransition(traceId, 'DISPLAYED', 'HIDDEN', 'DISPLAY_DURATION_ELAPSED');
+
+    worker.submitLabel({ traceId, expectedRevisionNo: 0, score: 85 });
+    worker.submitLabel({ traceId, expectedRevisionNo: 1, score: 70 });
+    // A concurrent editor who still sees revision 1 must be rejected.
+    expect(() => worker.submitLabel({ traceId, expectedRevisionNo: 1, score: 60 })).toThrow(
+      /label already changed/,
+    );
+
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    try {
+      const rows = reader.prepare(
+        `SELECT revision_no, quality_score FROM suggestion_feedback WHERE trace_id = ? ORDER BY revision_no`,
+      ).all(traceId) as Array<{ revision_no: number; quality_score: number }>;
+      expect(rows.map((r) => r.revision_no)).toEqual([1, 2]);
+      expect(rows.map((r) => r.quality_score)).toEqual([85, 70]);
+      const jobs = reader.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
+      expect(jobs.n).toBe(0);
+    } finally {
+      reader.close();
+    }
+  });
+
+  it('submitLabel rejects a trace with no final suggestion (M6-10)', () => {
+    const sessionId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    const traceId = randomUUID();
+    worker.createTrace({ traceId, sessionId, sourceMessageId: 'msg-2', receivedAt: now });
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED', [
+      snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', {
+        sourceMessageId: 'msg-2',
+        rawText: '加微信',
+        normalizedText: '加微信',
+        receivedAt: now,
+        receivedMonotonicMs: 1,
+      }),
+    ]);
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'FILTERED', 'INPUT_SAFETY_FILTERED');
+
+    expect(() => worker.submitLabel({ traceId, expectedRevisionNo: 0, score: 0 })).toThrow(
+      /no final suggestion/,
+    );
   });
 
   it.todo('should decrypt fields for authorized reader');

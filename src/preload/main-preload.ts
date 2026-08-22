@@ -4,6 +4,8 @@ import type {
   AuditGetWorkflowRequestV1,
   AuditSearchRequestV1,
   AuditSearchResponseV1,
+  AuditSubmitLabelRequestV1,
+  AuditSubmitLabelResponseV1,
   AuditWorkflowV1,
   ConfigUpdateRequestV1,
   ConfigViewV1,
@@ -101,6 +103,8 @@ const echocueApi = {
       ipcRenderer.invoke(IpcChannel.AuditSearch, req) as Promise<AuditSearchResponseV1>,
     getWorkflow: (req: AuditGetWorkflowRequestV1) =>
       ipcRenderer.invoke(IpcChannel.AuditGetWorkflow, req) as Promise<AuditWorkflowV1>,
+    submitLabel: (req: AuditSubmitLabelRequestV1) =>
+      ipcRenderer.invoke(IpcChannel.AuditSubmitLabel, req) as Promise<AuditSubmitLabelResponseV1>,
   },
   overlay: {
     updatePreferences: (prefs: OverlayPreferenceV1) =>

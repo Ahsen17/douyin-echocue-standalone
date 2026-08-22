@@ -191,6 +191,7 @@ export default function AuditPage() {
                   workflow={workflow}
                   workflowLoading={loadWorkflow.running}
                   workflowError={workflowError}
+                  onLabelSaved={() => void search.run(page, finalState, labelStatus)}
                 />
               </>
             )}
@@ -201,11 +202,12 @@ export default function AuditPage() {
   )
 }
 
-function DetailTabs({ row, workflow, workflowLoading, workflowError }: {
+function DetailTabs({ row, workflow, workflowLoading, workflowError, onLabelSaved }: {
   row: AuditTraceSummaryV1
   workflow: AuditWorkflowV1 | null
   workflowLoading: boolean
   workflowError: string | null
+  onLabelSaved: (status: LabelStatus) => void
 }) {
   const [tab, setTab] = useState<'workflow' | 'label'>('workflow')
   return (
@@ -221,7 +223,7 @@ function DetailTabs({ row, workflow, workflowLoading, workflowError }: {
       {tab === 'workflow' ? (
         <WorkflowPanel workflow={workflow} loading={workflowLoading} error={workflowError} />
       ) : (
-        <LabelStatusPanel row={row} />
+        <LabelForm row={row} onSaved={onLabelSaved} />
       )}
     </>
   )
@@ -258,7 +260,28 @@ function WorkflowPanel({ workflow, loading, error }: {
   )
 }
 
-function LabelStatusPanel({ row }: { row: AuditTraceSummaryV1 }) {
+function LabelForm({ row, onSaved }: { row: AuditTraceSummaryV1; onSaved: (status: LabelStatus) => void }) {
+  const [approve, setApprove] = useState(true)
+  const [corrected, setCorrected] = useState(false)
+  const [score, setScore] = useState('85')
+  const [reply, setReply] = useState('')
+  const [cues, setCues] = useState('')
+  const [saved, setSaved] = useState<LabelStatus | null>(row.labelStatus === 'UNLABELED' ? null : row.labelStatus)
+
+  const submit = useAsyncAction(async () => {
+    const isRejected = !approve && !corrected
+    const res = await window.echocue.audit.submitLabel({
+      traceId: row.traceId,
+      expectedRevisionNo: row.labelStatus === 'UNLABELED' ? 0 : 1,
+      score: isRejected ? 0 : Number(score),
+      correctedQuickReply: corrected && reply.trim() !== '' ? reply.trim() : undefined,
+      correctedCues: corrected ? cues.split(/[，,·\s]+/).filter(Boolean) : undefined,
+    })
+    setSaved(res.labelStatus)
+    onSaved(res.labelStatus)
+    return true
+  })
+
   if (!row.hasSuggestion) {
     return (
       <div className="empty-state">
@@ -267,10 +290,71 @@ function LabelStatusPanel({ row }: { row: AuditTraceSummaryV1 }) {
       </div>
     )
   }
+  if (saved !== null && !submit.error) {
+    return (
+      <div className="label-summary">
+        <b>当前打标：{localizeLabelStatus(saved)}</b>
+        <p>已保存为当前有效打标；再次编辑会产生新修订，不覆盖历史。</p>
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={() => setSaved(null)}>
+            编辑本次打标
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="label-summary">
-      <b>当前打标状态：{localizeLabelStatus(row.labelStatus)}</b>
-      <p>{row.labelStatus === 'UNLABELED' ? '尚未打标。' : '已保存为当前有效打标；编辑会产生新修订，不覆盖历史。'}</p>
+    <div className="label-form">
+      <p><b>为本条最终建议打标</b></p>
+      <label className="choice">
+        <input type="radio" checked={approve} onChange={() => setApprove(true)} /> 认可建议
+      </label>
+      <label className="choice">
+        <input type="radio" checked={!approve} onChange={() => setApprove(false)} /> 不认可建议
+      </label>
+      {approve ? (
+        <label>
+          主观质量分（0–100）
+          <input type="number" min="0" max="100" value={score} onChange={(e) => setScore(e.target.value)} />
+        </label>
+      ) : (
+        <>
+          <p>原建议将记为 0 分。</p>
+          <label className="checkbox">
+            <input type="checkbox" checked={corrected} onChange={(e) => setCorrected(e.target.checked)} />
+            填写主播认为更好的答案
+          </label>
+          {corrected && (
+            <>
+              <label>
+                更优短回复
+                <textarea value={reply} onChange={(e) => setReply(e.target.value)} />
+              </label>
+              <label>
+                提词（2–3 条，用逗号或顿号分隔）
+                <input value={cues} onChange={(e) => setCues(e.target.value)} />
+              </label>
+              <label>
+                修正答案质量分（默认 85）
+                <input type="number" min="1" max="100" value={score} onChange={(e) => setScore(e.target.value)} />
+              </label>
+            </>
+          )}
+        </>
+      )}
+      {submit.running && <p className="inline-message" role="status">正在保存打标…</p>}
+      {submit.error !== null && <p className="inline-message danger-text" role="alert">{submit.error}</p>}
+      <div className="button-row">
+        <button
+          type="button"
+          disabled={submit.running || (approve ? Number(score) < 0 : false)}
+          onClick={() => void submit.run()}
+        >
+          保存打标
+        </button>
+      </div>
+      <small>这里只显示用户可理解的打标状态，不显示案例库、阈值或同步机制。</small>
     </div>
   )
 }

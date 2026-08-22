@@ -13,11 +13,13 @@ import type {
   AuditSearchResponseV1,
   AuditTraceSummaryV1,
   AuditWorkflowV1,
+  AuditSubmitLabelRequestV1,
   LabelStatus,
   TraceFinalState,
 } from '@echocue/contracts';
 import { FieldEncryptor, buildAad } from '../crypto/field-encryptor.js';
 import { CryptoKeyManager } from '../crypto/key-manager.js';
+import { uuidv7 } from '../util/uuidv7.js';
 import type { MigrationFile } from './MigrationRunner.js';
 import { MigrationRunner } from './MigrationRunner.js';
 
@@ -375,6 +377,119 @@ export class AuditStoreWorker {
     };
   }
 
+  /**
+   * Persist a label revision (DATA §4.3): write suggestion_feedback
+   * (UNIQUE(trace_id, revision_no)) and update audit_trace.label_status /
+   * current_feedback_id in one transaction. The optimistic lock rejects a
+   * concurrent edit (修订而非覆盖). Returns the user-visible labelStatus only;
+   * qdrant_sync_job / outbox is M7-01.
+   */
+  submitLabel(input: AuditSubmitLabelRequestV1): LabelStatus {
+    const workflow = this.getTraceWorkflowV1(input.traceId);
+    if (workflow === null) {
+      throw new AuditStateInvalidError(`label target trace not found: ${input.traceId}`);
+    }
+    if (!this.traceHasSuggestion(input.traceId)) {
+      throw new AuditStateInvalidError('trace has no final suggestion; no label required');
+    }
+
+    const labelStatus = deriveLabelStatus(input);
+    const persona = this.readPersonaBinding(workflow);
+    const source = this.readDirectSource(workflow);
+    // M7-03 gate: a golden direct point is a bad case only when rejected with no
+    // correction. The outbox job is M7-01; the flag records the source derivation.
+    const isBadCase = labelStatus === 'REJECTED' && input.correctedQuickReply === undefined && source.pointId !== null;
+
+    try {
+      this.db.exec('BEGIN');
+      const countRow = this.db.prepare(
+        `SELECT COUNT(*) as revision_count FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(input.traceId) as { revision_count: number };
+      if (countRow.revision_count !== input.expectedRevisionNo) {
+        this.db.exec('ROLLBACK');
+        throw new AuditStateInvalidError('label already changed by another edit; refresh and retry');
+      }
+      const revisionNo = countRow.revision_count + 1;
+      const feedbackId = uuidv7();
+      const createdAt = new Date().toISOString();
+      const correction = this.buildCorrection(input);
+      this.db.prepare(
+        `INSERT INTO suggestion_feedback
+          (feedback_id, trace_id, revision_no, persona_id, persona_version, quality_score,
+           correction_envelope, label_status, sync_status, is_bad_case,
+           source_collection, source_point_id, target_point_id, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,null,?)`,
+      ).run(
+        feedbackId,
+        input.traceId,
+        revisionNo,
+        persona.personaId,
+        persona.personaVersion,
+        input.score,
+        correction,
+        labelStatus,
+        'NOT_REQUIRED',
+        isBadCase ? 1 : 0,
+        source.collection,
+        source.pointId,
+        createdAt,
+      );
+      this.db.prepare(
+        `UPDATE audit_trace SET label_status = ?, current_feedback_id = ? WHERE trace_id = ?`,
+      ).run(labelStatus, feedbackId, input.traceId);
+      this.db.exec('COMMIT');
+      return labelStatus;
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      if (err instanceof AuditStateInvalidError) throw err;
+      throw new AuditUnavailableError(`submitLabel failed: ${String(err)}`);
+    }
+  }
+
+  private buildCorrection(input: AuditSubmitLabelRequestV1): Uint8Array | null {
+    if (input.correctedQuickReply === undefined || input.correctedCues === undefined) return null;
+    const plaintext = Buffer.from(JSON.stringify({
+      correctedQuickReply: input.correctedQuickReply,
+      correctedCues: input.correctedCues,
+    }), 'utf-8');
+    const snapshotId = uuidv7();
+    const envelope = this.encryptor.encrypt(
+      plaintext,
+      buildAad('suggestion_feedback', snapshotId, 'CORRECTION_JSON'),
+    );
+    return Buffer.from(envelope);
+  }
+
+  private readPersonaBinding(workflow: AuditWorkflowV1): { personaId: string; personaVersion: string } {
+    // The PERSONA_VERSION_SNAPSHOT carries the immutable PersonaSnapshot
+    // (personaId + personaVersion + content + contentHmac) used for this trace.
+    for (const t of workflow.transitions) {
+      for (const s of t.snapshots) {
+        if (s.role !== 'PERSONA_VERSION_SNAPSHOT') continue;
+        const parsed = JSON.parse(s.plaintext) as { personaId?: string; personaVersion?: string };
+        if (typeof parsed.personaId === 'string' && typeof parsed.personaVersion === 'string') {
+          return { personaId: parsed.personaId, personaVersion: parsed.personaVersion };
+        }
+      }
+    }
+    throw new AuditStateInvalidError('trace has no persona binding; cannot label');
+  }
+
+  private readDirectSource(workflow: AuditWorkflowV1): {
+    collection: 'golden_set' | null;
+    pointId: string | null;
+  } {
+    for (const t of workflow.transitions) {
+      for (const s of t.snapshots) {
+        if (s.role !== 'DIRECT_DECISION') continue;
+        const parsed = JSON.parse(s.plaintext) as { pointId?: string };
+        const pointId = typeof parsed.pointId === 'string' ? parsed.pointId : null;
+        return { collection: 'golden_set', pointId };
+      }
+    }
+    return { collection: null, pointId: null };
+  }
+
   private readCommentPreview(traceId: string): string {
     try {
       const row = this.db.prepare(
@@ -418,6 +533,13 @@ export class AuditStoreWorker {
       );
     }
   }
+}
+
+// UI §8.2: 认可（无修正）→ ACCEPTED；不认可无修正 → REJECTED（0 分）；
+// 不认可有修正 → CORRECTED。schema 已保证 correctedReply/cues 同现。
+function deriveLabelStatus(input: AuditSubmitLabelRequestV1): LabelStatus {
+  if (input.correctedQuickReply !== undefined) return 'CORRECTED';
+  return input.score === 0 ? 'REJECTED' : 'ACCEPTED';
 }
 
 function computeTransitionHmac(
