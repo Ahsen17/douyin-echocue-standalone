@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ServiceViewState } from '@echocue/contracts'
+import type { ConnectionTestResultV1, ServiceViewState } from '@echocue/contracts'
 
 contextBridge.exposeInMainWorld('echocue', {
   window: {
@@ -21,5 +21,13 @@ contextBridge.exposeInMainWorld('echocue', {
     },
     start: () => ipcRenderer.invoke('service.start') as Promise<ServiceViewState>,
     stop: () => ipcRenderer.invoke('service.stop') as Promise<ServiceViewState>,
+  },
+  provider: {
+    setApiKey: (providerId: string, apiKey: string) =>
+      ipcRenderer.invoke('provider.credential.set', { providerId, apiKey }),
+    clearApiKey: (providerId: string) =>
+      ipcRenderer.invoke('provider.credential.clear', { providerId }),
+    testConnection: () =>
+      ipcRenderer.invoke('provider.credential.test') as Promise<ConnectionTestResultV1>,
   },
 })

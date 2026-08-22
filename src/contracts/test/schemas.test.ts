@@ -7,6 +7,10 @@ import {
   SettingsV1Schema,
   ServiceViewStateSchema,
   ProviderConfigV1Schema,
+  ConnectionTestResultV1Schema,
+  ProviderFixtureCaseV1Schema,
+  ProviderFixtureResponseV1Schema,
+  ProviderFixtureExpectedV1Schema,
   OverlayPreferenceV1Schema,
   SuggestionOutputV1Schema,
   AuditSearchRequestV1Schema,
@@ -250,6 +254,65 @@ test('rejects missing sourceMessageId', () => expectInvalid(SourceCommentSchema,
   receivedAt: '2026-08-22T12:00:01.000Z',
   receivedMonotonicMs: 0,
 }, 'missing message id'));
+
+// Provider connection test result (CONTRACT §7)
+console.log('\nProvider connection test result');
+test('accepts all three statuses', () => {
+  expectValid(ConnectionTestResultV1Schema, { status: 'OK' }, 'ok');
+  expectValid(ConnectionTestResultV1Schema, { status: 'AUTH_FAILED' }, 'auth failed');
+  expectValid(ConnectionTestResultV1Schema, { status: 'UNAVAILABLE' }, 'unavailable');
+});
+test('rejects unknown status and extra fields', () => {
+  expectInvalid(ConnectionTestResultV1Schema, { status: 'MAYBE' }, 'unknown status');
+  expectInvalid(ConnectionTestResultV1Schema, { status: 'OK', extra: 1 }, 'extra field');
+  expectInvalid(ConnectionTestResultV1Schema, {}, 'missing status');
+});
+
+// Provider fixture case (CONTRACT §6)
+console.log('\nProvider fixture case');
+test('accepts a full fixture case', () => {
+  expectValid(ProviderFixtureCaseV1Schema, {
+    id: 'deepseek-json-success',
+    adapterType: 'DEEPSEEK',
+    config: {
+      providerId: 'deepseek-primary',
+      displayName: '首选模型服务',
+      adapterType: 'DEEPSEEK',
+      baseUrl: 'https://api.deepseek.com',
+      modelId: 'configured-model-id',
+      credentialRef: 'safe-storage:deepseek-primary',
+    },
+    request: { method: 'POST', path: '/chat/completions', body: {} },
+    response: { status: 200, body: {} },
+    expected: { ok: true },
+  }, 'full case');
+});
+test('rejects a fixture case with a non-https config and an unknown adapterType', () => {
+  expectInvalid(ProviderFixtureCaseV1Schema, {
+    id: 'bad',
+    config: {
+      providerId: 'p',
+      displayName: 't',
+      adapterType: 'DEEPSEEK',
+      baseUrl: 'http://insecure.example.com',
+      modelId: 'm',
+      credentialRef: 'safe-storage:p',
+    },
+    expected: { ok: true },
+  }, 'non-https config');
+  expectInvalid(ProviderFixtureResponseV1Schema, {
+    status: 0,
+    body: {},
+  }, 'non-positive status');
+  expectInvalid(ProviderFixtureExpectedV1Schema, {
+    ok: 'yes',
+  }, 'non-boolean ok');
+  expectInvalid(ProviderFixtureCaseV1Schema, {
+    id: 'bad',
+    adapterType: 'ANTHROPIC_MESSAGES',
+    expected: { ok: true },
+  }, 'unsupported fixture adapterType');
+});
 
 // Transition constants
 console.log('\nTransition constants');

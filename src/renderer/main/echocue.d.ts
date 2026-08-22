@@ -1,4 +1,4 @@
-import type { ServiceViewState } from '@echocue/contracts'
+import type { ConnectionTestResultV1, ServiceViewState } from '@echocue/contracts'
 
 interface EchocueWindow {
   window: {
@@ -11,6 +11,11 @@ interface EchocueWindow {
     subscribe: (cb: (state: ServiceViewState) => void) => () => void
     start: () => Promise<ServiceViewState>
     stop: () => Promise<ServiceViewState>
+  }
+  provider: {
+    setApiKey: (providerId: string, apiKey: string) => Promise<{ apiKeyConfigured: boolean }>
+    clearApiKey: (providerId: string) => Promise<{ apiKeyConfigured: boolean }>
+    testConnection: () => Promise<ConnectionTestResultV1>
   }
 }
 
