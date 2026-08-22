@@ -11,7 +11,7 @@ export default defineConfig({
     outDir: 'dist/main',
     emptyOutDir: true,
     rollupOptions: {
-      external: ['electron', 'path', 'fs', 'os', 'url', 'crypto', 'worker_threads', 'jieba-wasm'],
+      external: ['electron', 'path', 'fs', 'os', 'url', 'crypto', 'worker_threads', 'jieba-wasm', '@qdrant/js-client-rest'],
     },
     minify: false,
     sourcemap: true,

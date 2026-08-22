@@ -1,0 +1,10 @@
+# Echocue bundled Qdrant sidecar config.
+# host is locked to loopback; http_port/grpc_port/storage_path are materialized
+# by QdrantSidecarManager into the app data directory on every start, so manual
+# edits are reverted and cannot change binding, ports, or storage location.
+service:
+  host: 127.0.0.1
+  http_port: __HTTP_PORT__
+  grpc_port: __GRPC_PORT__
+storage:
+  storage_path: '__STORAGE_PATH__'

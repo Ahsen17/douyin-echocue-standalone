@@ -17,4 +17,34 @@ export type {
   PreSetImportOptions,
   PreSetImportResult,
 } from './pre-set-importer.js';
+export {
+  GOLDEN_SET_PAYLOAD_INDEX_FIELDS,
+  PRE_SET_PAYLOAD_INDEX_FIELDS,
+  QDRANT_ALIAS_GOLDEN_SET,
+  QDRANT_ALIAS_PRE_SET,
+  bootstrapPreSet,
+  buildPreSetPoints,
+  computeProfile,
+  computeProfileFromStaging,
+  contentSha256,
+  createCollectionWithSparse,
+  preSetPointId,
+  stagePreSet,
+  toPreSetPayload,
+} from './bootstrap.js';
+export type {
+  BootstrapPreSetOptions,
+  BuildPreSetPointsOptions,
+  ComputeProfileInput,
+  CreateCollectionWithSparseOptions,
+  StagedPreSet,
+} from './bootstrap.js';
+export { SuggestionRetriever, normalizeHits } from './retriever.js';
+export type {
+  RetrievalRawHit,
+  RetrievalSearchOptions,
+  RetrievalSearchResult,
+  SourceCollection,
+  SuggestionRetrieverOptions,
+} from './retriever.js';
 export type { Bm25Analysis, PreSetEntryV1 } from './types.js';
