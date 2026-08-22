@@ -79,5 +79,7 @@ export interface ProviderAuditRecord {
   modelId: string;
   rawRequest: unknown;
   rawResponse?: unknown;
+  /** HTTP status of the call, when a response was received (LLM §7). */
+  providerStatus?: number;
   normalizedError?: string;
 }

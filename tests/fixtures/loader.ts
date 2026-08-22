@@ -42,4 +42,5 @@ export const FIXTURES = {
   RETRIEVAL_DIRECT_PUSH: 'retrieval-direct-push-fixtures-v1.json',
   WS_EVENTS: 'ws-event-fixtures-v1.json',
   OUTPUT_VALIDATION: 'output-validation-fixtures-v1.json',
+  AUDIT_SNAPSHOT: 'audit-snapshot-fixtures-v1.json',
 } as const;

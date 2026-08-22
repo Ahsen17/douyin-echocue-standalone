@@ -666,4 +666,46 @@ describe('SuggestionAttemptOrchestrator', () => {
       expect(overlay?.payload).toHaveProperty('e2eMs');
     });
   });
+
+  describe('M5-09 LLM-path audit snapshots', () => {
+    it('persists the four LLM-path snapshots on an LLM attempt', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displayDurationMs: 20,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.snapshots.some((s) => s.role === 'LLM_PARSED_OUTPUT'));
+      const roles = audit.snapshots.map((s) => s.role);
+      expect(roles).toContain('RENDERED_PROMPT');
+      expect(roles).toContain('LLM_REQUEST_META');
+      expect(roles).toContain('LLM_RAW_RESPONSE');
+      expect(roles).toContain('LLM_PARSED_OUTPUT');
+      // No secrets / raw scores / internal thresholds inside any LLM snapshot.
+      const llmSnaps = audit.snapshots.filter((s) =>
+        ['RENDERED_PROMPT', 'LLM_REQUEST_META', 'LLM_RAW_RESPONSE', 'LLM_PARSED_OUTPUT'].includes(s.role),
+      );
+      const allPayload = JSON.stringify(llmSnaps.map((s) => s.payload));
+      expect(allPayload).not.toContain('sk-test');
+      expect(allPayload).not.toContain('rawScore');
+      expect(allPayload).not.toContain('directPushThreshold');
+      // LLM_REQUEST_META carries the request identity, not the key.
+      const meta = audit.snapshots.find((s) => s.role === 'LLM_REQUEST_META');
+      expect(meta?.payload).toMatchObject({ providerId: 'compat-backup', modelId: 'm' });
+    });
+
+    it('does not write LLM_RAW_RESPONSE/LLM_PARSED_OUTPUT on provider failure', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        createProvider: () => makeProvider({ ok: false, error: { code: 'NETWORK' } }) as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await flush();
+      const roles = audit.snapshots.map((s) => s.role);
+      expect(roles).not.toContain('LLM_RAW_RESPONSE');
+      expect(roles).not.toContain('LLM_PARSED_OUTPUT');
+      expect(roles).toContain('FINAL_REASON');
+    });
+  });
 });

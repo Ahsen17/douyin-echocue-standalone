@@ -74,7 +74,7 @@ export class OpenAiChatCompletionsProvider implements TextGenerationProvider {
         abortSignal: input.abortSignal,
       });
       const result = parseProviderResponse({ status: response.status, body: response.body });
-      this.lastAuditRecord = this.buildAuditRecord(input, wireRequest, response.body, result);
+      this.lastAuditRecord = this.buildAuditRecord(input, wireRequest, response.body, result, response.status);
       return result;
     } catch (err) {
       if (err instanceof ProviderTransportError) {
@@ -105,6 +105,7 @@ export class OpenAiChatCompletionsProvider implements TextGenerationProvider {
     wireRequest: ReturnType<typeof buildChatCompletionsRequest>,
     rawResponse: unknown,
     result: ProviderGenerateResult,
+    providerStatus?: number,
   ): ProviderAuditRecord {
     const record: ProviderAuditRecord = {
       providerId: input.providerId,
@@ -114,6 +115,7 @@ export class OpenAiChatCompletionsProvider implements TextGenerationProvider {
       rawRequest: scrub(input.apiKey, wireRequest),
       ...(rawResponse !== undefined ? { rawResponse: scrub(input.apiKey, rawResponse) } : {}),
     };
+    if (providerStatus !== undefined) record.providerStatus = providerStatus;
     const requestId = extractProviderRequestId(rawResponse);
     if (requestId) record.providerRequestId = requestId;
     if (!result.ok) record.normalizedError = result.error.code;

@@ -263,6 +263,29 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
     }
   });
 
+  it('replays the four LLM-path snapshots via getTraceWorkflow (M5-09)', async () => {
+    const { orchestrator } = await setup({
+      hits: [preHit()],
+      providerResult: { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } },
+    });
+    orchestrator.handleComment(makeComment());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    const traceId = (reader.prepare('SELECT trace_id FROM audit_trace LIMIT 1').get() as { trace_id: string }).trace_id;
+    reader.close();
+    const workflow = worker.getTraceWorkflow(traceId);
+    expect(workflow).not.toBeNull();
+    const allSnapshots = workflow!.transitions.flatMap((t) => t.snapshots);
+    const roles = allSnapshots.map((s) => s.role);
+    expect(roles).toEqual(
+      expect.arrayContaining(['RENDERED_PROMPT', 'LLM_REQUEST_META', 'LLM_RAW_RESPONSE', 'LLM_PARSED_OUTPUT']),
+    );
+    // Decrypted content is replayable and free of the injected key.
+    const allPlaintext = allSnapshots.map((s) => s.plaintext.toString()).join('\n');
+    expect(allPlaintext).not.toContain('sk-test');
+    expect(allPlaintext).not.toContain('Authorization');
+  });
+
   it('audit-unavailable aborts and does not produce a suggestion', async () => {
     // Close the real worker so writes fail.
     worker.close();

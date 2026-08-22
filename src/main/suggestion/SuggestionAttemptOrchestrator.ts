@@ -462,15 +462,33 @@ export class SuggestionAttemptOrchestrator {
     });
     this.transition(candidate.processingComment, 'RETRIEVING', 'PROMPT_RENDERED', 'LLM_REQUIRED', [
       ...candidate.querySnapshots,
+      // RENDERED_PROMPT (LLM §7): the actual system/user content and versions.
+      this.snap('PROMPT_TEXT', 'RENDERED_PROMPT', {
+        templateVersion: rendered.templateVersion,
+        assemblerVersion: rendered.assemblerVersion,
+        system: rendered.system,
+        user: rendered.user,
+        truncationLog: rendered.truncationLog,
+        personaId: candidate.personaSnapshot.personaId,
+        personaVersion: candidate.personaSnapshot.personaVersion,
+        personaContentHmac: candidate.personaSnapshot.contentHmac,
+        safetyVersion: candidate.safetySnapshot.version,
+        topK: candidate.calibrated.mergedTopK.map((hit) => ({
+          caseId: hit.caseId,
+          collection: hit.collection,
+        })),
+      }),
     ]);
 
-    // Enter LLM_PENDING before resolving config/credential so a missing
-    // config/key fails via LLM_PENDING → FAILED (the only FAILED edge).
-    this.transition(candidate.processingComment, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED');
+    // Resolve config/credential before entering LLM_PENDING so LLM_REQUEST_META
+    // (which needs provider/model/baseUrl) rides on the LLM_PENDING transition.
+    // A missing config/key still enters LLM_PENDING first and fails via
+    // LLM_PENDING → FAILED (the only FAILED edge).
     const config = await this.deps.providerConfig.getProviderConfig();
     const configCancel = this.commentCancelled(candidate.processingComment);
     if (!configCancel.ok) return this.cancelAttempt(attempt, configCancel.reason);
     if (config === null) {
+      this.transition(candidate.processingComment, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED');
       this.fail(attempt, 'PROVIDER_FAILED');
       return;
     }
@@ -479,9 +497,26 @@ export class SuggestionAttemptOrchestrator {
     const keyCancel = this.commentCancelled(candidate.processingComment);
     if (!keyCancel.ok) return this.cancelAttempt(attempt, keyCancel.reason);
     if (apiKey === null) {
+      this.transition(candidate.processingComment, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED');
       this.fail(attempt, 'PROVIDER_FAILED');
       return;
     }
+
+    const requestStartedAtMonotonicMs = this.deps.nowMonotonic();
+    this.transition(candidate.processingComment, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED', [
+      // LLM_REQUEST_META (LLM §7): what the request was; never the API key/header.
+      this.snap('PROVIDER_META_JSON', 'LLM_REQUEST_META', {
+        providerId: config.providerId,
+        adapterType: config.adapterType,
+        baseUrlOrigin: new URL(config.baseUrl).origin,
+        modelId: config.modelId,
+        callMode: 'non-streaming-json',
+        startedAtMonotonicMs: requestStartedAtMonotonicMs,
+        freshnessDeadlineMonotonicMs: attempt.freshnessDeadlineMonotonicMs,
+        sessionId: attempt.sessionId,
+        windowVersion: attempt.windowVersion,
+      }),
+    ]);
 
     const provider = this.deps.createProvider(config.adapterType);
     const result = await provider.generateReply({
@@ -502,6 +537,7 @@ export class SuggestionAttemptOrchestrator {
       abortSignal: attempt.abortController.signal,
     });
     attempt.providerAuditRecord = provider.getAuditRecord();
+    const responseCompletedAtMonotonicMs = this.deps.nowMonotonic();
     const postProvider = this.commentCancelled(candidate.processingComment);
     if (!postProvider.ok) return this.cancelAttempt(attempt, postProvider.reason);
 
@@ -513,7 +549,21 @@ export class SuggestionAttemptOrchestrator {
       }
       return;
     }
-    this.transition(candidate.processingComment, 'LLM_PENDING', 'GENERATED', 'PROVIDER_SUCCEEDED');
+    this.transition(candidate.processingComment, 'LLM_PENDING', 'GENERATED', 'PROVIDER_SUCCEEDED', [
+      // LLM_RAW_RESPONSE + LLM_PARSED_OUTPUT (LLM §7): the received (key-scrubbed)
+      // body and the parsed output that feeds the shared validator.
+      this.snap('PROVIDER_RESPONSE_JSON', 'LLM_RAW_RESPONSE', {
+        providerRequestId: attempt.providerAuditRecord?.providerRequestId,
+        httpStatus: attempt.providerAuditRecord?.providerStatus,
+        rawResponse: attempt.providerAuditRecord?.rawResponse,
+        completedAtMonotonicMs: responseCompletedAtMonotonicMs,
+      }),
+      this.snap('SUGGESTION_JSON', 'LLM_PARSED_OUTPUT', {
+        quickReply: result.output.quick_reply,
+        cues: result.output.cues,
+        parserVersion: 'SuggestionOutputV1',
+      }),
+    ]);
 
     const validation = this.deps.validator.validate(
       result.output,
