@@ -1,0 +1,1 @@
+Qdrant v1.19.0 Binaries for x86_64 Linux and Windows.
