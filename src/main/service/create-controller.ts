@@ -1,3 +1,4 @@
+import { statfsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ServiceViewState } from '@echocue/contracts';
 import { QdrantClient } from '@qdrant/js-client-rest';
@@ -40,6 +41,7 @@ export interface CreatedServiceController {
   readonly settings: SettingsStore;
   readonly persona: PersonaStore;
   readonly safety: SafetyPolicyStore;
+  readonly audit: AuditStoreWorker;
   readonly diagnostics: DiagnosticsSource;
   readonly shutdown: () => void;
 }
@@ -82,7 +84,18 @@ export async function createServiceController(
     url: `http://${QDRANT_LOOPBACK_HOST}:${QDRANT_HTTP_PORT}`,
   });
 
-  const diagnostics = new DiagnosticsSource();
+  // M6-08: report the audit volume's free space in the diagnostics summary.
+  // statfsSync is available on Windows and Linux; a read failure just omits it.
+  const diagnostics = new DiagnosticsSource({
+    readStorage: () => {
+      try {
+        const stat = statfsSync(options.dataDir);
+        return { availableBytes: stat.bavail * stat.bsize, totalBytes: stat.blocks * stat.bsize };
+      } catch {
+        return null;
+      }
+    },
+  });
   const stateMachine = new ServiceStateMachine();
   const checks = createServiceGateChecks({
     settings,
@@ -163,7 +176,7 @@ export async function createServiceController(
     safety.close();
   };
 
-  return { controller, stateMachine, providerConfig, settings, persona, safety, diagnostics, shutdown };
+  return { controller, stateMachine, providerConfig, settings, persona, safety, audit, diagnostics, shutdown };
 }
 
 /** M5-07 stub: acknowledges first frame immediately; M6-07 replaces it. */

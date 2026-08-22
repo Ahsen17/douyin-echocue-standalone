@@ -42,6 +42,10 @@ import {
   AuditSearchRequestV1Schema,
   AuditSubmitLabelRequestV1Schema,
   AuditGetWorkflowRequestV1Schema,
+  AuditTraceSummaryV1Schema,
+  AuditSearchResponseV1Schema,
+  AuditWorkflowV1Schema,
+  AuditSubmitLabelResponseV1Schema,
   TraceStateSchema,
   DomainErrorV1Schema,
   LiveSourceEventSchema,
@@ -393,6 +397,17 @@ test('valid diagnostic summary with activity fields', () => expectValid(Diagnost
   lastE2eLatencyMs: 1800,
   lastDomainError: 'E_PROVIDER_TIMEOUT',
 }, 'with activity'));
+test('valid diagnostic summary with storage capacity (M6-08)', () => expectValid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'RUNNING',
+  activity: 'LISTENING',
+  storageAvailableBytes: 12_884_901_888,
+  storageLowSpace: false,
+}, 'with storage bytes'));
+test('rejects negative storage capacity', () => expectInvalid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'STOPPED',
+  activity: 'IDLE',
+  storageAvailableBytes: -1,
+}, 'negative storage bytes'));
 test('rejects diagnostic summary with comment text', () => expectInvalid(DiagnosticSummaryV1Schema, {
   lifecycle: 'RUNNING',
   activity: 'LISTENING',
@@ -564,6 +579,152 @@ test('valid empty request uses defaults', () => {
 });
 test('rejects pageSize > 100', () => expectInvalid(AuditSearchRequestV1Schema, { pageSize: 101 }, 'pageSize 101'));
 test('rejects page < 1', () => expectInvalid(AuditSearchRequestV1Schema, { page: 0 }, 'page 0'));
+test('valid full search filters (M6-09)', () => expectValid(AuditSearchRequestV1Schema, {
+  from: '2026-08-22T00:00:00.000Z',
+  to: '2026-08-22T23:59:59.000Z',
+  finalState: 'HIDDEN',
+  labelStatus: 'UNLABELED',
+  page: 2,
+  pageSize: 50,
+}, 'full filters'));
+test('rejects unknown finalState filter', () => expectInvalid(AuditSearchRequestV1Schema, {
+  finalState: 'SHOWN',
+}, 'unknown finalState'));
+test('rejects extra filter field', () => expectInvalid(AuditSearchRequestV1Schema, {
+  results: 'SHOWN',
+}, 'extra field'));
+test('rejects non-datetime from', () => expectInvalid(AuditSearchRequestV1Schema, {
+  from: 'yesterday',
+}, 'non-datetime from'));
+
+// AuditTraceSummaryV1Schema
+console.log('\nAuditTraceSummaryV1Schema');
+test('valid trace summary', () => expectValid(AuditTraceSummaryV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  receivedAt: '2026-08-22T00:00:00.000Z',
+  finalState: 'HIDDEN',
+  labelStatus: 'UNLABELED',
+  hasSuggestion: true,
+  commentText: '主播晚上好',
+  revisionCount: 0,
+}, 'valid summary'));
+test('valid trace summary without final state', () => expectValid(AuditTraceSummaryV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  receivedAt: '2026-08-22T00:00:00.000Z',
+  finalState: null,
+  labelStatus: 'NOT_APPLICABLE',
+  hasSuggestion: false,
+  commentText: '',
+  revisionCount: 0,
+}, 'no final state'));
+test('rejects trace summary with missing labelStatus', () => expectInvalid(AuditTraceSummaryV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  receivedAt: '2026-08-22T00:00:00.000Z',
+  finalState: 'FILTERED',
+  hasSuggestion: false,
+  revisionCount: 0,
+}, 'missing labelStatus'));
+test('rejects trace summary with missing revisionCount', () => expectInvalid(AuditTraceSummaryV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  receivedAt: '2026-08-22T00:00:00.000Z',
+  finalState: 'FILTERED',
+  labelStatus: 'UNLABELED',
+  hasSuggestion: false,
+  commentText: '',
+}, 'missing revisionCount'));
+test('rejects trace summary with extra field', () => expectInvalid(AuditTraceSummaryV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  receivedAt: '2026-08-22T00:00:00.000Z',
+  finalState: 'FILTERED',
+  labelStatus: 'UNLABELED',
+  hasSuggestion: false,
+  commentText: '',
+  revisionCount: 0,
+  leaked: 'trace-secret',
+}, 'extra field'));
+
+// AuditSearchResponseV1Schema
+console.log('\nAuditSearchResponseV1Schema');
+test('valid search response', () => expectValid(AuditSearchResponseV1Schema, {
+  items: [{
+    traceId: '01932a3b-4c5d-7000-8000-000000000001',
+    receivedAt: '2026-08-22T00:00:00.000Z',
+    finalState: 'HIDDEN',
+    labelStatus: 'UNLABELED',
+    hasSuggestion: true,
+    commentText: '主播晚上好',
+    revisionCount: 0,
+  }],
+  total: 1,
+  page: 1,
+  pageSize: 20,
+}, 'valid response'));
+test('rejects search response with pageSize > 100', () => expectInvalid(AuditSearchResponseV1Schema, {
+  items: [],
+  total: 0,
+  page: 1,
+  pageSize: 101,
+}, 'pageSize 101'));
+
+// AuditWorkflowV1Schema
+console.log('\nAuditWorkflowV1Schema');
+test('valid workflow with a transition and snapshot', () => expectValid(AuditWorkflowV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  transitions: [{
+    sequenceNo: 1,
+    fromState: null,
+    toState: 'RECEIVED',
+    reasonCode: 'EVENT_RECEIVED',
+    occurredAt: '2026-08-22T00:00:00.000Z',
+    snapshots: [{
+      snapshotId: 'snap-1',
+      role: 'RAW_WS_EVENT',
+      contentType: 'RAW_EVENT_JSON',
+      plaintext: '{"method":"WebcastChatMessage"}',
+    }],
+  }],
+}, 'valid workflow'));
+test('rejects workflow with Buffer plaintext (must be string)', () => expectInvalid(AuditWorkflowV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  transitions: [{
+    sequenceNo: 1,
+    fromState: null,
+    toState: 'RECEIVED',
+    reasonCode: 'EVENT_RECEIVED',
+    occurredAt: '2026-08-22T00:00:00.000Z',
+    snapshots: [{
+      snapshotId: 'snap-1',
+      role: 'RAW_WS_EVENT',
+      contentType: 'RAW_EVENT_JSON',
+      plaintext: Buffer.from('x'),
+    }],
+  }],
+}, 'Buffer plaintext'));
+test('rejects workflow with invalid role', () => expectInvalid(AuditWorkflowV1Schema, {
+  traceId: '01932a3b-4c5d-7000-8000-000000000001',
+  transitions: [{
+    sequenceNo: 1,
+    fromState: null,
+    toState: 'RECEIVED',
+    reasonCode: 'EVENT_RECEIVED',
+    occurredAt: '2026-08-22T00:00:00.000Z',
+    snapshots: [{
+      snapshotId: 'snap-1',
+      role: 'TRACE_SECRET',
+      contentType: 'RAW_EVENT_JSON',
+      plaintext: '{}',
+    }],
+  }],
+}, 'invalid role'));
+
+// AuditSubmitLabelResponseV1Schema
+console.log('\nAuditSubmitLabelResponseV1Schema');
+test('valid label response', () => expectValid(AuditSubmitLabelResponseV1Schema, {
+  labelStatus: 'ACCEPTED',
+}, 'accepted'));
+test('rejects unknown labelStatus', () => expectInvalid(AuditSubmitLabelResponseV1Schema, {
+  labelStatus: 'SYNCED',
+}, 'unknown labelStatus'));
 
 // AuditGetWorkflowRequestV1Schema
 console.log('\nAuditGetWorkflowRequestV1Schema');

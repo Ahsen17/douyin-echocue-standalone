@@ -585,7 +585,7 @@ Provider 到领域错误映射固定为：`AUTH→E_PROVIDER_AUTH`、`BILLING→
 | `diagnostics.getSummary` | 无 | 匿名运行摘要（无弹幕/人设/Key/trace_id） |
 | `persona.list/get/create/delete/setPrincipal/saveDraft/publish/listVersions/compare/updateAliases` | 人设与版本操作 | 人设摘要/版本摘要 |
 | `safety.get/saveDraft/publish` | 自然语言、关键词/短语与草稿版本 | 编译校验结果/版本摘要 |
-| `audit.search` | 时间、label 状态、分页 | `AuditTraceSummary[]` |
+| `audit.search` | 时间、结果（final_state）、label 状态、分页 | `AuditTraceSummary[]` |
 | `audit.getWorkflow` | `traceId` | 完整 workflow 上下文 |
 | `audit.submitLabel` | 评分、拒绝/修正内容 | 用户可见 `labelStatus` |
 | `overlay.preference.update` | 白名单浮窗偏好 | 更新后偏好 |

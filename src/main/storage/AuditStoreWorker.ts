@@ -9,9 +9,17 @@ import type {
   TraceReasonCodeV1,
   AuditSnapshotRoleV1,
   AuditContentTypeV1,
+  AuditSearchRequestV1,
+  AuditSearchResponseV1,
+  AuditTraceSummaryV1,
+  AuditWorkflowV1,
+  AuditSubmitLabelRequestV1,
+  LabelStatus,
+  TraceFinalState,
 } from '@echocue/contracts';
 import { FieldEncryptor, buildAad } from '../crypto/field-encryptor.js';
 import { CryptoKeyManager } from '../crypto/key-manager.js';
+import { uuidv7 } from '../util/uuidv7.js';
 import type { MigrationFile } from './MigrationRunner.js';
 import { MigrationRunner } from './MigrationRunner.js';
 
@@ -286,6 +294,259 @@ export class AuditStoreWorker {
     }
   }
 
+  /**
+   * Paginated audit list (CONTRACT §7 / UI §8.2): time range, final result,
+   * label status filters, received_at DESC. commentText is decrypted on demand
+   * from each row's first NORMALIZED_COMMENT snapshot. Read-only: a failure here
+   * never stops the service.
+   */
+  searchTraces(params: AuditSearchRequestV1): AuditSearchResponseV1 {
+    try {
+      // Defensive clamp: the IPC schema enforces 1-100, but direct callers must
+      // not be able to over-read.
+      const pageSize = Math.min(Math.max(params.pageSize, 1), 100);
+      const page = Math.max(params.page, 1);
+      const where: string[] = [];
+      const binds: Array<string | number> = [];
+      // received_at is persisted as UTC (toISOString); normalize offset datetimes
+      // to UTC so a caller sending +08:00 compares on the same timeline.
+      if (params.from !== undefined) {
+        where.push('received_at >= ?');
+        binds.push(new Date(params.from).toISOString());
+      }
+      if (params.to !== undefined) {
+        where.push('received_at <= ?');
+        binds.push(new Date(params.to).toISOString());
+      }
+      if (params.finalState !== undefined) {
+        where.push('final_state = ?');
+        binds.push(params.finalState);
+      }
+      if (params.labelStatus !== undefined) {
+        where.push('label_status = ?');
+        binds.push(params.labelStatus);
+      }
+      const whereSql = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
+      const offset = (page - 1) * pageSize;
+
+      const countRow = this.db.prepare(`SELECT COUNT(*) as total FROM audit_trace${whereSql}`)
+        .get(...binds) as { total: number };
+      const rows = this.db.prepare(
+        `SELECT trace_id, received_at, final_state, label_status
+         FROM audit_trace${whereSql}
+         ORDER BY received_at DESC
+         LIMIT ? OFFSET ?`,
+      ).all(...binds, pageSize, offset) as Array<{
+        trace_id: string;
+        received_at: string;
+        final_state: TraceFinalState | null;
+        label_status: LabelStatus;
+      }>;
+
+      const items = rows.map((row) => {
+        const commentText = this.readCommentPreview(row.trace_id);
+        const hasSuggestion = this.traceHasSuggestion(row.trace_id);
+        const revisionCount = this.traceRevisionCount(row.trace_id);
+        return {
+          traceId: row.trace_id,
+          receivedAt: row.received_at,
+          finalState: row.final_state,
+          labelStatus: row.label_status,
+          hasSuggestion,
+          commentText,
+          revisionCount,
+        };
+      });
+      return { items, total: countRow.total, page, pageSize };
+    } catch (err) {
+      throw new AuditUnavailableError(`searchTraces failed: ${String(err)}`);
+    }
+  }
+
+  /** Serializable workflow projection for IPC (Buffer plaintext → utf-8 string). */
+  getTraceWorkflowV1(traceId: string): AuditWorkflowV1 | null {
+    const workflow = this.getTraceWorkflow(traceId);
+    if (workflow === null) return null;
+    return {
+      traceId: workflow.traceId,
+      transitions: workflow.transitions.map((t) => ({
+        sequenceNo: t.sequenceNo,
+        fromState: t.fromState,
+        toState: t.toState,
+        reasonCode: t.reasonCode,
+        occurredAt: t.occurredAt,
+        snapshots: t.snapshots.map((s) => ({
+          snapshotId: s.snapshotId,
+          role: s.role,
+          contentType: s.contentType,
+          plaintext: s.plaintext.toString('utf-8'),
+        })),
+      })),
+    };
+  }
+
+  /**
+   * Persist a label revision (DATA §4.3): write suggestion_feedback
+   * (UNIQUE(trace_id, revision_no)) and update audit_trace.label_status /
+   * current_feedback_id in one transaction. The optimistic lock rejects a
+   * concurrent edit (修订而非覆盖). Returns the user-visible labelStatus only;
+   * qdrant_sync_job / outbox is M7-01.
+   */
+  submitLabel(input: AuditSubmitLabelRequestV1): LabelStatus {
+    const workflow = this.getTraceWorkflowV1(input.traceId);
+    if (workflow === null) {
+      throw new AuditStateInvalidError(`label target trace not found: ${input.traceId}`);
+    }
+    if (!this.traceHasSuggestion(input.traceId)) {
+      throw new AuditStateInvalidError('trace has no final suggestion; no label required');
+    }
+
+    const labelStatus = deriveLabelStatus(input);
+    const persona = this.readPersonaBinding(workflow);
+    const source = this.readDirectSource(workflow);
+    // M7-03 gate: a golden direct point is a bad case only when rejected with no
+    // correction. The outbox job is M7-01; the flag records the source derivation.
+    const isBadCase = labelStatus === 'REJECTED' && input.correctedQuickReply === undefined && source.pointId !== null;
+
+    try {
+      this.db.exec('BEGIN');
+      const countRow = this.db.prepare(
+        `SELECT COUNT(*) as revision_count FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(input.traceId) as { revision_count: number };
+      if (countRow.revision_count !== input.expectedRevisionNo) {
+        this.db.exec('ROLLBACK');
+        throw new AuditStateInvalidError('label already changed by another edit; refresh and retry');
+      }
+      const revisionNo = countRow.revision_count + 1;
+      const feedbackId = uuidv7();
+      const createdAt = new Date().toISOString();
+      const correction = this.buildCorrection(input, feedbackId);
+      this.db.prepare(
+        `INSERT INTO suggestion_feedback
+          (feedback_id, trace_id, revision_no, persona_id, persona_version, quality_score,
+           correction_envelope, label_status, sync_status, is_bad_case,
+           source_collection, source_point_id, target_point_id, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,null,?)`,
+      ).run(
+        feedbackId,
+        input.traceId,
+        revisionNo,
+        persona.personaId,
+        persona.personaVersion,
+        input.score,
+        correction,
+        labelStatus,
+        'NOT_REQUIRED',
+        isBadCase ? 1 : 0,
+        source.collection,
+        source.pointId,
+        createdAt,
+      );
+      this.db.prepare(
+        `UPDATE audit_trace SET label_status = ?, current_feedback_id = ? WHERE trace_id = ?`,
+      ).run(labelStatus, feedbackId, input.traceId);
+      this.db.exec('COMMIT');
+      return labelStatus;
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      if (err instanceof AuditStateInvalidError) throw err;
+      throw new AuditUnavailableError(`submitLabel failed: ${String(err)}`);
+    }
+  }
+
+  private buildCorrection(input: AuditSubmitLabelRequestV1, feedbackId: string): Uint8Array | null {
+    if (input.correctedQuickReply === undefined || input.correctedCues === undefined) return null;
+    const plaintext = Buffer.from(JSON.stringify({
+      correctedQuickReply: input.correctedQuickReply,
+      correctedCues: input.correctedCues,
+    }), 'utf-8');
+    // AAD is the persisted row primary key (feedback_id) so the envelope stays
+    // decryptable by M7-01 reflux — never a throwaway random value.
+    const envelope = this.encryptor.encrypt(
+      plaintext,
+      buildAad('suggestion_feedback', feedbackId, 'CORRECTION_JSON'),
+    );
+    return Buffer.from(envelope);
+  }
+
+  private readPersonaBinding(workflow: AuditWorkflowV1): { personaId: string; personaVersion: string } {
+    // The PERSONA_VERSION_SNAPSHOT carries the immutable PersonaSnapshot
+    // (personaId + personaVersion + content + contentHmac) used for this trace.
+    for (const t of workflow.transitions) {
+      for (const s of t.snapshots) {
+        if (s.role !== 'PERSONA_VERSION_SNAPSHOT') continue;
+        const parsed = JSON.parse(s.plaintext) as { personaId?: string; personaVersion?: string };
+        if (typeof parsed.personaId === 'string' && typeof parsed.personaVersion === 'string') {
+          return { personaId: parsed.personaId, personaVersion: parsed.personaVersion };
+        }
+      }
+    }
+    throw new AuditStateInvalidError('trace has no persona binding; cannot label');
+  }
+
+  private readDirectSource(workflow: AuditWorkflowV1): {
+    collection: 'golden_set' | null;
+    pointId: string | null;
+  } {
+    for (const t of workflow.transitions) {
+      for (const s of t.snapshots) {
+        if (s.role !== 'DIRECT_DECISION') continue;
+        const parsed = JSON.parse(s.plaintext) as { pointId?: string };
+        const pointId = typeof parsed.pointId === 'string' ? parsed.pointId : null;
+        return { collection: 'golden_set', pointId };
+      }
+    }
+    return { collection: null, pointId: null };
+  }
+
+  private readCommentPreview(traceId: string): string {
+    try {
+      const row = this.db.prepare(
+        `SELECT s.snapshot_id, s.content_type, s.envelope
+         FROM audit_reference r JOIN audit_snapshot s ON s.snapshot_id = r.snapshot_id
+         WHERE r.trace_id = ? AND r.role = 'NORMALIZED_COMMENT'
+         ORDER BY r.sequence_no LIMIT 1`,
+      ).get(traceId) as { snapshot_id: string; content_type: AuditContentTypeV1; envelope: Uint8Array } | undefined;
+      if (row === undefined) return '';
+      const plaintext = this.encryptor.decrypt(
+        Buffer.from(row.envelope),
+        buildAad('audit_snapshot', row.snapshot_id, row.content_type),
+      );
+      const parsed = JSON.parse(plaintext.toString('utf-8')) as { normalizedText?: unknown };
+      if (typeof parsed.normalizedText !== 'string') return '';
+      // Comment text can exceed the AuditTraceSummary.commentText cap (2000);
+      // truncate so a long 弹幕 never fails the whole page's schema validation.
+      return parsed.normalizedText.length > 2000 ? parsed.normalizedText.slice(0, 2000) : parsed.normalizedText;
+    } catch {
+      // A decrypt/parse failure must not corrupt the whole page; show no preview.
+      return '';
+    }
+  }
+
+  private traceHasSuggestion(traceId: string): boolean {
+    try {
+      const row = this.db.prepare(
+        `SELECT 1 FROM audit_transition
+         WHERE trace_id = ? AND to_state IN ('DISPLAYED', 'HIDDEN')
+         LIMIT 1`,
+      ).get(traceId) as { '1': number } | undefined;
+      return row !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  private traceRevisionCount(traceId: string): number {
+    try {
+      const row = this.db.prepare(
+        `SELECT COUNT(*) as n FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(traceId) as { n: number };
+      return row.n;
+    } catch {
+      return 0;
+    }
+  }
+
   private validateTransition(from: TraceState | null, to: TraceState): void {
     const key = from ?? 'INITIAL';
     const allowed = (TRACE_TRANSITIONS_V1 as Record<string, readonly string[]>)[key];
@@ -295,6 +556,13 @@ export class AuditStoreWorker {
       );
     }
   }
+}
+
+// UI §8.2: 认可（无修正）→ ACCEPTED；不认可无修正 → REJECTED（0 分）；
+// 不认可有修正 → CORRECTED。schema 已保证 correctedReply/cues 同现。
+function deriveLabelStatus(input: AuditSubmitLabelRequestV1): LabelStatus {
+  if (input.correctedQuickReply !== undefined) return 'CORRECTED';
+  return input.score === 0 ? 'REJECTED' : 'ACCEPTED';
 }
 
 function computeTransitionHmac(

@@ -8,12 +8,33 @@ export interface DiagnosticSummary {
   lastSuggestionResult?: 'displayed' | 'filtered' | 'discarded' | 'failed'
   lastE2eLatencyMs?: number
   lastDomainError?: DomainErrorV1
+  storageAvailableBytes?: number
+  storageLowSpace?: boolean
+}
+
+export interface StorageCapacity {
+  availableBytes: number
+  totalBytes: number
+}
+
+// RUNBOOK §4.1 low-space warning: below 1 GiB or 10% of the volume (higher wins).
+const LOW_SPACE_MIN_BYTES = 1024 * 1024 * 1024
+const LOW_SPACE_RATIO = 0.1
+
+export interface DiagnosticsSourceOptions {
+  /** Optional volume capacity read; when absent the summary omits storage. */
+  readStorage?: () => StorageCapacity | null
 }
 
 export class DiagnosticsSource {
   private summary: DiagnosticSummary = {
     lifecycle: 'STOPPED',
     activity: 'IDLE',
+  }
+  private readonly readStorage: (() => StorageCapacity | null) | undefined
+
+  constructor(options: DiagnosticsSourceOptions = {}) {
+    this.readStorage = options.readStorage
   }
 
   updateLifecycle(lifecycle: ServiceLifecycle, activity: ServiceActivity): void {
@@ -42,6 +63,15 @@ export class DiagnosticsSource {
   }
 
   getSummary(): Readonly<DiagnosticSummary> {
-    return { ...this.summary }
+    const summary = { ...this.summary }
+    const storage = this.readStorage?.()
+    if (storage !== undefined && storage !== null) {
+      summary.storageAvailableBytes = storage.availableBytes
+      const threshold = Math.max(LOW_SPACE_MIN_BYTES, storage.totalBytes * LOW_SPACE_RATIO)
+      // UI §8.1: warn but never auto-delete. Kept separate from lastDomainError
+      // so a low-space warning never masks the real latest domain error.
+      summary.storageLowSpace = storage.availableBytes < threshold
+    }
+    return summary
   }
 }
