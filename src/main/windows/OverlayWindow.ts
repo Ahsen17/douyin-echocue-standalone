@@ -62,6 +62,8 @@ export class OverlayWindow {
       alwaysOnTop: true,
       skipTaskbar: true,
       resizable: true,
+      // Never auto-show at construction; only showSuggestion() reveals it.
+      show: false,
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
