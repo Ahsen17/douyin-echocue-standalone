@@ -32,7 +32,7 @@ while a suggestion is showing are discarded, not queued.
 - [x] M3 Qdrant and BM25 — bundled Qdrant sidecar, jieba-BM25 pipeline, and dual `pre_set` / `golden_set` retrieval with calibration and rerank. *(POC blocked on real Chinese retrieval samples)*
 - [x] M4 douyinLive ingestion and state machine — bundled douyinLive sidecar, local WebSocket adapter, lifecycle/activity state machine. *(POC blocked on a real live room)*
 - [x] M5 Provider and orchestration — provider config/connection test, stable `TextGenerationProvider`, DeepSeek and OpenAI-compatible adapters, deterministic prompt assembly, and real-time `SuggestionAttempt` orchestration. *(9/9 tasks complete)*
-- [ ] M6 Renderer and overlay — seven formal UI entries and the standalone always-on-top overlay window. *(10/11 tasks complete: M6-01..10 done)*
+- [x] M6 Renderer and overlay — seven formal UI entries and the standalone always-on-top overlay window. *(11/11 tasks complete)*
 - [ ] M7 Feedback and release — `golden_set` feedback loop, integration/E2E acceptance, and Windows packaging/sign-off.
 
 ### High-level architecture
