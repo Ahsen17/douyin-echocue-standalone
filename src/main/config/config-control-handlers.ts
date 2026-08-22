@@ -1,4 +1,4 @@
-import { ConfigUpdateRequestV1Schema, type ConfigViewV1, type ProviderConfigV1, type SettingsV1 } from '@echocue/contracts';
+import { ConfigUpdateRequestV1Schema, OverlayPreferenceV1Schema, type ConfigViewV1, type OverlayPreferenceV1, type ProviderConfigV1, type SettingsV1 } from '@echocue/contracts';
 import type { ProviderConfigService } from '../provider/provider-config.js';
 import { CredentialStore } from '../credentials/index.js';
 import { ConfigCorruptError, SettingsStore } from './SettingsStore.js';
@@ -6,11 +6,14 @@ import { ConfigCorruptError, SettingsStore } from './SettingsStore.js';
 export interface ConfigControlDeps {
   settings: SettingsStore;
   providerConfig: ProviderConfigService;
+  /** Live-apply window (M6-07): re-applies feasible visual prefs on update. */
+  overlayWindow?: { applyPreferences(prefs: OverlayPreferenceV1): Promise<void> };
 }
 
 export interface ConfigControlHandlers {
   get: () => Promise<ConfigViewV1>;
   update: (raw: unknown) => Promise<ConfigViewV1>;
+  updateOverlay: (raw: unknown) => Promise<OverlayPreferenceV1>;
 }
 
 // Core config IPC logic, decoupled from electron for unit-testing. The response
@@ -67,6 +70,30 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         throw err;
       }
       return this.get();
+    },
+
+    async updateOverlay(raw) {
+      const parsed = OverlayPreferenceV1Schema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error('浮窗偏好不合法');
+      }
+      const overlay = parsed.data;
+      try {
+        await deps.settings.update({ overlay });
+      } catch (err) {
+        if (err instanceof ConfigCorruptError) {
+          throw new Error('配置读取失败，请检查设置文件或恢复默认设置');
+        }
+        throw err;
+      }
+      // Live-apply is best-effort: persistence already succeeded, and the next
+      // show re-applies the prefs anyway. A destroyed window must not fail save.
+      try {
+        await deps.overlayWindow?.applyPreferences(overlay);
+      } catch {
+        /* ignored */
+      }
+      return overlay;
     },
   };
 }

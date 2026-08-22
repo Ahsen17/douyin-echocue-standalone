@@ -5,8 +5,8 @@ import { tmpdir } from 'os';
 import { DatabaseSync } from 'node:sqlite';
 import type {
   GoldenSetPayloadV1,
+  OverlayDisplayPayloadV1,
   SourceComment,
-  ValidatedSuggestionV1,
 } from '@echocue/contracts';
 import { AuditStoreWorker } from '../../../src/main/storage/index.js';
 import { CryptoKeyManager } from '../../../src/main/crypto/key-manager.js';
@@ -124,12 +124,12 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
   async function setup(options: SetupOptions): Promise<{
     orchestrator: SuggestionAttemptOrchestrator;
     machine: ServiceStateMachine;
-    shown: ValidatedSuggestionV1[];
+    shown: OverlayDisplayPayloadV1[];
   }> {
     const machine = new ServiceStateMachine();
     machine.transitionToLifecycle('GATE_CONNECTING');
     machine.transitionToLifecycle('RUNNING');
-    const shown: ValidatedSuggestionV1[] = [];
+    const shown: OverlayDisplayPayloadV1[] = [];
     const deps: SuggestionOrchestratorDeps = {
       audit: worker,
       stateMachine: machine,
@@ -183,8 +183,8 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
         }) as never,
       validator: new SuggestionOutputValidator(),
       displaySink: {
-        async show(output: ValidatedSuggestionV1) {
-          shown.push(output);
+        async show(payload: OverlayDisplayPayloadV1) {
+          shown.push(payload);
           return { ok: true, firstFrameAtMonotonicMs: 100 };
         },
         async hide() {},
@@ -209,7 +209,11 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(shown.length).toBe(1);
     // NFKC normalization folds the fullwidth ！ into ! (LLM §5.2 step 3).
-    expect(shown[0]).toMatchObject({ quickReply: '谢谢你!', cues: ['接住夸奖', '继续互动'], source: 'retrieval_payload' });
+    expect(shown[0].suggestion).toMatchObject({
+      quickReply: '谢谢你!',
+      cues: ['接住夸奖', '继续互动'],
+      source: 'retrieval_payload',
+    });
     orchestrator.finishDisplay();
   });
 
@@ -221,7 +225,7 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
     orchestrator.handleComment(makeComment());
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(shown.length).toBe(1);
-    expect(shown[0]).toMatchObject({ quickReply: '谢谢你', cues: ['一', '二'], source: 'llm' });
+    expect(shown[0].suggestion).toMatchObject({ quickReply: '谢谢你', cues: ['一', '二'], source: 'llm' });
     orchestrator.finishDisplay();
   });
 

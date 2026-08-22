@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
   GoldenSetPayloadV1,
+  OverlayDisplayPayloadV1,
   SourceComment,
   TraceState,
   ValidatedSuggestionV1,
@@ -139,11 +140,11 @@ interface TextGenerationProviderLike {
 }
 
 function makeSink() {
-  const shown: ValidatedSuggestionV1[] = [];
+  const shown: OverlayDisplayPayloadV1[] = [];
   return {
     shown,
-    async show(output: ValidatedSuggestionV1) {
-      shown.push(output);
+    async show(payload: OverlayDisplayPayloadV1) {
+      shown.push(payload);
       return { ok: true, firstFrameAtMonotonicMs: 100 };
     },
     async hide() {},
@@ -653,6 +654,81 @@ describe('SuggestionAttemptOrchestrator', () => {
         audit.transitions.some((t) => t.to === 'HIDDEN' && t.reason === 'DISPLAY_DURATION_ELAPSED'),
       );
       expect(sink.shown.length).toBe(1);
+      expect(orchestrator.getCurrentAttempt()).toBeNull();
+    });
+
+    it('reads the display duration from getDisplayDurationMs when provided (M6-06)', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        getDisplayDurationMs: async () => 30,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      // The default (10s) would never fire within the wait; HIDDEN proves the
+      // live getter value (30ms) was used for the display timer.
+      await waitFor(() =>
+        audit.transitions.some((t) => t.to === 'HIDDEN' && t.reason === 'DISPLAY_DURATION_ELAPSED'),
+      );
+    });
+
+    it('prefers getDisplayDurationMs over the fixed displayDurationMs (M6-06)', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displayDurationMs: 20,
+        getDisplayDurationMs: async () => 100000,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(audit.transitions.some((t) => t.to === 'HIDDEN')).toBe(false);
+    });
+
+    it('passes the triggering comment and suggestion to the display sink (M6-07)', async () => {
+      const { sink, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment({ userNickname: '观众B', normalizedText: '主播真棒' }));
+      await waitFor(() => sink.shown.length === 1);
+      expect(sink.shown[0].comment).toEqual({ nickname: '观众B', text: '主播真棒' });
+      expect(sink.shown[0].suggestion.quickReply.length).toBeGreaterThan(0);
+    });
+
+    it('never arms a display timer for an attempt aborted during the duration read', async () => {
+      let resolveDuration: (ms: number) => void = () => {};
+      const durationGate = new Promise<number>((resolve) => {
+        resolveDuration = resolve;
+      });
+      let hideCalls = 0;
+      const sink = {
+        async show() {
+          return { ok: true, firstFrameAtMonotonicMs: 100 };
+        },
+        async hide() {
+          hideCalls += 1;
+        },
+      };
+      const { audit, machine, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displaySink: sink as never,
+        getDisplayDurationMs: () => durationGate,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      // Mirror the real stop sequence: lifecycle first, then abortAll. The stop
+      // lands while the duration read is suspended; then the read resolves.
+      machine.transitionToLifecycle('STOPPED');
+      orchestrator.abortAll('USER_STOP');
+      orchestrator.endSession();
+      // abortAll hides once; a stray finishDisplay timer would hide a second
+      // time and bump the window. The guard must leave exactly one hide.
+      const hidesAfterAbort = hideCalls;
+      resolveDuration(10);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(hideCalls).toBe(hidesAfterAbort);
       expect(orchestrator.getCurrentAttempt()).toBeNull();
     });
 

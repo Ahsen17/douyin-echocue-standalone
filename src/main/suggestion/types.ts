@@ -1,4 +1,5 @@
 import type {
+  OverlayDisplayPayloadV1,
   ProviderConfigV1,
   SourceComment,
   ValidatedSuggestionV1,
@@ -74,7 +75,7 @@ export interface SuggestionAttempt {
 /** Overlay port; M6-07 implements the real Electron window. */
 export interface SuggestionDisplaySink {
   show(
-    suggestion: ValidatedSuggestionV1,
+    payload: OverlayDisplayPayloadV1,
     meta: { sessionId: string; traceId: string; windowVersion: number },
   ): Promise<{ ok: true; firstFrameAtMonotonicMs: number } | { ok: false; reason: string }>;
   hide(): Promise<void>;
@@ -97,6 +98,8 @@ export interface SuggestionOrchestratorDeps {
   candidateMaxCount: number;
   /** Overlay display-window duration (PRD: 10s default); M6-06 wires the user preference. */
   displayDurationMs?: number;
+  /** Live read of the display-window duration per display (UI §7: next-display). */
+  getDisplayDurationMs?: () => Promise<number>;
   directPushThreshold: number;
   calibrationArtifact?: CalibrationArtifactV1;
   maxContextBudget?: number;

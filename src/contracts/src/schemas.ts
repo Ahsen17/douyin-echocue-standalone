@@ -516,6 +516,26 @@ export const ValidatedSuggestionV1Schema = z.strictObject({
   source: SuggestionSourceV1Schema,
 });
 
+// Overlay display content (UI §5): the suggestion plus the triggering comment
+// (@nickname hidden when absent). The sink passes this over overlay.renderSuggestion;
+// trace_id never crosses to the overlay renderer — a requestId nonce matches the ack.
+export const OverlayDisplayPayloadV1Schema = z.strictObject({
+  comment: z.strictObject({
+    nickname: z.string().min(1).max(64).optional(),
+    text: z.string().min(1).max(2000),
+  }),
+  suggestion: ValidatedSuggestionV1Schema,
+});
+
+export const OverlayDisplayRequestV1Schema = z.strictObject({
+  requestId: z.string().min(1).max(64),
+  payload: OverlayDisplayPayloadV1Schema,
+});
+
+export const OverlayAckRequestV1Schema = z.strictObject({
+  requestId: z.string().min(1).max(64),
+});
+
 export const AuditSearchRequestV1Schema = z.strictObject({
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
@@ -574,6 +594,9 @@ export type SuggestionOutputV1 = z.infer<typeof SuggestionOutputV1Schema>;
 export type OutputValidationReasonV1 = z.infer<typeof OutputValidationReasonV1Schema>;
 export type SuggestionSourceV1 = z.infer<typeof SuggestionSourceV1Schema>;
 export type ValidatedSuggestionV1 = z.infer<typeof ValidatedSuggestionV1Schema>;
+export type OverlayDisplayPayloadV1 = z.infer<typeof OverlayDisplayPayloadV1Schema>;
+export type OverlayDisplayRequestV1 = z.infer<typeof OverlayDisplayRequestV1Schema>;
+export type OverlayAckRequestV1 = z.infer<typeof OverlayAckRequestV1Schema>;
 export type LabelStatus = z.infer<typeof LabelStatusSchema>;
 export type TraceState = z.infer<typeof TraceStateSchema>;
 export type TraceFinalState = z.infer<typeof TraceFinalStateSchema>;

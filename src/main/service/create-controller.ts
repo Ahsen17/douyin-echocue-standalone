@@ -118,8 +118,16 @@ export async function createServiceController(
     windowMaxAgeMs: 1500,
     candidateMaxCount: 50,
     directPushThreshold: 0.85,
-    // PRD: 展示窗口默认 10 秒；M6-06 浮窗偏好页接入后由此传入。
+    // PRD: 展示窗口默认 10 秒；M6-06 从用户偏好按次读取（UI §7 应用于下一次展示）。
+    // 配置损坏时兜底默认值，避免展示路径楔死。
     displayDurationMs: 10_000,
+    getDisplayDurationMs: async () => {
+      try {
+        return (await settings.get())?.overlay?.durationMs ?? 10_000;
+      } catch {
+        return 10_000;
+      }
+    },
     onAuditFailure: () => {
       // Audit down ⇒ stop producing suggestions; service must not continue.
       void controller.stop('AUDIT_UNAVAILABLE');

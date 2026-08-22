@@ -2,6 +2,7 @@ import type {
   AuditContentTypeV1,
   AuditSnapshotRoleV1,
   GoldenSetPayloadV1,
+  OverlayDisplayPayloadV1,
   SourceComment,
   TraceReasonCodeV1,
   TraceState,
@@ -601,7 +602,16 @@ export class SuggestionAttemptOrchestrator {
     const pre = this.attemptFreshness(attempt);
     if (!pre.ok) return this.cancelAttempt(attempt, pre.reason);
     this.enterDisplaying();
-    const show = await this.deps.displaySink.show(output, {
+    // UI §5: the overlay shows @nickname + comment text beside the suggestion.
+    // An empty nickname is the same as absent (no "@" placeholder line).
+    const payload: OverlayDisplayPayloadV1 = {
+      comment: {
+        nickname: attempt.comment.userNickname || undefined,
+        text: attempt.comment.normalizedText,
+      },
+      suggestion: output,
+    };
+    const show = await this.deps.displaySink.show(payload, {
       sessionId: attempt.sessionId,
       traceId: attempt.traceId,
       windowVersion: attempt.windowVersion,
@@ -621,11 +631,19 @@ export class SuggestionAttemptOrchestrator {
         show.firstFrameAtMonotonicMs - attempt.comment.receivedMonotonicMs,
       );
       // Display window: auto-hide after the configured duration; unref so a
-      // pending timer never holds the process during tests/shutdown.
-      const timer = setTimeout(
-        () => this.finishDisplay(),
-        this.deps.displayDurationMs ?? DISPLAY_DURATION_MS,
-      );
+      // pending timer never holds the process during tests/shutdown. UI §7:
+      // the duration is read per display so preference changes apply next time.
+      const displayDurationMs =
+        (await this.deps.getDisplayDurationMs?.()) ??
+        this.deps.displayDurationMs ??
+        DISPLAY_DURATION_MS;
+      // The duration read is a real suspension point: an abort may have closed
+      // the attempt in between. Never arm a timer for a cleared attempt — it
+      // would fire finishDisplay on a later trace (audit corruption + spurious
+      // hide/resetWindowAfterDisplay on the next display). abortAll already hid
+      // the overlay, so returning leaves nothing orphaned.
+      if (this.attempt !== attempt) return;
+      const timer = setTimeout(() => this.finishDisplay(), displayDurationMs);
       timer.unref?.();
       this.displayTimer = timer;
     } else {

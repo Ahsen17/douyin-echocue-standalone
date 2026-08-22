@@ -36,6 +36,9 @@ import {
   OutputValidationReasonV1Schema,
   SuggestionSourceV1Schema,
   ValidatedSuggestionV1Schema,
+  OverlayDisplayPayloadV1Schema,
+  OverlayDisplayRequestV1Schema,
+  OverlayAckRequestV1Schema,
   AuditSearchRequestV1Schema,
   AuditSubmitLabelRequestV1Schema,
   AuditGetWorkflowRequestV1Schema,
@@ -499,6 +502,58 @@ test('rejects validated suggestion with extra field', () => expectInvalid(Valida
   source: 'llm',
   extra: true,
 }, 'extra field'));
+
+// OverlayDisplayPayloadV1Schema
+console.log('\nOverlayDisplayPayloadV1Schema');
+test('valid overlay payload with nickname', () => expectValid(OverlayDisplayPayloadV1Schema, {
+  comment: { nickname: '观众A', text: '主播晚上好' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'with nickname'));
+test('valid overlay payload without nickname', () => expectValid(OverlayDisplayPayloadV1Schema, {
+  comment: { text: '主播晚上好' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'nickname optional'));
+test('rejects overlay payload with empty comment text', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
+  comment: { text: '' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'empty text'));
+test('rejects overlay payload with over-long nickname', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
+  comment: { nickname: 'x'.repeat(65), text: '主播晚上好' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'nickname 65'));
+test('rejects overlay payload missing suggestion', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
+  comment: { nickname: '观众A', text: '主播晚上好' },
+}, 'missing suggestion'));
+test('rejects overlay payload with extra field', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
+  comment: { nickname: '观众A', text: '主播晚上好' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+  meta: {},
+}, 'extra meta field'));
+
+// OverlayDisplayRequestV1Schema
+console.log('\nOverlayDisplayRequestV1Schema');
+test('valid overlay display request', () => expectValid(OverlayDisplayRequestV1Schema, {
+  requestId: 'req-1',
+  payload: {
+    comment: { nickname: '观众A', text: '主播晚上好' },
+    suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+  },
+}, 'valid'));
+test('rejects overlay display request with empty requestId', () => expectInvalid(OverlayDisplayRequestV1Schema, {
+  requestId: '',
+  payload: {
+    comment: { text: '主播晚上好' },
+    suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+  },
+}, 'empty requestId'));
+test('rejects overlay display request missing payload', () => expectInvalid(OverlayDisplayRequestV1Schema, {
+  requestId: 'req-1',
+}, 'missing payload'));
+
+// OverlayAckRequestV1Schema
+console.log('\nOverlayAckRequestV1Schema');
+test('valid overlay ack', () => expectValid(OverlayAckRequestV1Schema, { requestId: 'req-1' }, 'valid'));
+test('rejects overlay ack with empty requestId', () => expectInvalid(OverlayAckRequestV1Schema, { requestId: '' }, 'empty requestId'));
 
 // AuditSearchRequestV1Schema
 console.log('\nAuditSearchRequestV1Schema');
