@@ -1,11 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  AliasRowV1,
   ConfigUpdateRequestV1,
   ConfigViewV1,
   ConnectionTestResultV1,
   DiagnosticSummaryV1,
+  PersonaDetailV1,
   PersonaSummaryV1,
+  PersonaVersionMetaV1,
   ServiceViewState,
+  VersionComparisonV1,
 } from '@echocue/contracts'
 import { IpcChannel } from '../shared/ipc-channels.js'
 
@@ -50,6 +54,27 @@ const echocueApi = {
   },
   persona: {
     list: () => ipcRenderer.invoke(IpcChannel.PersonaList) as Promise<PersonaSummaryV1[]>,
+    get: (personaId: string) =>
+      ipcRenderer.invoke(IpcChannel.PersonaGet, { personaId }) as Promise<PersonaDetailV1>,
+    create: (input: { displayName: string; aliases?: unknown[] }) =>
+      ipcRenderer.invoke(IpcChannel.PersonaCreate, input) as Promise<PersonaSummaryV1>,
+    delete: (personaId: string) =>
+      ipcRenderer.invoke(IpcChannel.PersonaDelete, { personaId }) as Promise<void>,
+    setPrincipal: (personaId: string) =>
+      ipcRenderer.invoke(IpcChannel.PersonaSetPrincipal, { personaId }) as Promise<PersonaSummaryV1>,
+    saveDraft: (input: { personaId: string; content?: string; fromVersion?: string }) =>
+      ipcRenderer.invoke(IpcChannel.PersonaSaveDraft, input) as Promise<PersonaVersionMetaV1>,
+    publish: (personaVersion: string) =>
+      ipcRenderer.invoke(IpcChannel.PersonaPublish, { personaVersion }) as Promise<PersonaVersionMetaV1>,
+    listVersions: (personaId: string) =>
+      ipcRenderer.invoke(IpcChannel.PersonaListVersions, { personaId }) as Promise<PersonaVersionMetaV1[]>,
+    compare: (a: string, b: string) =>
+      ipcRenderer.invoke(IpcChannel.PersonaCompare, { a, b }) as Promise<VersionComparisonV1>,
+    updateAliases: (personaId: string, aliases: { aliasText: string; aliasKind: string; enabled?: boolean }[]) =>
+      ipcRenderer.invoke(IpcChannel.PersonaUpdateAliases, {
+        personaId,
+        aliases,
+      }) as Promise<AliasRowV1[]>,
   },
   diagnostics: {
     getSummary: () =>

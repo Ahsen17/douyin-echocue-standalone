@@ -11,6 +11,14 @@ import {
   ConfigUpdateRequestV1Schema,
   ProviderConfigInputV1Schema,
   PersonaSummaryV1Schema,
+  AliasInputV1Schema,
+  AliasRowV1Schema,
+  PersonaVersionMetaV1Schema,
+  VersionComparisonV1Schema,
+  PersonaDetailV1Schema,
+  PersonaCreateRequestV1Schema,
+  PersonaSaveDraftRequestV1Schema,
+  PersonaUpdateAliasesRequestV1Schema,
   DiagnosticSummaryV1Schema,
   ConnectionTestResultV1Schema,
   ProviderFixtureCaseV1Schema,
@@ -184,6 +192,86 @@ test('rejects persona summary missing isPrincipal', () => expectInvalid(PersonaS
   aliasCount: 0,
   versionCount: 1,
 }, 'missing isPrincipal'));
+
+// Persona aliases and versions (M6-04)
+console.log('\nPersona alias schemas');
+test('valid alias input', () => expectValid(AliasInputV1Schema, {
+  aliasText: '阿A', aliasKind: 'NICKNAME', enabled: true,
+}, 'valid'));
+test('rejects alias input with unknown kind', () => expectInvalid(AliasInputV1Schema, {
+  aliasText: 'x', aliasKind: 'DISPLAY',
+}, 'unknown kind'));
+test('valid alias row', () => expectValid(AliasRowV1Schema, {
+  aliasId: 'a-1', personaId: 'p-1', aliasText: '阿A', aliasKind: 'NICKNAME', enabled: true,
+}, 'valid'));
+test('rejects alias row missing enabled', () => expectInvalid(AliasRowV1Schema, {
+  aliasId: 'a-1', personaId: 'p-1', aliasText: '阿A', aliasKind: 'NICKNAME',
+}, 'missing enabled'));
+
+console.log('\nPersonaVersionMetaV1Schema');
+test('valid version meta', () => expectValid(PersonaVersionMetaV1Schema, {
+  personaVersion: 'v-1', personaId: 'p-1', status: 'PUBLISHED',
+  contentHmac: 'hmac', createdAt: '2026-08-22T00:00:00.000Z',
+  publishedAt: '2026-08-22T00:00:00.000Z', createdFromVersion: null,
+}, 'valid'));
+test('rejects unknown version status', () => expectInvalid(PersonaVersionMetaV1Schema, {
+  personaVersion: 'v-1', personaId: 'p-1', status: 'ACTIVE',
+  contentHmac: 'hmac', createdAt: '2026-08-22T00:00:00.000Z',
+  publishedAt: null, createdFromVersion: null,
+}, 'unknown status'));
+test('valid version comparison', () => expectValid(VersionComparisonV1Schema, {
+  a: { personaVersion: 'v1', personaId: 'p-1', status: 'PUBLISHED', contentHmac: 'h1', createdAt: '2026-08-22T00:00:00.000Z', publishedAt: null, createdFromVersion: null },
+  b: { personaVersion: 'v2', personaId: 'p-1', status: 'SUPERSEDED', contentHmac: 'h2', createdAt: '2026-08-22T00:00:00.000Z', publishedAt: null, createdFromVersion: 'v1' },
+  sameContent: false,
+}, 'valid'));
+test('valid persona detail', () => expectValid(PersonaDetailV1Schema, {
+  summary: {
+    personaId: 'p-1', displayName: '小A', isPrincipal: true, activeVersion: null,
+    createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:00:00.000Z',
+    aliasCount: 0, versionCount: 0,
+  },
+  aliases: [],
+  versions: [],
+  editableContent: '',
+}, 'valid'));
+test('rejects persona detail missing editableContent', () => expectInvalid(PersonaDetailV1Schema, {
+  summary: {
+    personaId: 'p-1', displayName: '小A', isPrincipal: true, activeVersion: null,
+    createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:00:00.000Z',
+    aliasCount: 0, versionCount: 0,
+  },
+  aliases: [],
+  versions: [],
+}, 'missing editableContent'));
+
+console.log('\nPersona request schemas');
+test('valid persona create with aliases', () => expectValid(PersonaCreateRequestV1Schema, {
+  displayName: '小A',
+  aliases: [{ aliasText: '阿A', aliasKind: 'NICKNAME' }],
+}, 'with aliases'));
+test('rejects persona create with empty name', () => expectInvalid(PersonaCreateRequestV1Schema, {
+  displayName: '   ',
+}, 'empty name'));
+test('valid saveDraft with content', () => expectValid(PersonaSaveDraftRequestV1Schema, {
+  personaId: 'p-1', content: '温柔',
+}, 'content'));
+test('valid saveDraft with fromVersion', () => expectValid(PersonaSaveDraftRequestV1Schema, {
+  personaId: 'p-1', fromVersion: 'v-1',
+}, 'fromVersion'));
+test('rejects saveDraft with neither content nor fromVersion', () => expectInvalid(PersonaSaveDraftRequestV1Schema, {
+  personaId: 'p-1',
+}, 'neither'));
+test('valid updateAliases request', () => expectValid(PersonaUpdateAliasesRequestV1Schema, {
+  personaId: 'p-1',
+  aliases: [{ aliasText: '阿A', aliasKind: 'NICKNAME' }],
+}, 'valid'));
+test('accepts empty alias list to clear all aliases', () => expectValid(PersonaUpdateAliasesRequestV1Schema, {
+  personaId: 'p-1', aliases: [],
+}, 'clear all'));
+test('rejects updateAliases with an invalid alias kind', () => expectInvalid(PersonaUpdateAliasesRequestV1Schema, {
+  personaId: 'p-1',
+  aliases: [{ aliasText: 'x', aliasKind: 'DISPLAY' }],
+}, 'invalid kind'));
 
 // DiagnosticSummaryV1 (UI §8.1)
 console.log('\nDiagnosticSummaryV1Schema');
