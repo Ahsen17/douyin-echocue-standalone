@@ -1,0 +1,82 @@
+{
+  "version": "1",
+  "description": "Calibration / cross-collection rerank / semantic pre-filter fixture (T-RET-001, M3-07).",
+  "artifact": {
+    "artifactId": "pending-calibration",
+    "version": "v1.0",
+    "preSet": { "center": 0, "scale": 2 },
+    "goldenSet": { "center": 0, "scale": 2 },
+    "semanticDiscardConfidence": 0.9
+  },
+  "rawHits": {
+    "preHits": [
+      {
+        "pointId": "pre-000001",
+        "caseId": "pre-000001",
+        "collection": "pre_set",
+        "rawScore": 12.5,
+        "rank": 1,
+        "payload": {
+          "schema_version": "1.0",
+          "case_id": "pre-000001",
+          "tokenizer_version": "zh_jieba_search_v1",
+          "text": "今天状态真好，太有活力了",
+          "semantic_type": "positive_praise",
+          "description": "夸赞",
+          "enabled": true,
+          "is_bad_case": false
+        }
+      },
+      {
+        "pointId": "pre-000002",
+        "caseId": "pre-000002",
+        "collection": "pre_set",
+        "rawScore": 3.2,
+        "rank": 2,
+        "payload": {
+          "schema_version": "1.0",
+          "case_id": "pre-000002",
+          "tokenizer_version": "zh_jieba_search_v1",
+          "text": "这反应太快了",
+          "semantic_type": "funny_joke",
+          "description": "玩笑",
+          "enabled": true,
+          "is_bad_case": false
+        }
+      }
+    ],
+    "goldenHits": [
+      {
+        "pointId": "golden-000001",
+        "caseId": "golden-000001",
+        "collection": "golden_set",
+        "rawScore": 9.5,
+        "rank": 1,
+        "payload": {
+          "case_id": "golden-000001",
+          "tokenizer_version": "zh_jieba_search_v1",
+          "source_trace_id": "01932a3b-4c5d-7000-8000-000000000001",
+          "persona_id": "p-1",
+          "persona_version": "01932a3b-4c5d-7000-8000-000000000002",
+          "text": "今天状态真好",
+          "semantic_type": "positive_praise",
+          "reply": "谢谢你！",
+          "cues": ["接住夸奖", "继续互动"],
+          "quality_score": 90,
+          "enabled": true,
+          "is_bad_case": false,
+          "created_at": "2026-08-22T00:00:00.000Z",
+          "updated_at": "2026-08-22T00:00:00.000Z"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "preConfidenceFirst": 0.9980732653366725,
+    "goldenConfidenceFirst": 0.991422514586288,
+    "preConfidenceSecond": 0.8320183851339245,
+    "mergedTopKOrder": ["pre-000001", "golden-000001", "pre-000002"],
+    "semanticAction": "CANDIDATE",
+    "semanticTopType": "positive_praise"
+  }
+}

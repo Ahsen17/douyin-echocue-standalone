@@ -103,6 +103,30 @@ export const GoldenSetPayloadV1Schema = z.strictObject({
   updated_at: z.string().datetime({ offset: true }),
 });
 
+// Calibrated retrieval hit (CONTRACT §4.4). payload union discriminates on
+// required fields; shapes are enforced at insert time by the payload schemas.
+export const SourceCollectionV1Schema = z.enum(['pre_set', 'golden_set']);
+
+export const RetrievalHitV1Schema = z.strictObject({
+  pointId: z.string().min(1).max(68),
+  caseId: z.string().min(1).max(68),
+  collection: SourceCollectionV1Schema,
+  rawScore: z.number().finite(),
+  retrievalConfidence: z.number().min(0).max(1),
+  rank: z.number().int().min(1),
+  payload: z.union([PreSetPayloadV1Schema, GoldenSetPayloadV1Schema]),
+});
+
+export const RetrievalResultV1Schema = z.strictObject({
+  traceId: uuidV7,
+  calibrationVersion: z.string().min(1).max(64),
+  goldenHits: z.array(RetrievalHitV1Schema),
+  preHits: z.array(RetrievalHitV1Schema),
+  mergedTopK: z.array(RetrievalHitV1Schema),
+  directPushEligible: z.boolean(),
+  directPointId: z.string().min(1).max(68).optional(),
+});
+
 export const SafetyReasonCodeV1Schema = z.enum([
   'ABUSE', 'PII', 'POLITICS', 'SEXUAL', 'ILLEGAL',
   'MEDICAL_FINANCIAL_ADVICE', 'COMPETITOR', 'TRANSACTION_PRICE',
@@ -273,3 +297,6 @@ export type AuditSubmitLabelRequestV1 = z.infer<typeof AuditSubmitLabelRequestV1
 export type Bm25ZhJiebaProfileV1 = z.infer<typeof Bm25ZhJiebaProfileV1Schema>;
 export type PreSetPayloadV1 = z.infer<typeof PreSetPayloadV1Schema>;
 export type GoldenSetPayloadV1 = z.infer<typeof GoldenSetPayloadV1Schema>;
+export type SourceCollectionV1 = z.infer<typeof SourceCollectionV1Schema>;
+export type RetrievalHitV1 = z.infer<typeof RetrievalHitV1Schema>;
+export type RetrievalResultV1 = z.infer<typeof RetrievalResultV1Schema>;
