@@ -270,4 +270,25 @@ describe('Config IPC handlers', () => {
     await withWindow.updateOverlay(prefs);
     expect(applyPreferences).toHaveBeenCalledWith(prefs);
   });
+
+  it('updateOverlay keeps a successful save even when live-apply fails', async () => {
+    const applyPreferences = vi.fn().mockRejectedValue(new Error('window destroyed'));
+    const withWindow = createConfigControlHandlers({
+      settings,
+      providerConfig,
+      overlayWindow: { applyPreferences },
+    });
+    const prefs = {
+      durationMs: 10000,
+      width: 800,
+      height: 200,
+      opacity: 0.95,
+      fontScale: 1,
+      theme: 'dark',
+      clickThrough: false,
+    };
+    await expect(withWindow.updateOverlay(prefs)).resolves.toEqual(prefs);
+    const view = await handlers.get();
+    expect(view.overlay.durationMs).toBe(10000);
+  });
 });

@@ -696,6 +696,42 @@ describe('SuggestionAttemptOrchestrator', () => {
       expect(sink.shown[0].suggestion.quickReply.length).toBeGreaterThan(0);
     });
 
+    it('never arms a display timer for an attempt aborted during the duration read', async () => {
+      let resolveDuration: (ms: number) => void = () => {};
+      const durationGate = new Promise<number>((resolve) => {
+        resolveDuration = resolve;
+      });
+      let hideCalls = 0;
+      const sink = {
+        async show() {
+          return { ok: true, firstFrameAtMonotonicMs: 100 };
+        },
+        async hide() {
+          hideCalls += 1;
+        },
+      };
+      const { audit, machine, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displaySink: sink as never,
+        getDisplayDurationMs: () => durationGate,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      // Mirror the real stop sequence: lifecycle first, then abortAll. The stop
+      // lands while the duration read is suspended; then the read resolves.
+      machine.transitionToLifecycle('STOPPED');
+      orchestrator.abortAll('USER_STOP');
+      orchestrator.endSession();
+      // abortAll hides once; a stray finishDisplay timer would hide a second
+      // time and bump the window. The guard must leave exactly one hide.
+      const hidesAfterAbort = hideCalls;
+      resolveDuration(10);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(hideCalls).toBe(hidesAfterAbort);
+      expect(orchestrator.getCurrentAttempt()).toBeNull();
+    });
+
     it('cancels the display timer on abort so it never fires late (M5-08)', async () => {
       let hideCalls = 0;
       const sink = {

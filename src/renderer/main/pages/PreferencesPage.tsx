@@ -65,7 +65,7 @@ export default function PreferencesPage() {
     const saved = await window.echocue.overlay.updatePreferences(formToPref(form))
     setForm(prefToForm(saved))
     setDurationError(null)
-    setMessage('偏好已保存；应用于下一次展示')
+    setMessage('偏好已保存；视觉项即时应用，展示时长用于下一次展示')
     return true
   })
 
@@ -105,7 +105,7 @@ export default function PreferencesPage() {
     <section>
       <div className="page-heading">
         <h2>浮窗偏好</h2>
-        <p>展示时长、尺寸、透明度、字号与主题持久化；保存后应用于下一次展示。</p>
+        <p>尺寸、透明度、字号与主题保存后即时应用；展示时长应用于下一次展示。</p>
       </div>
 
       {error ? <p className="danger-text">{error}</p> : null}
@@ -209,7 +209,7 @@ export default function PreferencesPage() {
             >
               恢复默认
             </button>
-            <span className="badge">应用于下一次展示</span>
+            <span className="badge">展示时长应用于下一次展示</span>
           </div>
           <small>保存失败不覆盖当前可用设置。</small>
         </section>

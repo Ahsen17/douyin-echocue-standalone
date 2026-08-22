@@ -80,12 +80,18 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
       const overlay = parsed.data;
       try {
         await deps.settings.update({ overlay });
-        await deps.overlayWindow?.applyPreferences(overlay);
       } catch (err) {
         if (err instanceof ConfigCorruptError) {
           throw new Error('配置读取失败，请检查设置文件或恢复默认设置');
         }
         throw err;
+      }
+      // Live-apply is best-effort: persistence already succeeded, and the next
+      // show re-applies the prefs anyway. A destroyed window must not fail save.
+      try {
+        await deps.overlayWindow?.applyPreferences(overlay);
+      } catch {
+        /* ignored */
       }
       return overlay;
     },

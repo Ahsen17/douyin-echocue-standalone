@@ -28,7 +28,7 @@ export interface OverlayWindowOptions {
 }
 
 interface PendingAck {
-  resolve: () => void;
+  resolve: (result: OverlayShowResult) => void;
   timer: NodeJS.Timeout;
 }
 
@@ -86,11 +86,15 @@ export class OverlayWindow {
     payload: OverlayDisplayPayloadV1,
     requestId: string,
   ): Promise<OverlayShowResult> {
-    const win = this.window;
-    if (win === null || win.isDestroyed()) return { ok: false, reason: 'overlay unavailable' };
+    if (this.window === null || this.window.isDestroyed()) {
+      return { ok: false, reason: 'overlay unavailable' };
+    }
     await this.waitReady();
     await this.applyPreferences(await this.readPrefs());
     this.ensureOnScreen();
+    // Re-read after the awaits: a destroy() during them nulls the instance.
+    const win = this.window;
+    if (win === null || win.isDestroyed()) return { ok: false, reason: 'overlay unavailable' };
     win.webContents.send(IpcChannel.OverlayDisplay, { requestId, payload });
     win.showInactive();
     return new Promise((resolve) => {
@@ -101,7 +105,7 @@ export class OverlayWindow {
       timer.unref?.();
       this.pendingAcks.set(requestId, {
         // t_end = main-process monotonic clock at ack receipt, same source as t0.
-        resolve: () => resolve({ ok: true, firstFrameAtMonotonicMs: performance.now() }),
+        resolve: (result) => resolve(result),
         timer,
       });
     });
@@ -114,12 +118,14 @@ export class OverlayWindow {
     win.hide();
   }
 
-  public ack(requestId: string): void {
+  /** True when the ack matched a pending display; false for stale/unknown ids. */
+  public ack(requestId: string): boolean {
     const pending = this.pendingAcks.get(requestId);
-    if (pending === undefined) return;
+    if (pending === undefined) return false;
     this.pendingAcks.delete(requestId);
     clearTimeout(pending.timer);
-    pending.resolve();
+    pending.resolve({ ok: true, firstFrameAtMonotonicMs: performance.now() });
+    return true;
   }
 
   /** Re-apply feasible visual prefs to the live window (UI §7 即时应用). */
@@ -142,7 +148,11 @@ export class OverlayWindow {
   public destroy(): void {
     this.window?.destroy();
     this.window = null;
-    for (const pending of this.pendingAcks.values()) clearTimeout(pending.timer);
+    // Resolve in-flight shows so the display path never hangs on quit.
+    for (const pending of this.pendingAcks.values()) {
+      clearTimeout(pending.timer);
+      pending.resolve({ ok: false, reason: 'OVERLAY_DESTROYED' });
+    }
     this.pendingAcks.clear();
   }
 
@@ -181,9 +191,10 @@ export class OverlayWindow {
     });
     if (visible) return;
     const primary = screen.getPrimaryDisplay().workArea;
+    // Clamp into the work area so an oversized window still stays on-screen.
     win.setBounds({
-      x: primary.x + primary.width - bounds.width - 16,
-      y: primary.y + primary.height - bounds.height - 16,
+      x: Math.max(primary.x, primary.x + primary.width - bounds.width - 16),
+      y: Math.max(primary.y, primary.y + primary.height - bounds.height - 16),
       width: bounds.width,
       height: bounds.height,
     });

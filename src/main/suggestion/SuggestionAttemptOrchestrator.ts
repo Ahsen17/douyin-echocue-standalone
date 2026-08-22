@@ -637,6 +637,12 @@ export class SuggestionAttemptOrchestrator {
         (await this.deps.getDisplayDurationMs?.()) ??
         this.deps.displayDurationMs ??
         DISPLAY_DURATION_MS;
+      // The duration read is a real suspension point: an abort may have closed
+      // the attempt in between. Never arm a timer for a cleared attempt — it
+      // would fire finishDisplay on a later trace (audit corruption + spurious
+      // hide/resetWindowAfterDisplay on the next display). abortAll already hid
+      // the overlay, so returning leaves nothing orphaned.
+      if (this.attempt !== attempt) return;
       const timer = setTimeout(() => this.finishDisplay(), displayDurationMs);
       timer.unref?.();
       this.displayTimer = timer;

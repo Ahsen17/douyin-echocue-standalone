@@ -131,4 +131,27 @@ describe('T-OVR-001: Overlay Window Behavior', () => {
     win.ack('req-2');
     await pending;
   });
+
+  it('fails with OVERLAY_ACK_TIMEOUT when the renderer never acks', async () => {
+    const win = new OverlayWindow({ getSettings: async () => null, ackTimeoutMs: 10 });
+    const pending = win.showSuggestion(PAYLOAD, 'req-3');
+    const result = await pending;
+    expect(result).toEqual({ ok: false, reason: 'OVERLAY_ACK_TIMEOUT' });
+  });
+
+  it('clears pending acks on destroy and rejects new shows', async () => {
+    const win = new OverlayWindow({ getSettings: async () => null, ackTimeoutMs: 1000 });
+    const pending = win.showSuggestion(PAYLOAD, 'req-4');
+    await flush();
+    win.destroy();
+    mocks.windowObj.isDestroyed.mockReturnValue(true);
+    // ack after destroy is a no-op (cleared), and new shows fail closed.
+    expect(win.ack('req-4')).toBe(false);
+    await expect(
+      win.showSuggestion(PAYLOAD, 'req-5'),
+    ).resolves.toEqual({ ok: false, reason: 'overlay unavailable' });
+    // the pre-destroy pending show resolves promptly — no hang on quit.
+    const result = await pending;
+    expect(result).toEqual({ ok: false, reason: 'OVERLAY_DESTROYED' });
+  });
 });
