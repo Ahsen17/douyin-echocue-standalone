@@ -95,6 +95,8 @@ export interface SuggestionOrchestratorDeps {
   nowMonotonic: () => number;
   windowMaxAgeMs: number;
   candidateMaxCount: number;
+  /** Overlay display-window duration (PRD: 10s default); M6-06 wires the user preference. */
+  displayDurationMs?: number;
   directPushThreshold: number;
   calibrationArtifact?: CalibrationArtifactV1;
   maxContextBudget?: number;

@@ -91,6 +91,7 @@ function makeComment(): SourceComment {
 interface SetupOptions {
   hits: RetrievalRawHit[];
   providerResult: { ok: true; output: { quick_reply: string; cues: string[] } } | { ok: false; error: { code: string } };
+  displayDurationMs?: number;
 }
 
 describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', () => {
@@ -192,6 +193,7 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
       windowMaxAgeMs: 100000,
       candidateMaxCount: 50,
       directPushThreshold: 0.85,
+      displayDurationMs: options.displayDurationMs ?? 100000,
       onAuditFailure: () => {},
     };
     // Session row must exist before any trace references it (FK enforcement).
@@ -236,6 +238,26 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
         )
         .all();
       expect(rows.length).toBeGreaterThan(0);
+    } finally {
+      reader.close();
+    }
+  });
+
+  it('auto-hides via the display timer and persists HIDDEN (M5-08)', async () => {
+    const { orchestrator } = await setup({
+      hits: [goldenHit()],
+      providerResult: { ok: false, error: { code: 'PROTOCOL' } },
+      displayDurationMs: 30,
+    });
+    orchestrator.handleComment(makeComment());
+    // Wait past the display duration so the timer drives finishDisplay.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    try {
+      const row = reader
+        .prepare(`SELECT to_state, reason_code FROM audit_transition WHERE to_state = 'HIDDEN'`)
+        .get() as { to_state: string; reason_code: string } | undefined;
+      expect(row?.reason_code).toBe('DISPLAY_DURATION_ELAPSED');
     } finally {
       reader.close();
     }

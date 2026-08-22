@@ -21,9 +21,13 @@ import type { SuggestionOrchestratorDeps } from './types.js';
 import type { PendingCandidate, ProcessingComment, SuggestionAttempt } from './types.js';
 import type { CancelTraceReason, OutputValidationContext, TeamMemberNameV1 } from '../validation/types.js';
 
-// Basic freshness budget (t0 + 3000ms); M5-08 replaces with the full deadline
-// formula (CONTRACT §6).
-const BASIC_FRESHNESS_BUDGET_MS = 3000;
+// Full freshness deadline (CONTRACT §6): min(t0+3000, selectedAt+2500,
+// t0+windowMaxAgeMs). The windowOpenedAt term is the candidate's own entry time
+// (receivedMonotonicMs), so its budget is t0 + windowMaxAgeMs.
+const T0_FRESHNESS_BUDGET_MS = 3000;
+const SELECTED_BUDGET_MS = 2500;
+// Overlay display-window duration (PRD: default 10s, user-configurable).
+const DISPLAY_DURATION_MS = 10_000;
 // Provider hard timeout (CONTRACT §6): 5s, superseded by an earlier freshness deadline.
 const PROVIDER_TIMEOUT_MS = 5000;
 // Latest-window defaults (ARCH §4.1); overridden by settings.internalRetrieval.
@@ -64,6 +68,8 @@ export class SuggestionAttemptOrchestrator {
   private attempt: SuggestionAttempt | null = null;
   private abortRequested = false;
   private auditDown = false;
+  /** Display-window timer handle; cleared on attempt clear / stop (M5-08). */
+  private displayTimer: ReturnType<typeof setTimeout> | null = null;
   private frozenSafety: FrozenSafety | null = null;
   private frozenMembers: readonly TeamMemberNameV1[] = [];
   /** Last written trace state per traceId, so async error paths close the chain. */
@@ -88,6 +94,7 @@ export class SuggestionAttemptOrchestrator {
   }
 
   async startSession(input: { sessionId: string }): Promise<void> {
+    this.clearDisplayTimer();
     const versionId = await this.deps.safety.getActivePublishedVersion();
     if (versionId !== null) {
       const policy = this.deps.safety.readPolicy(versionId);
@@ -119,6 +126,7 @@ export class SuggestionAttemptOrchestrator {
 
   /** Stop the live session: clear in-flight state and the rolling window. */
   endSession(): void {
+    this.clearDisplayTimer();
     this.session = null;
     this.attempt = null;
     this.abortRequested = true;
@@ -148,7 +156,12 @@ export class SuggestionAttemptOrchestrator {
       sessionId,
       traceId,
       windowVersion,
-      freshnessDeadlineMonotonicMs: comment.receivedMonotonicMs + BASIC_FRESHNESS_BUDGET_MS,
+      // Pre-attempt bound: the tightest t0-anchored term (window residency wins
+      // when windowMaxAgeMs < 3000). The full min formula is applied when the
+      // attempt is created (M5-08, CONTRACT §6).
+      freshnessDeadlineMonotonicMs:
+        comment.receivedMonotonicMs +
+        Math.min(T0_FRESHNESS_BUDGET_MS, this.deps.windowMaxAgeMs ?? WINDOW_MAX_AGE_MS),
     };
 
     // DISPLAYING guard: no retrieval, no generation, no queueing (ARCH §4.1).
@@ -225,11 +238,14 @@ export class SuggestionAttemptOrchestrator {
       ]);
       return;
     }
+    // t1 = filter+routing complete (RESEARCH §6.1); recorded in the route snapshot.
+    const filterCompleteAtMonotonicMs = this.deps.nowMonotonic();
     this.transition(processingComment, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED', [
       this.snap('DECISION_JSON', 'PERSONA_ROUTE', {
         personaId: personaRoute.personaId,
         decision: personaRoute.decision,
         candidates: personaRoute.candidates,
+        filterCompleteAtMonotonicMs,
       }),
       this.snap('PERSONA_TEXT', 'PERSONA_VERSION_SNAPSHOT', personaSnapshot),
     ]);
@@ -358,14 +374,26 @@ export class SuggestionAttemptOrchestrator {
     if (best === null) return;
     this.window.removeSelected(best.traceId);
     this.windowedComments.delete(best.traceId);
+    // Full freshness deadline (CONTRACT §6): min of the t0 cap, the selection
+    // budget, and the candidate's window residency (windowOpenedAt = t0).
+    const now = this.deps.nowMonotonic();
+    const t0 = best.processingComment.receivedMonotonicMs;
+    const freshnessDeadlineMonotonicMs = Math.min(
+      t0 + T0_FRESHNESS_BUDGET_MS,
+      now + SELECTED_BUDGET_MS,
+      t0 + (this.deps.windowMaxAgeMs ?? WINDOW_MAX_AGE_MS),
+    );
+    // Unify comment-level and attempt-level freshness on the same tightest bound
+    // for the attempt's lifetime (M5-08).
+    best.processingComment.freshnessDeadlineMonotonicMs = freshnessDeadlineMonotonicMs;
     const attempt: SuggestionAttempt = {
       traceId: best.traceId,
       sessionId: best.processingComment.sessionId,
       windowVersion: best.processingComment.windowVersion,
       abortController: new AbortController(),
       cancelReason: 'USER_STOPPED',
-      freshnessDeadlineMonotonicMs: best.processingComment.freshnessDeadlineMonotonicMs,
-      startedAtMonotonicMs: this.deps.nowMonotonic(),
+      freshnessDeadlineMonotonicMs,
+      startedAtMonotonicMs: now,
       comment: best.processingComment,
       personaRoute: best.personaRoute,
       personaSnapshot: best.personaSnapshot,
@@ -398,6 +426,8 @@ export class SuggestionAttemptOrchestrator {
         );
         if (validation.ok) {
           attempt.path = 'DIRECT';
+          // t2 = local output validation complete (RESEARCH §6.1).
+          const outputValidatedAtMonotonicMs = this.deps.nowMonotonic();
           this.transition(candidate.processingComment, 'RETRIEVING', 'DIRECT_READY', 'GOLDEN_DIRECT_ELIGIBLE', [
             ...candidate.querySnapshots,
             this.snap('SUGGESTION_JSON', 'DIRECT_PAYLOAD', { quick_reply: payload.reply, cues: payload.cues }),
@@ -408,6 +438,7 @@ export class SuggestionAttemptOrchestrator {
             this.snap('SUGGESTION_JSON', 'OUTPUT_VALIDATION', {
               validatorVersion: 'SuggestionOutputValidatorV1',
               ok: true,
+              outputValidatedAtMonotonicMs,
             }),
             this.snap('DECISION_JSON', 'OUTPUT_SAFETY_DECISION', { allow: true }),
           ]);
@@ -499,12 +530,15 @@ export class SuggestionAttemptOrchestrator {
       }
       return;
     }
+    // t2 = local output validation complete (RESEARCH §6.1).
+    const outputValidatedAtMonotonicMs = this.deps.nowMonotonic();
     const postValidation = this.attemptFreshness(attempt);
     if (!postValidation.ok) return this.cancelAttempt(attempt, postValidation.reason);
     this.transition(candidate.processingComment, 'GENERATED', 'DISPLAY_READY', 'OUTPUT_VALIDATED', [
       this.snap('SUGGESTION_JSON', 'OUTPUT_VALIDATION', {
         validatorVersion: 'SuggestionOutputValidatorV1',
         ok: true,
+        outputValidatedAtMonotonicMs,
       }),
       this.snap('DECISION_JSON', 'OUTPUT_SAFETY_DECISION', { allow: true }),
     ]);
@@ -526,9 +560,18 @@ export class SuggestionAttemptOrchestrator {
       this.transition(attempt.comment, 'DISPLAY_READY', 'DISPLAYED', 'OVERLAY_RENDERED', [
         this.snap('OVERLAY_RESULT_JSON', 'OVERLAY_RESULT', {
           firstFrameAtMonotonicMs: show.firstFrameAtMonotonicMs,
+          // E2E = t_end - t0 (RESEARCH §6.1), recorded for T-PERF-001 replay.
+          e2eMs: show.firstFrameAtMonotonicMs - attempt.comment.receivedMonotonicMs,
         }),
       ]);
-      // keep attempt + DISPLAYING until finishDisplay (M5-08 timer)
+      // Display window: auto-hide after the configured duration; unref so a
+      // pending timer never holds the process during tests/shutdown.
+      const timer = setTimeout(
+        () => this.finishDisplay(),
+        this.deps.displayDurationMs ?? DISPLAY_DURATION_MS,
+      );
+      timer.unref?.();
+      this.displayTimer = timer;
     } else {
       // Bump the window version first so the next candidate starts fresh; a
       // discard-then-bump would start a candidate already stale (m-6).
@@ -610,12 +653,21 @@ export class SuggestionAttemptOrchestrator {
   }
 
   private clearAttempt(): void {
+    // A stale display timer must never hide the next display (M5-08).
+    this.clearDisplayTimer();
     this.attempt = null;
     // After a stop, the lifecycle is STOPPED and only IDLE is allowed; do not
     // try to flip activity to LISTENING (ServiceStateInvalidTransitionError).
     if (this.deps.stateMachine.getViewState().lifecycle === 'RUNNING') {
       this.deps.stateMachine.setActivity('LISTENING');
       this.maybeStartAttempt();
+    }
+  }
+
+  private clearDisplayTimer(): void {
+    if (this.displayTimer !== null) {
+      clearTimeout(this.displayTimer);
+      this.displayTimer = null;
     }
   }
 

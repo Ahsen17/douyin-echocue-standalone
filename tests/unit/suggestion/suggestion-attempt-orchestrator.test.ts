@@ -17,6 +17,7 @@ import type { RetrievalRawHit } from '../../../src/main/retrieval/index.js';
 class FakeAudit {
   traces: Array<{ traceId: string; sessionId: string }> = [];
   transitions: Array<{ traceId: string; from: string | null; to: string; reason: string }> = [];
+  snapshots: Array<{ traceId: string; to: string; role: string; payload: unknown }> = [];
   failWrites = false;
 
   createTrace(p: { traceId: string; sessionId: string }): void {
@@ -24,13 +25,22 @@ class FakeAudit {
     this.traces.push(p);
   }
   createSession(): void {}
-  appendTransition(traceId: string, from: string | null, to: string, reason: string): void {
+  appendTransition(
+    traceId: string,
+    from: string | null,
+    to: string,
+    reason: string,
+    snapshots: ReadonlyArray<{ role: string; plaintext: Buffer }> = [],
+  ): void {
     this.assertWritable();
     const allowed = (TRACE_TRANSITIONS_V1 as Record<string, readonly string[]>)[from ?? 'INITIAL'];
     if (!allowed || !allowed.includes(to as never)) {
       throw new Error(`E_AUDIT_STATE_INVALID: ${from ?? 'INITIAL'} -> ${to}`);
     }
     this.transitions.push({ traceId, from, to, reason });
+    for (const snap of snapshots) {
+      this.snapshots.push({ traceId, to, role: snap.role, payload: JSON.parse(snap.plaintext.toString()) });
+    }
   }
   healthCheck(): boolean {
     return !this.failWrites;
@@ -527,5 +537,133 @@ describe('SuggestionAttemptOrchestrator', () => {
     await flush();
     expect(onAuditFailureCalls).toBe(1);
     expect(orchestrator.getCurrentAttempt()).toBeNull();
+  });
+
+  describe('M5-08 deadline / clock / display timer', () => {
+    function gatedProvider() {
+      let releaseGeneration: () => void = () => {};
+      const provider = {
+        adapterType: 'OPENAI_COMPATIBLE',
+        async generateReply() {
+          await new Promise<void>((resolve) => {
+            releaseGeneration = resolve;
+          });
+          return { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } };
+        },
+        getAuditRecord: () => null,
+      };
+      return { provider, release: () => releaseGeneration() };
+    }
+
+    it('applies the t0 cap when windowMaxAge is large and selection is immediate', async () => {
+      const { release } = gatedProvider();
+      let now = 2000;
+      const { orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        windowMaxAgeMs: 100000,
+        nowMonotonic: () => now,
+        createProvider: () => gatedProvider().provider as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
+      await waitFor(() => orchestrator.getCurrentAttempt() !== null);
+      // min(t0+3000, selectedAt+2500, t0+windowMaxAge) = min(4000, 4500, 101000) = 4000.
+      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(4000);
+      release();
+    });
+
+    it('lets the selection budget bind when the candidate waited in the window', async () => {
+      let now = 1200;
+      const { orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        windowMaxAgeMs: 100000,
+        nowMonotonic: () => now,
+        createProvider: () => gatedProvider().provider as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
+      await waitFor(() => orchestrator.getCurrentAttempt() !== null);
+      // min(1000+3000, 1200+2500, 1000+100000) = 3700 (selection budget binds).
+      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(3700);
+    });
+
+    it('binds to the window residency (t0 + windowMaxAgeMs) and discards via DEADLINE_EXCEEDED', async () => {
+      const { provider, release } = gatedProvider();
+      let now = 2000;
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        windowMaxAgeMs: 1500,
+        nowMonotonic: () => now,
+        createProvider: () => provider as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
+      await waitFor(() => orchestrator.getCurrentAttempt() !== null);
+      // min(4000, 4500, 2500) = 2500: the window residency binds.
+      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(2500);
+      now = 2600; // past 2500 while the provider call is in flight
+      release();
+      await waitFor(() => orchestrator.getCurrentAttempt() === null);
+      expect(audit.transitions.some((t) => t.reason === 'DEADLINE_EXCEEDED')).toBe(true);
+    });
+
+    it('auto-hides the overlay after the display duration (M5-08 timer)', async () => {
+      const { audit, orchestrator, sink } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displayDurationMs: 20,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      await waitFor(() =>
+        audit.transitions.some((t) => t.to === 'HIDDEN' && t.reason === 'DISPLAY_DURATION_ELAPSED'),
+      );
+      expect(sink.shown.length).toBe(1);
+      expect(orchestrator.getCurrentAttempt()).toBeNull();
+    });
+
+    it('cancels the display timer on abort so it never fires late (M5-08)', async () => {
+      let hideCalls = 0;
+      const sink = {
+        async show() {
+          return { ok: true, firstFrameAtMonotonicMs: 100 };
+        },
+        async hide() {
+          hideCalls += 1;
+        },
+      };
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displaySink: sink as never,
+        displayDurationMs: 30,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      orchestrator.abortAll('USER_STOP');
+      orchestrator.endSession();
+      const hideAfterStop = hideCalls;
+      // Wait longer than the display duration: a stale timer would have fired
+      // finishDisplay → hide() again.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(hideCalls).toBe(hideAfterStop);
+    });
+
+    it('records t1/t2/t_end into audit snapshots (RESEARCH §6.1)', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displayDurationMs: 20,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
+      await waitFor(() => audit.snapshots.some((s) => s.role === 'OVERLAY_RESULT'));
+      const route = audit.snapshots.find((s) => s.role === 'PERSONA_ROUTE');
+      const validation = audit.snapshots.find((s) => s.role === 'OUTPUT_VALIDATION');
+      const overlay = audit.snapshots.find((s) => s.role === 'OVERLAY_RESULT');
+      expect(route?.payload).toMatchObject({ filterCompleteAtMonotonicMs: 2000 });
+      expect(validation?.payload).toMatchObject({ outputValidatedAtMonotonicMs: 2000 });
+      // t_end (100) and t0 (1000) come from the stub clock; presence is the contract.
+      expect(overlay?.payload).toHaveProperty('e2eMs');
+    });
   });
 });
