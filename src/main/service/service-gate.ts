@@ -22,11 +22,12 @@ export interface ServiceGateDependencies {
 export function createLiveSessionWriter(deps: {
   audit: AuditStoreWorker;
   settings: SettingsStore;
-}): (params: { roomReference: string; platformRoomId?: string }) => Promise<void> {
+}): (params: { roomReference: string; platformRoomId?: string }) => Promise<string> {
   return async (params) => {
     const settings = await deps.settings.get();
+    const sessionId = uuidv7();
     deps.audit.createSession({
-      sessionId: uuidv7(),
+      sessionId,
       roomReference: params.roomReference,
       ...(params.platformRoomId !== undefined ? { platformRoomId: params.platformRoomId } : {}),
       startedAt: new Date().toISOString(),
@@ -41,6 +42,7 @@ export function createLiveSessionWriter(deps: {
           }
         : {}),
     });
+    return sessionId;
   };
 }
 

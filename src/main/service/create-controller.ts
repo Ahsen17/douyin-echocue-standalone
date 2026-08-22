@@ -1,15 +1,22 @@
 import { join } from 'node:path';
+import type { ServiceViewState } from '@echocue/contracts';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { SettingsStore } from '../config/index.js';
 import { CredentialStore, type SafeStorageLike } from '../credentials/index.js';
 import { CryptoKeyManager } from '../crypto/index.js';
 import { AuditStoreWorker, type MigrationFile } from '../storage/index.js';
-import { PersonaStore } from '../persona/index.js';
+import { PersonaRouter, PersonaStore } from '../persona/index.js';
 import { SafetyPolicyStore } from '../safety/index.js';
 import { QDRANT_HTTP_PORT, QDRANT_LOOPBACK_HOST, QdrantSidecarManager } from '../qdrant/index.js';
 import { DouyinLiveSidecarManager, DouyinLiveWsAdapter } from '../douyin/index.js';
-import { ProviderConfigService } from '../provider/index.js';
+import { DeepSeekProvider, OpenAiCompatibleProvider, ProviderConfigService } from '../provider/index.js';
+import { SuggestionRetriever } from '../retrieval/index.js';
+import { SuggestionOutputValidator } from '../validation/index.js';
+import { SuggestionAttemptOrchestrator } from '../suggestion/index.js';
+import type { SuggestionDisplaySink } from '../suggestion/index.js';
+import type { CancelTraceReason } from '../validation/index.js';
 import { ServiceController } from './ServiceController.js';
+import type { ServiceControllerOptions } from './ServiceController.js';
 import { createLiveSessionWriter, createServiceGateChecks } from './service-gate.js';
 import { ServiceStateMachine } from './ServiceStateMachine.js';
 
@@ -21,6 +28,8 @@ export interface CreateServiceControllerOptions {
   migrationPath: string;
   keyVersion: string;
   cleanupOnStop: () => void;
+  /** Overlay port; M6-07 replaces the default stub with the real window. */
+  displaySink?: SuggestionDisplaySink;
 }
 
 export interface CreatedServiceController {
@@ -78,14 +87,55 @@ export async function createServiceController(
     qdrant: qdrantSidecar,
     qdrantClient,
   });
-  const createLiveSession = createLiveSessionWriter({ audit, settings });
+
+  // Real-time suggestion pipeline (M5-07). A missing published safety policy
+  // fails closed: the orchestrator freezes compiled rules only from a published
+  // version; the gate already requires one before the service can RUNNING.
+  const orchestrator = new SuggestionAttemptOrchestrator({
+    audit,
+    stateMachine,
+    router: new PersonaRouter(persona),
+    personas: persona,
+    safety,
+    retriever: new SuggestionRetriever(qdrantClient),
+    providerConfig,
+    credentials,
+    createProvider: (adapterType) => {
+      if (adapterType === 'DEEPSEEK') return new DeepSeekProvider();
+      if (adapterType === 'OPENAI_COMPATIBLE') return new OpenAiCompatibleProvider();
+      // ANTHROPIC_MESSAGES has no adapter yet (M5-04 decision); fail closed.
+      throw new Error(`unsupported adapter type: ${String(adapterType)}`);
+    },
+    validator: new SuggestionOutputValidator(),
+    displaySink: options.displaySink ?? createStubDisplaySink(),
+    nowMonotonic: () => performance.now(),
+    windowMaxAgeMs: 1500,
+    candidateMaxCount: 50,
+    directPushThreshold: 0.85,
+    onAuditFailure: () => {
+      // Audit down ⇒ stop producing suggestions; service must not continue.
+      void controller.stop('AUDIT_UNAVAILABLE');
+    },
+  });
+
+  const createLiveSession = async (params: { roomReference: string; platformRoomId?: string }) => {
+    const sessionId = await createLiveSessionWriter({ audit, settings })(params);
+    await orchestrator.startSession({ sessionId });
+    return sessionId;
+  };
+
   const controller = new ServiceController({
     stateMachine,
     sidecar: douyinSidecar,
     createAdapter: (roomReference) => new DouyinLiveWsAdapter({ roomReference }),
     checks,
     createLiveSession,
-    cleanupOnStop: options.cleanupOnStop,
+    onComment: (comment) => orchestrator.handleComment(comment),
+    cleanupOnStop: (reason: NonNullable<ServiceViewState['stopReason']>) => {
+      orchestrator.abortAll(stopReasonToCancelReason(reason));
+      orchestrator.endSession();
+      options.cleanupOnStop();
+    },
   });
 
   const shutdown = () => {
@@ -95,4 +145,32 @@ export async function createServiceController(
   };
 
   return { controller, stateMachine, providerConfig, shutdown };
+}
+
+/** M5-07 stub: acknowledges first frame immediately; M6-07 replaces it. */
+function createStubDisplaySink(): SuggestionDisplaySink {
+  return {
+    async show() {
+      return { ok: true, firstFrameAtMonotonicMs: performance.now() };
+    },
+    async hide() {
+      // nothing to hide in the stub
+    },
+  };
+}
+
+function stopReasonToCancelReason(
+  reason: NonNullable<ServiceViewState['stopReason']>,
+): CancelTraceReason {
+  switch (reason) {
+    case 'USER_STOP':
+      return 'USER_STOPPED';
+    case 'ROOM_ENDED':
+      return 'ROOM_ENDED';
+    case 'AUDIT_UNAVAILABLE':
+      return 'AUDIT_FAILURE';
+    case 'ROOM_OFFLINE':
+    case 'SOURCE_ERROR':
+      return 'SOURCE_ERROR';
+  }
 }

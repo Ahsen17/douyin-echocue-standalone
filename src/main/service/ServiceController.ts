@@ -2,6 +2,7 @@ import type {
   DomainErrorV1,
   LiveSourceEvent,
   ServiceViewState,
+  SourceComment,
 } from '@echocue/contracts';
 import {
   SidecarStartFailedError,
@@ -41,8 +42,11 @@ export interface ServiceControllerOptions {
   createLiveSession: (params: {
     roomReference: string;
     platformRoomId?: string;
-  }) => Promise<void>;
-  cleanupOnStop: () => void;
+  }) => Promise<unknown>;
+  /** Dispatched for every COMMENT event while the service is RUNNING (M5-07). */
+  onComment?: (comment: SourceComment) => void;
+  /** Invoked with the concrete stop reason so in-flight work can be cancelled. */
+  cleanupOnStop: (reason: StopReason) => void;
   gateTimeoutMs?: number;
 }
 
@@ -64,7 +68,8 @@ export class ServiceController {
   private readonly createAdapter: (roomReference: string) => DouyinLiveWsAdapter;
   private readonly checks: ServiceGateChecks;
   private readonly createLiveSession: ServiceControllerOptions['createLiveSession'];
-  private readonly cleanupOnStop: () => void;
+  private readonly onComment: ((comment: SourceComment) => void) | undefined;
+  private readonly cleanupOnStop: (reason: StopReason) => void;
   private readonly gateTimeoutMs: number;
 
   private adapter: DouyinLiveWsAdapter | null = null;
@@ -80,6 +85,7 @@ export class ServiceController {
     this.createAdapter = options.createAdapter;
     this.checks = options.checks;
     this.createLiveSession = options.createLiveSession;
+    this.onComment = options.onComment;
     this.cleanupOnStop = options.cleanupOnStop;
     this.gateTimeoutMs = options.gateTimeoutMs ?? DEFAULT_GATE_TIMEOUT_MS;
   }
@@ -168,13 +174,18 @@ export class ServiceController {
     return this.stateMachine.getViewState();
   }
 
-  async stop(): Promise<ServiceViewState> {
+  /**
+   * Stop the service with a specific reason (M5-07). Defaults to USER_STOP;
+   * the reason is forwarded to cleanupOnStop so in-flight work is cancelled
+   * with the matching TraceReasonCodeV1.
+   */
+  async stop(reason: StopReason = 'USER_STOP'): Promise<ServiceViewState> {
     this.abortRequested = true;
     if (this.phase === 'idle' && this.stopPromise === null) {
       return this.stateMachine.getViewState();
     }
     if (this.stopPromise === null) {
-      this.stopPromise = this.performStop('USER_STOP');
+      this.stopPromise = this.performStop(reason);
     }
     await this.stopPromise;
     return this.stateMachine.getViewState();
@@ -182,7 +193,7 @@ export class ServiceController {
 
   private performStop(stopReason: StopReason): Promise<void> {
     return (async () => {
-      this.cleanupOnStop();
+      this.cleanupOnStop(stopReason);
       const abort = this.gateResolve;
       this.gateResolve = null;
       if (this.gateTimer !== null) {
@@ -242,6 +253,9 @@ export class ServiceController {
       if (event.type === 'LIVE_OFFLINE') void this.stopFromRunning('ROOM_OFFLINE');
       else if (event.type === 'LIVE_ENDED') void this.stopFromRunning('ROOM_ENDED');
       else if (event.type === 'SOURCE_ERROR') void this.stopFromRunning('SOURCE_ERROR');
+      else if (event.type === 'COMMENT' && this.onComment !== undefined) {
+        this.onComment(event.comment);
+      }
     }
   }
 

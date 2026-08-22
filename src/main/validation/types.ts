@@ -34,7 +34,8 @@ export type CancelTraceReason =
   | 'DEADLINE_EXCEEDED'
   | 'USER_STOPPED'
   | 'ROOM_ENDED'
-  | 'SOURCE_ERROR';
+  | 'SOURCE_ERROR'
+  | 'AUDIT_FAILURE';
 
 export interface OutputValidationContext {
   source: SuggestionSourceV1;
