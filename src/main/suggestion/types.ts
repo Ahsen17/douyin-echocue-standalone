@@ -97,6 +97,8 @@ export interface SuggestionOrchestratorDeps {
   candidateMaxCount: number;
   /** Overlay display-window duration (PRD: 10s default); M6-06 wires the user preference. */
   displayDurationMs?: number;
+  /** Live read of the display-window duration per display (UI §7: next-display). */
+  getDisplayDurationMs?: () => Promise<number>;
   directPushThreshold: number;
   calibrationArtifact?: CalibrationArtifactV1;
   maxContextBudget?: number;

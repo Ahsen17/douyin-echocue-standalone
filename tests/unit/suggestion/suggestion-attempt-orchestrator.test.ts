@@ -656,6 +656,34 @@ describe('SuggestionAttemptOrchestrator', () => {
       expect(orchestrator.getCurrentAttempt()).toBeNull();
     });
 
+    it('reads the display duration from getDisplayDurationMs when provided (M6-06)', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        getDisplayDurationMs: async () => 30,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      // The default (10s) would never fire within the wait; HIDDEN proves the
+      // live getter value (30ms) was used for the display timer.
+      await waitFor(() =>
+        audit.transitions.some((t) => t.to === 'HIDDEN' && t.reason === 'DISPLAY_DURATION_ELAPSED'),
+      );
+    });
+
+    it('prefers getDisplayDurationMs over the fixed displayDurationMs (M6-06)', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        displayDurationMs: 20,
+        getDisplayDurationMs: async () => 100000,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.transitions.some((t) => t.to === 'DISPLAYED'));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(audit.transitions.some((t) => t.to === 'HIDDEN')).toBe(false);
+    });
+
     it('cancels the display timer on abort so it never fires late (M5-08)', async () => {
       let hideCalls = 0;
       const sink = {

@@ -5,6 +5,7 @@ import type {
   ConfigViewV1,
   ConnectionTestResultV1,
   DiagnosticSummaryV1,
+  OverlayPreferenceV1,
   PersonaDetailV1,
   PersonaSummaryV1,
   PersonaVersionMetaV1,
@@ -90,6 +91,10 @@ const echocueApi = {
   diagnostics: {
     getSummary: () =>
       ipcRenderer.invoke(IpcChannel.DiagnosticsGetSummary) as Promise<DiagnosticSummaryV1>,
+  },
+  overlay: {
+    updatePreferences: (prefs: OverlayPreferenceV1) =>
+      ipcRenderer.invoke(IpcChannel.OverlayPreferenceUpdate, prefs) as Promise<OverlayPreferenceV1>,
   },
 }
 

@@ -29,6 +29,7 @@ export const IpcChannel = {
   SafetySaveDraft: 'safety.saveDraft',
   SafetyPublish: 'safety.publish',
   DiagnosticsGetSummary: 'diagnostics.getSummary',
+  OverlayPreferenceUpdate: 'overlay.preference.update',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];

@@ -621,11 +621,13 @@ export class SuggestionAttemptOrchestrator {
         show.firstFrameAtMonotonicMs - attempt.comment.receivedMonotonicMs,
       );
       // Display window: auto-hide after the configured duration; unref so a
-      // pending timer never holds the process during tests/shutdown.
-      const timer = setTimeout(
-        () => this.finishDisplay(),
-        this.deps.displayDurationMs ?? DISPLAY_DURATION_MS,
-      );
+      // pending timer never holds the process during tests/shutdown. UI §7:
+      // the duration is read per display so preference changes apply next time.
+      const displayDurationMs =
+        (await this.deps.getDisplayDurationMs?.()) ??
+        this.deps.displayDurationMs ??
+        DISPLAY_DURATION_MS;
+      const timer = setTimeout(() => this.finishDisplay(), displayDurationMs);
       timer.unref?.();
       this.displayTimer = timer;
     } else {

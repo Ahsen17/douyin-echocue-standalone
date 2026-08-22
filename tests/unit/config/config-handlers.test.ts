@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -180,5 +180,94 @@ describe('Config IPC handlers', () => {
     await mkdir(join(testDir, 'config'), { recursive: true });
     await writeFile(join(testDir, 'config', 'settings.json'), '{ not json', 'utf-8');
     await expect(handlers.get()).rejects.toThrow(/配置读取失败/);
+  });
+
+  it('updateOverlay persists overlay prefs and returns them', async () => {
+    const prefs = await handlers.updateOverlay({
+      durationMs: 20000,
+      width: 900,
+      height: 240,
+      opacity: 0.8,
+      fontScale: 1.1,
+      theme: 'light',
+      clickThrough: true,
+    });
+    expect(prefs.durationMs).toBe(20000);
+    const view = await handlers.get();
+    expect(view.overlay).toEqual(prefs);
+  });
+
+  it('updateOverlay rejects out-of-range and partial payloads with a Chinese message', async () => {
+    await expect(
+      handlers.updateOverlay({
+        durationMs: 999,
+        width: 900,
+        height: 240,
+        opacity: 0.8,
+        fontScale: 1.1,
+        theme: 'light',
+        clickThrough: false,
+      }),
+    ).rejects.toThrow('浮窗偏好不合法');
+    await expect(handlers.updateOverlay({ durationMs: 10000 })).rejects.toThrow('浮窗偏好不合法');
+  });
+
+  it('updateOverlay rejects unknown fields via the strict schema', async () => {
+    await expect(
+      handlers.updateOverlay({
+        durationMs: 10000,
+        width: 900,
+        height: 240,
+        opacity: 0.8,
+        fontScale: 1.1,
+        theme: 'light',
+        clickThrough: false,
+        position: 'center',
+      }),
+    ).rejects.toThrow('浮窗偏好不合法');
+  });
+
+  it('updateOverlay enforces the contract bounds at the edges', async () => {
+    await expect(
+      handlers.updateOverlay({
+        durationMs: 1000,
+        width: 320,
+        height: 120,
+        opacity: 0.19,
+        fontScale: 1,
+        theme: 'dark',
+        clickThrough: false,
+      }),
+    ).rejects.toThrow('浮窗偏好不合法');
+    const max = await handlers.updateOverlay({
+      durationMs: 60000,
+      width: 1920,
+      height: 1080,
+      opacity: 1,
+      fontScale: 2,
+      theme: 'dark',
+      clickThrough: false,
+    });
+    expect(max.durationMs).toBe(60000);
+  });
+
+  it('updateOverlay live-applies to the overlay window when provided (M6-07 wire)', async () => {
+    const applyPreferences = vi.fn().mockResolvedValue(undefined);
+    const withWindow = createConfigControlHandlers({
+      settings,
+      providerConfig,
+      overlayWindow: { applyPreferences },
+    });
+    const prefs = {
+      durationMs: 10000,
+      width: 800,
+      height: 200,
+      opacity: 0.95,
+      fontScale: 1,
+      theme: 'dark',
+      clickThrough: false,
+    };
+    await withWindow.updateOverlay(prefs);
+    expect(applyPreferences).toHaveBeenCalledWith(prefs);
   });
 });
