@@ -10,6 +10,7 @@ import {
   type CreatedServiceController,
 } from './service/index.js'
 import { DiagnosticsSource } from './telemetry/index.js'
+import { wireProviderControl } from './provider/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -72,6 +73,7 @@ app.whenReady().then(async () => {
     })
     wireStateBroadcast({ stateMachine: services.stateMachine, isTrustedSender })
     wireServiceControl({ controller: services.controller, isTrustedSender })
+    wireProviderControl({ configService: services.providerConfig, isTrustedSender })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble
     console.error('service bootstrap failed', err)

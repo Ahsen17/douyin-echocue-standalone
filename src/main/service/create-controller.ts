@@ -8,6 +8,7 @@ import { PersonaStore } from '../persona/index.js';
 import { SafetyPolicyStore } from '../safety/index.js';
 import { QDRANT_HTTP_PORT, QDRANT_LOOPBACK_HOST, QdrantSidecarManager } from '../qdrant/index.js';
 import { DouyinLiveSidecarManager, DouyinLiveWsAdapter } from '../douyin/index.js';
+import { ProviderConfigService } from '../provider/index.js';
 import { ServiceController } from './ServiceController.js';
 import { createLiveSessionWriter, createServiceGateChecks } from './service-gate.js';
 import { ServiceStateMachine } from './ServiceStateMachine.js';
@@ -25,6 +26,7 @@ export interface CreateServiceControllerOptions {
 export interface CreatedServiceController {
   readonly controller: ServiceController;
   readonly stateMachine: ServiceStateMachine;
+  readonly providerConfig: ProviderConfigService;
   readonly shutdown: () => void;
 }
 
@@ -33,6 +35,7 @@ export async function createServiceController(
 ): Promise<CreatedServiceController> {
   const settings = new SettingsStore(options.dataDir);
   const credentials = new CredentialStore(options.dataDir, options.safeStorage);
+  const providerConfig = new ProviderConfigService(settings, credentials);
   const keyManager = new CryptoKeyManager(credentials);
   await keyManager.ensureKeys(options.keyVersion);
 
@@ -91,5 +94,5 @@ export async function createServiceController(
     safety.close();
   };
 
-  return { controller, stateMachine, shutdown };
+  return { controller, stateMachine, providerConfig, shutdown };
 }

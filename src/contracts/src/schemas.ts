@@ -207,6 +207,10 @@ export const ProviderConfigV1Schema = z.strictObject({
   credentialRef: z.string().min(1).max(128),
 });
 
+export const ConnectionTestResultV1Schema = z.strictObject({
+  status: z.enum(['OK', 'AUTH_FAILED', 'UNAVAILABLE']),
+});
+
 export const OverlayPreferenceV1Schema = z.strictObject({
   durationMs: z.number().int().min(1000).max(60000),
   width: z.number().int().min(320).max(1920),
@@ -316,6 +320,7 @@ export const AuditSubmitLabelRequestV1Schema = z.strictObject({
 });
 
 export type ProviderConfigV1 = z.infer<typeof ProviderConfigV1Schema>;
+export type ConnectionTestResultV1 = z.infer<typeof ConnectionTestResultV1Schema>;
 export type OverlayPreferenceV1 = z.infer<typeof OverlayPreferenceV1Schema>;
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 export type ServiceViewState = z.infer<typeof ServiceViewStateSchema>;

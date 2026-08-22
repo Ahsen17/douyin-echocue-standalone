@@ -7,6 +7,7 @@ import {
   SettingsV1Schema,
   ServiceViewStateSchema,
   ProviderConfigV1Schema,
+  ConnectionTestResultV1Schema,
   OverlayPreferenceV1Schema,
   SuggestionOutputV1Schema,
   AuditSearchRequestV1Schema,
@@ -250,6 +251,19 @@ test('rejects missing sourceMessageId', () => expectInvalid(SourceCommentSchema,
   receivedAt: '2026-08-22T12:00:01.000Z',
   receivedMonotonicMs: 0,
 }, 'missing message id'));
+
+// Provider connection test result (CONTRACT §7)
+console.log('\nProvider connection test result');
+test('accepts all three statuses', () => {
+  expectValid(ConnectionTestResultV1Schema, { status: 'OK' }, 'ok');
+  expectValid(ConnectionTestResultV1Schema, { status: 'AUTH_FAILED' }, 'auth failed');
+  expectValid(ConnectionTestResultV1Schema, { status: 'UNAVAILABLE' }, 'unavailable');
+});
+test('rejects unknown status and extra fields', () => {
+  expectInvalid(ConnectionTestResultV1Schema, { status: 'MAYBE' }, 'unknown status');
+  expectInvalid(ConnectionTestResultV1Schema, { status: 'OK', extra: 1 }, 'extra field');
+  expectInvalid(ConnectionTestResultV1Schema, {}, 'missing status');
+});
 
 // Transition constants
 console.log('\nTransition constants');
