@@ -50,6 +50,11 @@ export const ServiceActivitySchema = z.enum([
   'IDLE', 'GATE_CHECKING', 'LISTENING', 'RETRIEVING', 'GENERATING', 'DISPLAYING',
 ]);
 
+// Fixed Bm25 zh pipeline identity (CONTRACT §4). Write and query share the same
+// tokenizer; changing either value requires a new profile/collection.
+export const BM25_TOKENIZER_VERSION_V1 = 'zh_jieba_search_v1';
+export const BM25_VECTOR_NAME_V1 = 'bm25_zh_jieba_v1';
+
 export const SafetyReasonCodeV1Schema = z.enum([
   'ABUSE', 'PII', 'POLITICS', 'SEXUAL', 'ILLEGAL',
   'MEDICAL_FINANCIAL_ADVICE', 'COMPETITOR', 'TRANSACTION_PRICE',

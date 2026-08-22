@@ -50,6 +50,11 @@ export const ServiceActivitySchema = z.enum([
   'IDLE', 'GATE_CHECKING', 'LISTENING', 'RETRIEVING', 'GENERATING', 'DISPLAYING',
 ]);
 
+// Fixed Bm25 zh pipeline identity (CONTRACT §4). Write and query share the same
+// tokenizer; changing either value requires a new profile/collection.
+export const BM25_TOKENIZER_VERSION_V1 = 'zh_jieba_search_v1';
+export const BM25_VECTOR_NAME_V1 = 'bm25_zh_jieba_v1';
+
 export const SafetyReasonCodeV1Schema = z.enum([
   'ABUSE', 'PII', 'POLITICS', 'SEXUAL', 'ILLEGAL',
   'MEDICAL_FINANCIAL_ADVICE', 'COMPETITOR', 'TRANSACTION_PRICE',
@@ -196,6 +201,7 @@ export const AuditSubmitLabelRequestV1Schema = z.strictObject({
 });
 
 export type ProviderConfigV1 = z.infer<typeof ProviderConfigV1Schema>;
+export type OverlayPreferenceV1 = z.infer<typeof OverlayPreferenceV1Schema>;
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 export type ServiceViewState = z.infer<typeof ServiceViewStateSchema>;
 export type SuggestionOutputV1 = z.infer<typeof SuggestionOutputV1Schema>;
@@ -203,9 +209,16 @@ export type LabelStatus = z.infer<typeof LabelStatusSchema>;
 export type TraceState = z.infer<typeof TraceStateSchema>;
 export type TraceFinalState = z.infer<typeof TraceFinalStateSchema>;
 export type SemanticTypeV1 = z.infer<typeof SemanticTypeV1Schema>;
+export type AuditContentTypeV1 = z.infer<typeof AuditContentTypeV1Schema>;
+export type AuditSnapshotRoleV1 = z.infer<typeof AuditSnapshotRoleV1Schema>;
+export type ServiceLifecycle = z.infer<typeof ServiceLifecycleSchema>;
+export type ServiceActivity = z.infer<typeof ServiceActivitySchema>;
 export type SafetyReasonCodeV1 = z.infer<typeof SafetyReasonCodeV1Schema>;
 export type TraceReasonCodeV1 = z.infer<typeof TraceReasonCodeV1Schema>;
 export type ProviderErrorV1 = z.infer<typeof ProviderErrorV1Schema>;
 export type DomainErrorV1 = z.infer<typeof DomainErrorV1Schema>;
 export type OutboxJobStateV1 = z.infer<typeof OutboxJobStateV1Schema>;
 export type OutboxActionV1 = z.infer<typeof OutboxActionV1Schema>;
+export type AuditSearchRequestV1 = z.infer<typeof AuditSearchRequestV1Schema>;
+export type AuditGetWorkflowRequestV1 = z.infer<typeof AuditGetWorkflowRequestV1Schema>;
+export type AuditSubmitLabelRequestV1 = z.infer<typeof AuditSubmitLabelRequestV1Schema>;
