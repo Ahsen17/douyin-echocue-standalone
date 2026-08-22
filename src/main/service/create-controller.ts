@@ -112,6 +112,8 @@ export async function createServiceController(
     windowMaxAgeMs: 1500,
     candidateMaxCount: 50,
     directPushThreshold: 0.85,
+    // PRD: 展示窗口默认 10 秒；M6-06 浮窗偏好页接入后由此传入。
+    displayDurationMs: 10_000,
     onAuditFailure: () => {
       // Audit down ⇒ stop producing suggestions; service must not continue.
       void controller.stop('AUDIT_UNAVAILABLE');

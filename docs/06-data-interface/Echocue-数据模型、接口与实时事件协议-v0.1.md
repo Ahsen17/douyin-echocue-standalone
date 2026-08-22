@@ -538,6 +538,8 @@ interface ProviderAuditRecord {
   modelId: string;
   rawRequest: unknown;
   rawResponse?: unknown;
+  /** HTTP 状态（收到响应时），供 LLM_RAW_RESPONSE 审计快照。 */
+  providerStatus?: number;
   normalizedError?: string;
 }
 

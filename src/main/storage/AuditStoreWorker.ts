@@ -47,6 +47,30 @@ export interface AppendSnapshotInput {
   plaintext: Buffer;
 }
 
+/** A decrypted audit snapshot, re-linked to its transition (M5-09 replay). */
+export interface TraceWorkflowSnapshot {
+  snapshotId: string;
+  role: AuditSnapshotRoleV1;
+  contentType: AuditContentTypeV1;
+  contentHmac: string;
+  plaintext: Buffer;
+}
+
+export interface TraceWorkflowTransition {
+  sequenceNo: number;
+  fromState: TraceState | null;
+  toState: TraceState;
+  reasonCode: TraceReasonCodeV1;
+  occurredAt: string;
+  snapshots: TraceWorkflowSnapshot[];
+}
+
+/** Replayable trace workflow: transitions in order, each with decrypted snapshots. */
+export interface TraceWorkflow {
+  traceId: string;
+  transitions: TraceWorkflowTransition[];
+}
+
 export class AuditStateInvalidError extends Error {
   readonly code = 'E_AUDIT_STATE_INVALID';
   constructor(msg: string) {
@@ -200,6 +224,65 @@ export class AuditStoreWorker {
       try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
       if (err instanceof AuditStateInvalidError) throw err;
       throw new AuditUnavailableError(`appendTransition failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Read + decrypt the full workflow of a trace for replay (LLM §7; consumed by
+   * M6-09 audit.getWorkflow). Returns null when the trace does not exist.
+   * Read-only: an audit failure here never stops the service (M5-07).
+   */
+  getTraceWorkflow(traceId: string): TraceWorkflow | null {
+    try {
+      const trace = this.db.prepare('SELECT trace_id FROM audit_trace WHERE trace_id = ?').get(traceId);
+      if (trace === undefined) return null;
+      const transitions = this.db.prepare(
+        `SELECT sequence_no, from_state, to_state, reason_code, occurred_at
+         FROM audit_transition WHERE trace_id = ? ORDER BY sequence_no`,
+      ).all(traceId) as Array<{
+        sequence_no: number;
+        from_state: TraceState | null;
+        to_state: TraceState;
+        reason_code: TraceReasonCodeV1;
+        occurred_at: string;
+      }>;
+      const snapStmt = this.db.prepare(
+        `SELECT s.snapshot_id, s.content_type, s.envelope, s.content_hmac, r.role
+         FROM audit_reference r JOIN audit_snapshot s ON s.snapshot_id = r.snapshot_id
+         WHERE r.trace_id = ? AND r.sequence_no = ?`,
+      );
+      const workflow: TraceWorkflow = {
+        traceId,
+        transitions: transitions.map((t) => {
+          const rows = snapStmt.all(traceId, t.sequence_no) as Array<{
+            snapshot_id: string;
+            content_type: AuditContentTypeV1;
+            envelope: Uint8Array;
+            content_hmac: string;
+            role: AuditSnapshotRoleV1;
+          }>;
+          return {
+            sequenceNo: t.sequence_no,
+            fromState: t.from_state,
+            toState: t.to_state,
+            reasonCode: t.reason_code,
+            occurredAt: t.occurred_at,
+            snapshots: rows.map((s) => ({
+              snapshotId: s.snapshot_id,
+              role: s.role,
+              contentType: s.content_type,
+              contentHmac: s.content_hmac,
+              plaintext: this.encryptor.decrypt(
+                Buffer.from(s.envelope),
+                buildAad('audit_snapshot', s.snapshot_id, s.content_type),
+              ),
+            })),
+          };
+        }),
+      };
+      return workflow;
+    } catch (err) {
+      throw new AuditUnavailableError(`getTraceWorkflow failed: ${String(err)}`);
     }
   }
 

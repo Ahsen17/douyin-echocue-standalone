@@ -10,4 +10,7 @@ export type {
   CreateSessionParams,
   CreateTraceParams,
   AppendSnapshotInput,
+  TraceWorkflow,
+  TraceWorkflowSnapshot,
+  TraceWorkflowTransition,
 } from './AuditStoreWorker.js';

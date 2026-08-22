@@ -91,6 +91,7 @@ function makeComment(): SourceComment {
 interface SetupOptions {
   hits: RetrievalRawHit[];
   providerResult: { ok: true; output: { quick_reply: string; cues: string[] } } | { ok: false; error: { code: string } };
+  displayDurationMs?: number;
 }
 
 describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', () => {
@@ -192,6 +193,7 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
       windowMaxAgeMs: 100000,
       candidateMaxCount: 50,
       directPushThreshold: 0.85,
+      displayDurationMs: options.displayDurationMs ?? 100000,
       onAuditFailure: () => {},
     };
     // Session row must exist before any trace references it (FK enforcement).
@@ -239,6 +241,49 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
     } finally {
       reader.close();
     }
+  });
+
+  it('auto-hides via the display timer and persists HIDDEN (M5-08)', async () => {
+    const { orchestrator } = await setup({
+      hits: [goldenHit()],
+      providerResult: { ok: false, error: { code: 'PROTOCOL' } },
+      displayDurationMs: 30,
+    });
+    orchestrator.handleComment(makeComment());
+    // Wait past the display duration so the timer drives finishDisplay.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    try {
+      const row = reader
+        .prepare(`SELECT to_state, reason_code FROM audit_transition WHERE to_state = 'HIDDEN'`)
+        .get() as { to_state: string; reason_code: string } | undefined;
+      expect(row?.reason_code).toBe('DISPLAY_DURATION_ELAPSED');
+    } finally {
+      reader.close();
+    }
+  });
+
+  it('replays the four LLM-path snapshots via getTraceWorkflow (M5-09)', async () => {
+    const { orchestrator } = await setup({
+      hits: [preHit()],
+      providerResult: { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } },
+    });
+    orchestrator.handleComment(makeComment());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    const traceId = (reader.prepare('SELECT trace_id FROM audit_trace LIMIT 1').get() as { trace_id: string }).trace_id;
+    reader.close();
+    const workflow = worker.getTraceWorkflow(traceId);
+    expect(workflow).not.toBeNull();
+    const allSnapshots = workflow!.transitions.flatMap((t) => t.snapshots);
+    const roles = allSnapshots.map((s) => s.role);
+    expect(roles).toEqual(
+      expect.arrayContaining(['RENDERED_PROMPT', 'LLM_REQUEST_META', 'LLM_RAW_RESPONSE', 'LLM_PARSED_OUTPUT']),
+    );
+    // Decrypted content is replayable and free of the injected key.
+    const allPlaintext = allSnapshots.map((s) => s.plaintext.toString()).join('\n');
+    expect(allPlaintext).not.toContain('sk-test');
+    expect(allPlaintext).not.toContain('Authorization');
   });
 
   it('audit-unavailable aborts and does not produce a suggestion', async () => {

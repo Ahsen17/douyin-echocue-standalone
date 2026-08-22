@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "note": "LLM §7 生成路径审计快照 fixture（T-AUD-001 / M5-09）。minimal 为各角色最少字段样本；forbiddenProbes 为一旦泄入快照即违规的探测值（API Key、Authorization、原始 BM25 score、内部阈值、推理文本）。快照落库前必须加密 envelope + HMAC。",
+  "roles": [
+    {
+      "role": "RENDERED_PROMPT",
+      "contentType": "PROMPT_TEXT",
+      "minimal": {
+        "templateVersion": "prompt-assembler-v1",
+        "assemblerVersion": "PromptAssemblerV1",
+        "system": "你是温柔、爱笑的直播出镜人员。",
+        "user": "目标弹幕：主播晚上好",
+        "truncationLog": { "excludedCases": [] },
+        "personaId": "p-1",
+        "personaVersion": "01932a3b-4c5d-7000-8000-000000000002",
+        "personaContentHmac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "safetyVersion": "01932a3b-4c5d-7000-8000-000000000003",
+        "topK": [{ "caseId": "case-1", "collection": "pre_set" }]
+      },
+      "forbiddenProbes": ["sk-test-secret", "authorization", "Bearer ", "rawScore", "directPushThreshold"]
+    },
+    {
+      "role": "LLM_REQUEST_META",
+      "contentType": "PROVIDER_META_JSON",
+      "minimal": {
+        "providerId": "deepseek",
+        "adapterType": "DEEPSEEK",
+        "baseUrlOrigin": "https://api.deepseek.com",
+        "modelId": "deepseek-chat",
+        "callMode": "non-streaming-json",
+        "startedAtMonotonicMs": 1000,
+        "freshnessDeadlineMonotonicMs": 4000,
+        "sessionId": "01932a3b-4c5d-7000-8000-000000000100",
+        "windowVersion": 1
+      },
+      "forbiddenProbes": ["sk-test-secret", "authorization", "api_key", "api-key", "token="]
+    },
+    {
+      "role": "LLM_RAW_RESPONSE",
+      "contentType": "PROVIDER_RESPONSE_JSON",
+      "minimal": {
+        "providerRequestId": "req-123",
+        "httpStatus": 200,
+        "rawResponse": {
+          "choices": [{ "message": { "content": "{\"quick_reply\":\"谢谢你\",\"cues\":[\"一\",\"二\"]}" } }]
+        },
+        "completedAtMonotonicMs": 1500
+      },
+      "forbiddenProbes": ["authorization", "Bearer "]
+    },
+    {
+      "role": "LLM_PARSED_OUTPUT",
+      "contentType": "SUGGESTION_JSON",
+      "minimal": {
+        "quickReply": "谢谢你",
+        "cues": ["一", "二"],
+        "parserVersion": "SuggestionOutputV1"
+      },
+      "forbiddenProbes": ["reasoning", "thought", "thinking"]
+    }
+  ]
+}
