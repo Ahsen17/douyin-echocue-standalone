@@ -70,6 +70,39 @@ export const Bm25ZhJiebaProfileV1Schema = z.strictObject({
   calibrationArtifactId: z.string().min(1).max(128),
 });
 
+// Qdrant payload dictionaries (DATA §6.2). pre_set is read-only at runtime;
+// golden_set is written only by the audit outbox with an idempotency key.
+export const PreSetPayloadV1Schema = z.strictObject({
+  schema_version: z.literal('1.0'),
+  case_id: z.string().min(1).max(68),
+  tokenizer_version: z.literal(BM25_TOKENIZER_VERSION_V1),
+  text: z.string().min(1).max(200),
+  semantic_type: SemanticTypeV1Schema,
+  description: z.string().min(1).max(500),
+  reference_reply: z.string().min(1).max(80).optional(),
+  reference_cues: z.array(z.string().min(1).max(40)).min(1).max(3).optional(),
+  tags: z.array(z.string().min(1).max(24)).max(10).optional(),
+  enabled: z.boolean(),
+  is_bad_case: z.boolean(),
+});
+
+export const GoldenSetPayloadV1Schema = z.strictObject({
+  case_id: z.string().min(1).max(68),
+  tokenizer_version: z.literal(BM25_TOKENIZER_VERSION_V1),
+  source_trace_id: uuidV7,
+  persona_id: z.string().min(1).max(64),
+  persona_version: uuidV7,
+  text: z.string().min(1).max(200),
+  semantic_type: SemanticTypeV1Schema,
+  reply: z.string().min(1).max(80),
+  cues: z.array(z.string().min(1).max(40)).min(2).max(3),
+  quality_score: z.number().int().min(0).max(100),
+  enabled: z.boolean(),
+  is_bad_case: z.boolean(),
+  created_at: z.string().datetime({ offset: true }),
+  updated_at: z.string().datetime({ offset: true }),
+});
+
 export const SafetyReasonCodeV1Schema = z.enum([
   'ABUSE', 'PII', 'POLITICS', 'SEXUAL', 'ILLEGAL',
   'MEDICAL_FINANCIAL_ADVICE', 'COMPETITOR', 'TRANSACTION_PRICE',
@@ -238,3 +271,5 @@ export type AuditSearchRequestV1 = z.infer<typeof AuditSearchRequestV1Schema>;
 export type AuditGetWorkflowRequestV1 = z.infer<typeof AuditGetWorkflowRequestV1Schema>;
 export type AuditSubmitLabelRequestV1 = z.infer<typeof AuditSubmitLabelRequestV1Schema>;
 export type Bm25ZhJiebaProfileV1 = z.infer<typeof Bm25ZhJiebaProfileV1Schema>;
+export type PreSetPayloadV1 = z.infer<typeof PreSetPayloadV1Schema>;
+export type GoldenSetPayloadV1 = z.infer<typeof GoldenSetPayloadV1Schema>;
