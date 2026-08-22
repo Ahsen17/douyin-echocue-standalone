@@ -30,3 +30,4 @@
 | M3-09 | 执行 Qdrant/jieba-BM25 POC | ⏳ 阻塞：依赖甲方真实中文检索样本 | — | — |
 | M4-01 | 实现 douyinLive 随包 sidecar 管理 | ✅ 已完成 | 2026-08-22 | src/main/douyin/{DouyinLiveSidecarManager,constants,types,index}.ts, assets/{douyinLive_linux,douyinLive_windows.exe,README.md}, tests/unit/douyin/, tests/integration/douyin/ |
 | M4-02 | 实现本地 WebSocket 事件 adapter | ✅ 已完成 | 2026-08-22 | src/main/douyin/ws-adapter.ts, docs/06-data-interface/schema/contracts-v1.ts(SourceComment/LiveSourceEvent), src/contracts/src/schemas.ts(同步), docs/06-data-interface/fixtures/ws-event-fixtures-v1.json, tests/contract/T-CON-001-ws-event-fixtures.test.ts, tests/{unit,integration}/douyin/ws-adapter.test.ts, package.json(ws@8.21.3) |
+| M4-03 | 实现 lifecycle/activity 状态机 | ✅ 已完成 | 2026-08-22 | src/main/service/{ServiceStateMachine,state-broadcast,index}.ts, src/preload/main-preload.ts, src/renderer/main/echocue.d.ts, src/main/index.ts, tests/{unit,integration}/service/service-state-machine.test.ts |
