@@ -1,15 +1,14 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'path'
 
+// Single-entry preload build: sandboxed preloads cannot `require` shared chunks,
+// so the whole bundle (including ipc-channels) must inline into one file.
 export default defineConfig({
   build: {
     lib: {
-      entry: {
-        'main-preload': resolve(__dirname, 'src/preload/main-preload.ts'),
-        'overlay-preload': resolve(__dirname, 'src/preload/overlay-preload.ts'),
-      },
+      entry: resolve(__dirname, 'src/preload/main-preload.ts'),
       formats: ['cjs'],
-      fileName: (_format, entryName) => `${entryName}.cjs`,
+      fileName: () => 'main-preload.cjs',
     },
     outDir: 'dist/preload',
     emptyOutDir: true,
