@@ -40,7 +40,7 @@
     "ai-assistant"
   ],
   "author": "",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "dependencies": {
     "@echocue/contracts": "*",
     "@opentelemetry/api": "1.9.0",
