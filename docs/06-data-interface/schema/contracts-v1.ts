@@ -432,6 +432,7 @@ export const DiagnosticSummaryV1Schema = z.strictObject({
   lastSuggestionResult: z.enum(['displayed', 'filtered', 'discarded', 'failed']).optional(),
   lastE2eLatencyMs: z.number().nonnegative().optional(),
   lastDomainError: DomainErrorV1Schema.optional(),
+  storageAvailableBytes: z.number().nonnegative().int().optional(),
 });
 
 export const ServiceViewStateSchema = z.strictObject({

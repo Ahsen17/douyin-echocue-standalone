@@ -1,9 +1,72 @@
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { DiagnosticSummaryV1Schema } from '@echocue/contracts';
+import { DiagnosticsSource } from '../../src/main/telemetry/DiagnosticsSource.js';
 
 describe('T-DIAG-001: Diagnostic Data Privacy', () => {
-  it.todo('should not include message content in metrics');
-  it.todo('should not include persona text in logs');
-  it.todo('should not include API keys in diagnostics');
-  it.todo('should not include trace_id in Prometheus labels');
-  it.todo('should allow semantic categories only');
+  it('should not include message content in the diagnostic summary', () => {
+    const diagnostics = new DiagnosticsSource();
+    diagnostics.updateLifecycle('RUNNING', 'LISTENING');
+    diagnostics.recordCommentReceived();
+    const summary = diagnostics.getSummary();
+    const serialized = JSON.stringify(summary);
+    expect(serialized).not.toContain('主播晚上好');
+    expect(serialized).not.toContain('弹幕');
+    expect(serialized).not.toContain('nickname');
+  });
+
+  it('should not include persona text in the diagnostic summary', () => {
+    const diagnostics = new DiagnosticsSource();
+    diagnostics.recordSuggestion('displayed', 1800);
+    const summary = diagnostics.getSummary();
+    const serialized = JSON.stringify(summary);
+    expect(serialized).not.toContain('人设');
+    expect(serialized).not.toContain('persona');
+  });
+
+  it('should not include API keys in diagnostics', () => {
+    const diagnostics = new DiagnosticsSource();
+    diagnostics.recordSuggestion('failed');
+    const summary = diagnostics.getSummary();
+    const serialized = JSON.stringify(summary);
+    expect(serialized).not.toContain('sk-');
+    expect(serialized).not.toContain('api_key');
+    expect(serialized).not.toContain('Authorization');
+  });
+
+  it('should not include trace_id in the diagnostic summary', () => {
+    const diagnostics = new DiagnosticsSource();
+    diagnostics.recordCommentReceived();
+    diagnostics.recordSuggestion('displayed', 900);
+    const summary = diagnostics.getSummary();
+    const serialized = JSON.stringify(summary);
+    expect(serialized).not.toContain('trace_id');
+    expect(serialized).not.toContain('traceId');
+    expect(serialized).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}/i);
+  });
+
+  it('should allow semantic categories only', () => {
+    const diagnostics = new DiagnosticsSource();
+    diagnostics.recordSuggestion('filtered');
+    const summary = diagnostics.getSummary();
+    // A result is one of the enumerated anonymous categories, never free text.
+    const parsed = DiagnosticSummaryV1Schema.parse(summary);
+    expect(['displayed', 'filtered', 'discarded', 'failed']).toContain(parsed.lastSuggestionResult);
+  });
+
+  it('reports storage capacity and sets E_STORAGE_LOW below threshold (M6-08)', () => {
+    const diagnostics = new DiagnosticsSource({
+      readStorage: () => ({ availableBytes: 512 * 1024 * 1024, totalBytes: 8 * 1024 ** 3 }),
+    });
+    const summary = diagnostics.getSummary();
+    expect(summary.storageAvailableBytes).toBe(512 * 1024 * 1024);
+    expect(summary.lastDomainError).toBe('E_STORAGE_LOW');
+    DiagnosticSummaryV1Schema.parse(summary);
+  });
+
+  it('omits storage when the capacity read is unavailable (M6-08)', () => {
+    const diagnostics = new DiagnosticsSource({ readStorage: () => null });
+    const summary = diagnostics.getSummary();
+    expect(summary.storageAvailableBytes).toBeUndefined();
+    expect(summary.lastDomainError).toBeUndefined();
+  });
 });

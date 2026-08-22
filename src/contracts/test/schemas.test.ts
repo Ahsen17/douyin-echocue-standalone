@@ -393,6 +393,16 @@ test('valid diagnostic summary with activity fields', () => expectValid(Diagnost
   lastE2eLatencyMs: 1800,
   lastDomainError: 'E_PROVIDER_TIMEOUT',
 }, 'with activity'));
+test('valid diagnostic summary with storage capacity (M6-08)', () => expectValid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'RUNNING',
+  activity: 'LISTENING',
+  storageAvailableBytes: 12_884_901_888,
+}, 'with storage bytes'));
+test('rejects negative storage capacity', () => expectInvalid(DiagnosticSummaryV1Schema, {
+  lifecycle: 'STOPPED',
+  activity: 'IDLE',
+  storageAvailableBytes: -1,
+}, 'negative storage bytes'));
 test('rejects diagnostic summary with comment text', () => expectInvalid(DiagnosticSummaryV1Schema, {
   lifecycle: 'RUNNING',
   activity: 'LISTENING',
