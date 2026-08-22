@@ -9,6 +9,8 @@ interface EchocueWindow {
   }
   service: {
     subscribe: (cb: (state: ServiceViewState) => void) => () => void
+    start: () => Promise<ServiceViewState>
+    stop: () => Promise<ServiceViewState>
   }
 }
 

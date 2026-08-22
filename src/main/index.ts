@@ -1,9 +1,14 @@
-import { app, dialog } from 'electron'
+import { app, safeStorage, type WebContents } from 'electron'
 import { fileURLToPath } from 'url'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
 import { MainWindow } from './windows/MainWindow.js'
 import { TrayManager } from './windows/TrayManager.js'
-import { ServiceStateMachine, wireStateBroadcast } from './service/index.js'
+import {
+  createServiceController,
+  wireServiceControl,
+  wireStateBroadcast,
+  type CreatedServiceController,
+} from './service/index.js'
 import { DiagnosticsSource } from './telemetry/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -11,6 +16,7 @@ const __dirname = dirname(__filename)
 
 let mainWindowInstance: MainWindow | null = null
 let trayManager: TrayManager | null = null
+let services: CreatedServiceController | null = null
 let isExplicitQuit = false
 
 function getIsExplicitQuit(): boolean {
@@ -21,9 +27,15 @@ function showMainWindow(): void {
   mainWindowInstance?.show()
 }
 
-function doQuit(): void {
+async function doQuit(): Promise<void> {
   isExplicitQuit = true
   trayManager?.dispose()
+  try {
+    await services?.controller.stop()
+  } catch {
+    /* best-effort stop before exit */
+  }
+  services?.shutdown()
   const win = mainWindowInstance?.getWindow()
   if (win && !win.isDestroyed()) {
     win.destroy()
@@ -31,18 +43,39 @@ function doQuit(): void {
   app.quit()
 }
 
-app.whenReady().then(() => {
+function resolveAssetBinary(kind: 'qdrant' | 'douyinLive'): string {
+  const name = process.platform === 'win32' ? `${kind}_windows.exe` : `${kind}_linux`
+  return join(process.cwd(), 'assets', name)
+}
+
+app.whenReady().then(async () => {
   mainWindowInstance = new MainWindow(getIsExplicitQuit)
 
-  const diagnostics = new DiagnosticsSource()
-  const stateMachine = new ServiceStateMachine()
-  stateMachine.onChanged((state) => {
-    diagnostics.updateLifecycle(state.lifecycle, state.activity)
-  })
-  wireStateBroadcast({
-    stateMachine,
-    isTrustedSender: (contents) => contents === mainWindowInstance?.getWindow()?.webContents,
-  })
+  const isTrustedSender = (contents: WebContents) =>
+    contents === mainWindowInstance?.getWindow()?.webContents
+
+  try {
+    services = await createServiceController({
+      dataDir: app.getPath('userData'),
+      safeStorage,
+      douyinLiveBinaryPath: resolveAssetBinary('douyinLive'),
+      qdrantBinaryPath: resolveAssetBinary('qdrant'),
+      migrationPath: join(process.cwd(), 'docs/06-data-interface/migrations/001_initial_schema.sql'),
+      keyVersion: '1',
+      cleanupOnStop: () => {
+        /* overlay/candidates/in-flight are wired by M5/M6 */
+      },
+    })
+    const diagnostics = new DiagnosticsSource()
+    services.stateMachine.onChanged((state) => {
+      diagnostics.updateLifecycle(state.lifecycle, state.activity)
+    })
+    wireStateBroadcast({ stateMachine: services.stateMachine, isTrustedSender })
+    wireServiceControl({ controller: services.controller, isTrustedSender })
+  } catch (err) {
+    // bootstrap failure keeps the app usable; the gate fails closed until stores assemble
+    console.error('service bootstrap failed', err)
+  }
 
   trayManager = new TrayManager({
     onShow: showMainWindow,

@@ -19,5 +19,7 @@ contextBridge.exposeInMainWorld('echocue', {
         ipcRenderer.removeListener('service.state.changed', listener)
       }
     },
+    start: () => ipcRenderer.invoke('service.start') as Promise<ServiceViewState>,
+    stop: () => ipcRenderer.invoke('service.stop') as Promise<ServiceViewState>,
   },
 })

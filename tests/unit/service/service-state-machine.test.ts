@@ -112,6 +112,25 @@ describe('ServiceStateMachine', () => {
     expect(seen).toEqual(['GATE_CONNECTING/GATE_CHECKING', 'RUNNING/LISTENING']);
   });
 
+  it('records a recoverable error while STOPPED', () => {
+    const machine = new ServiceStateMachine();
+    const state = machine.recordRecoverableError({
+      code: 'E_SOURCE_UNAVAILABLE',
+      at: '2026-08-22T12:00:00.000Z',
+    });
+    expect(state.lifecycle).toBe('STOPPED');
+    expect(state.stopReason).toBe('SOURCE_ERROR');
+    expect(state.recoverableError?.code).toBe('E_SOURCE_UNAVAILABLE');
+  });
+
+  it('rejects recording a recoverable error outside STOPPED', () => {
+    const machine = new ServiceStateMachine();
+    machine.transitionToLifecycle('GATE_CONNECTING');
+    expect(() =>
+      machine.recordRecoverableError({ code: 'E_SOURCE_UNAVAILABLE', at: '2026-08-22T12:00:00.000Z' }),
+    ).toThrow(ServiceStateInvalidTransitionError);
+  });
+
   it('does not broadcast when setActivity receives the same value', () => {
     const machine = new ServiceStateMachine();
     let count = 0;

@@ -190,6 +190,18 @@ describe('AuditStoreWorker', () => {
     }).toThrow(AuditUnavailableError);
   });
 
+  it('healthCheck reports true for a healthy DB and false after close', () => {
+    const extraWorker = new AuditStoreWorker({
+      dbPath: join(testDir, 'extra.sqlite'),
+      migrations: [{ version: 1, path: MIGRATION_PATH }],
+      keyManager,
+      keyVersion: 'v1',
+    });
+    expect(extraWorker.healthCheck()).toBe(true);
+    extraWorker.close();
+    expect(extraWorker.healthCheck()).toBe(false);
+  });
+
   it('handles DISPLAY_WINDOW_ACTIVE path: RECEIVED->NORMALIZED->DISCARDED', () => {
     const sessionId = randomUUID();
     const traceId = randomUUID();

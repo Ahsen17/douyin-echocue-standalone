@@ -88,6 +88,19 @@ export class ServiceStateMachine {
     return state;
   }
 
+  recordRecoverableError(error: NonNullable<ServiceViewState['recoverableError']>): ServiceViewState {
+    if (this.lifecycle !== 'STOPPED') {
+      throw new ServiceStateInvalidTransitionError(
+        'recoverableError can only be recorded while STOPPED',
+      );
+    }
+    this.stopReason = 'SOURCE_ERROR';
+    this.recoverableError = error;
+    const state = this.getViewState();
+    this.emit(state);
+    return state;
+  }
+
   setActivity(activity: ServiceActivity): ServiceViewState {
     const allowedForLifecycle = ACTIVITY_BY_LIFECYCLE[this.lifecycle];
     if (!allowedForLifecycle.has(activity)) {
