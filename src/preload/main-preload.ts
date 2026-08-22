@@ -8,6 +8,10 @@ import type {
   PersonaDetailV1,
   PersonaSummaryV1,
   PersonaVersionMetaV1,
+  SafetyPolicyVersionMetaV1,
+  SafetyPolicyViewV1,
+  SafetySaveDraftRequestV1,
+  SafetySaveDraftResultV1,
   ServiceViewState,
   VersionComparisonV1,
 } from '@echocue/contracts'
@@ -75,6 +79,13 @@ const echocueApi = {
         personaId,
         aliases,
       }) as Promise<AliasRowV1[]>,
+  },
+  safety: {
+    get: () => ipcRenderer.invoke(IpcChannel.SafetyGet) as Promise<SafetyPolicyViewV1>,
+    saveDraft: (input: SafetySaveDraftRequestV1) =>
+      ipcRenderer.invoke(IpcChannel.SafetySaveDraft, input) as Promise<SafetySaveDraftResultV1>,
+    publish: (safetyPolicyVersion: string) =>
+      ipcRenderer.invoke(IpcChannel.SafetyPublish, { safetyPolicyVersion }) as Promise<SafetyPolicyVersionMetaV1>,
   },
   diagnostics: {
     getSummary: () =>

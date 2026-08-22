@@ -13,6 +13,7 @@ import { wireDiagnosticsControl } from './telemetry/index.js'
 import { wireProviderControl } from './provider/index.js'
 import { wireConfigControl } from './config/index.js'
 import { wirePersonaControl } from './persona/index.js'
+import { wireSafetyControl } from './safety/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -81,6 +82,7 @@ app.whenReady().then(async () => {
       isTrustedSender,
     })
     wirePersonaControl({ persona: services.persona, isTrustedSender })
+    wireSafetyControl({ safety: services.safety, isTrustedSender })
     wireDiagnosticsControl({ diagnostics: services.diagnostics, isTrustedSender })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble

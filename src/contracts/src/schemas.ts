@@ -378,6 +378,50 @@ export const PersonaUpdateAliasesRequestV1Schema = z.strictObject({
   aliases: z.array(AliasInputV1Schema).max(50),
 });
 
+// Safety policy view for the authorized settings page (UI §7.2). `current` is
+// the editable content (latest draft else the active published version);
+// compiled rules never cross this boundary.
+export const CompileErrorV1Schema = z.strictObject({
+  clauseIndex: z.number().int().min(-1),
+  message: z.string().min(1),
+});
+
+export const SafetyPolicyVersionMetaV1Schema = z.strictObject({
+  safetyPolicyVersion: z.string().min(1).max(128),
+  status: z.enum(['DRAFT', 'PUBLISHED', 'SUPERSEDED', 'INVALID']),
+  compilerVersion: z.string().min(1).max(64),
+  createdAt: z.string().datetime({ offset: true }),
+  publishedAt: z.string().datetime({ offset: true }).nullable(),
+});
+
+export const SafetyPolicyCurrentV1Schema = z.strictObject({
+  versionId: z.string().min(1).max(128),
+  policyText: z.string().max(50000),
+  keywords: z.array(z.string().trim().min(1).max(64)).max(50),
+  validationErrors: z.array(CompileErrorV1Schema),
+});
+
+export const SafetyPolicyViewV1Schema = z.strictObject({
+  activeVersion: SafetyPolicyVersionMetaV1Schema.nullable(),
+  current: SafetyPolicyCurrentV1Schema.nullable(),
+  versions: z.array(SafetyPolicyVersionMetaV1Schema),
+});
+
+export const SafetySaveDraftRequestV1Schema = z.strictObject({
+  policyText: z.string().max(50000),
+  keywords: z.array(z.string().trim().min(1).max(64)).max(50),
+});
+
+export const SafetyPublishRequestV1Schema = z.strictObject({
+  safetyPolicyVersion: z.string().min(1).max(128),
+});
+
+export const SafetySaveDraftResultV1Schema = z.strictObject({
+  versionMeta: SafetyPolicyVersionMetaV1Schema,
+  valid: z.boolean(),
+  errors: z.array(CompileErrorV1Schema),
+});
+
 // Anonymous run summary for the diagnostics source (UI §8.1); no comment text,
 // persona text, keys, or trace ids cross this boundary.
 export const DiagnosticSummaryV1Schema = z.strictObject({
@@ -511,6 +555,13 @@ export type PersonaCreateRequestV1 = z.infer<typeof PersonaCreateRequestV1Schema
 export type PersonaSaveDraftRequestV1 = z.infer<typeof PersonaSaveDraftRequestV1Schema>;
 export type PersonaPublishRequestV1 = z.infer<typeof PersonaPublishRequestV1Schema>;
 export type PersonaUpdateAliasesRequestV1 = z.infer<typeof PersonaUpdateAliasesRequestV1Schema>;
+export type CompileErrorV1 = z.infer<typeof CompileErrorV1Schema>;
+export type SafetyPolicyVersionMetaV1 = z.infer<typeof SafetyPolicyVersionMetaV1Schema>;
+export type SafetyPolicyCurrentV1 = z.infer<typeof SafetyPolicyCurrentV1Schema>;
+export type SafetyPolicyViewV1 = z.infer<typeof SafetyPolicyViewV1Schema>;
+export type SafetySaveDraftRequestV1 = z.infer<typeof SafetySaveDraftRequestV1Schema>;
+export type SafetyPublishRequestV1 = z.infer<typeof SafetyPublishRequestV1Schema>;
+export type SafetySaveDraftResultV1 = z.infer<typeof SafetySaveDraftResultV1Schema>;
 export type DiagnosticSummaryV1 = z.infer<typeof DiagnosticSummaryV1Schema>;
 export type ConnectionTestResultV1 = z.infer<typeof ConnectionTestResultV1Schema>;
 export type ProviderFixtureResponseV1 = z.infer<typeof ProviderFixtureResponseV1Schema>;

@@ -19,6 +19,13 @@ import {
   PersonaCreateRequestV1Schema,
   PersonaSaveDraftRequestV1Schema,
   PersonaUpdateAliasesRequestV1Schema,
+  CompileErrorV1Schema,
+  SafetyPolicyVersionMetaV1Schema,
+  SafetyPolicyCurrentV1Schema,
+  SafetyPolicyViewV1Schema,
+  SafetySaveDraftRequestV1Schema,
+  SafetyPublishRequestV1Schema,
+  SafetySaveDraftResultV1Schema,
   DiagnosticSummaryV1Schema,
   ConnectionTestResultV1Schema,
   ProviderFixtureCaseV1Schema,
@@ -272,6 +279,101 @@ test('rejects updateAliases with an invalid alias kind', () => expectInvalid(Per
   personaId: 'p-1',
   aliases: [{ aliasText: 'x', aliasKind: 'DISPLAY' }],
 }, 'invalid kind'));
+
+// Safety policy view and requests (UI §7.2)
+console.log('\nCompileErrorV1Schema');
+test('valid clause compile error', () => expectValid(CompileErrorV1Schema, {
+  clauseIndex: 2, message: 'topic is ambiguous or vague',
+}, 'clause error'));
+test('valid keyword-level compile error', () => expectValid(CompileErrorV1Schema, {
+  clauseIndex: -1, message: 'invalid regex pattern for keyword #0',
+}, 'keyword error'));
+test('rejects clauseIndex below -1', () => expectInvalid(CompileErrorV1Schema, {
+  clauseIndex: -2, message: 'x',
+}, 'clauseIndex -2'));
+test('rejects fractional clauseIndex', () => expectInvalid(CompileErrorV1Schema, {
+  clauseIndex: 1.5, message: 'x',
+}, 'fractional index'));
+test('rejects empty error message', () => expectInvalid(CompileErrorV1Schema, {
+  clauseIndex: 0, message: '',
+}, 'empty message'));
+
+const SAFETY_META = {
+  safetyPolicyVersion: 'sp-1', status: 'DRAFT', compilerVersion: 'SafetyRuleCompilerV1',
+  createdAt: '2026-08-22T00:00:00.000Z', publishedAt: null,
+};
+
+console.log('\nSafetyPolicyVersionMetaV1Schema');
+test('valid safety version meta', () => expectValid(SafetyPolicyVersionMetaV1Schema, SAFETY_META, 'valid'));
+test('valid meta for every status', () => {
+  for (const status of ['DRAFT', 'PUBLISHED', 'SUPERSEDED', 'INVALID']) {
+    expectValid(SafetyPolicyVersionMetaV1Schema, {
+      ...SAFETY_META, status,
+      publishedAt: status === 'PUBLISHED' ? '2026-08-22T00:00:01.000Z' : null,
+    }, status);
+  }
+});
+test('rejects unknown safety status', () => expectInvalid(SafetyPolicyVersionMetaV1Schema, {
+  ...SAFETY_META, status: 'ACTIVE',
+}, 'unknown status'));
+
+console.log('\nSafetyPolicyCurrentV1Schema');
+test('valid safety current content', () => expectValid(SafetyPolicyCurrentV1Schema, {
+  versionId: 'sp-1', policyText: '不要讨论主播住址；禁止提及价格。', keywords: ['直播间'], validationErrors: [],
+}, 'valid'));
+test('valid current content with validation errors', () => expectValid(SafetyPolicyCurrentV1Schema, {
+  versionId: 'sp-1', policyText: '不合适的话题都不要说。', keywords: [],
+  validationErrors: [{ clauseIndex: 0, message: 'topic is ambiguous or vague' }],
+}, 'invalid draft content'));
+test('rejects keyword over 64 chars', () => expectInvalid(SafetyPolicyCurrentV1Schema, {
+  versionId: 'sp-1', policyText: '', keywords: ['x'.repeat(65)], validationErrors: [],
+}, 'keyword too long'));
+
+console.log('\nSafetyPolicyViewV1Schema');
+test('valid empty safety view', () => expectValid(SafetyPolicyViewV1Schema, {
+  activeVersion: null, current: null, versions: [],
+}, 'empty'));
+test('valid safety view with active and current', () => expectValid(SafetyPolicyViewV1Schema, {
+  activeVersion: { ...SAFETY_META, status: 'PUBLISHED', publishedAt: '2026-08-22T00:00:01.000Z' },
+  current: { versionId: 'sp-2', policyText: '', keywords: [], validationErrors: [] },
+  versions: [SAFETY_META],
+}, 'full view'));
+test('rejects compiledRules in safety view', () => expectInvalid(SafetyPolicyViewV1Schema, {
+  activeVersion: null, current: null, versions: [], compiledRules: [],
+}, 'compiledRules must not cross IPC'));
+
+console.log('\nSafety request/result schemas');
+test('valid safety saveDraft request', () => expectValid(SafetySaveDraftRequestV1Schema, {
+  policyText: '不要讨论主播住址和真实手机号；禁止回应具体交易价格。', keywords: ['直播间', 'regex:^a+$'],
+}, 'valid'));
+test('accepts empty policy and keywords', () => expectValid(SafetySaveDraftRequestV1Schema, {
+  policyText: '', keywords: [],
+}, 'empty'));
+test('rejects policy over 50000 chars', () => expectInvalid(SafetySaveDraftRequestV1Schema, {
+  policyText: 'x'.repeat(50001), keywords: [],
+}, 'policy too long'));
+test('rejects 51 keywords', () => expectInvalid(SafetySaveDraftRequestV1Schema, {
+  policyText: '', keywords: Array.from({ length: 51 }, (_, i) => `k${i}`),
+}, 'too many keywords'));
+test('rejects whitespace-only keyword', () => expectInvalid(SafetySaveDraftRequestV1Schema, {
+  policyText: '', keywords: ['   '],
+}, 'blank keyword'));
+test('valid safety publish request', () => expectValid(SafetyPublishRequestV1Schema, {
+  safetyPolicyVersion: 'sp-1',
+}, 'valid'));
+test('rejects empty safety publish version', () => expectInvalid(SafetyPublishRequestV1Schema, {
+  safetyPolicyVersion: '',
+}, 'empty version'));
+test('valid safety saveDraft result', () => expectValid(SafetySaveDraftResultV1Schema, {
+  versionMeta: SAFETY_META, valid: true, errors: [],
+}, 'valid result'));
+test('valid safety saveDraft result with errors', () => expectValid(SafetySaveDraftResultV1Schema, {
+  versionMeta: SAFETY_META, valid: false,
+  errors: [{ clauseIndex: 0, message: 'topic is ambiguous or vague' }],
+}, 'invalid result'));
+test('rejects compiledRules in saveDraft result', () => expectInvalid(SafetySaveDraftResultV1Schema, {
+  versionMeta: SAFETY_META, valid: true, errors: [], compiledRules: [],
+}, 'compiledRules leaks'));
 
 // DiagnosticSummaryV1 (UI §8.1)
 console.log('\nDiagnosticSummaryV1Schema');
