@@ -16,7 +16,7 @@ function rootStyle(prefs: OverlayPreferenceV1): CSSProperties {
   const dark = prefs.theme === 'dark'
   return {
     WebkitAppRegion: 'drag',
-    fontFamily: 'Inter, "Microsoft YaHei", sans-serif',
+    fontFamily: 'Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif',
     boxSizing: 'border-box',
     width: '100%',
     height: '100%',
