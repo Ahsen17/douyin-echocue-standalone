@@ -14,6 +14,7 @@ import {
   localizeFinalState,
   localizeLabelStatus,
   pageCount,
+  resolveSelectedRow,
   shortTime,
 } from '../audit/audit-logic'
 
@@ -81,9 +82,10 @@ export default function AuditPage() {
 
   const items = result.items
   // Derive the selected row fresh from the page each render so a label save
-  // (which re-runs search) surfaces the updated labelStatus/revisionCount
-  // without an explicit local copy going stale.
-  const selectedRow = (selectedId !== null ? items.find((r) => r.traceId === selectedId) : undefined) ?? items[0] ?? null
+  // (which re-runs search) surfaces the updated labelStatus/revisionCount; when
+  // the selected trace leaves the page, fall back to an empty state rather than
+  // showing another trace's workflow/label (错行打标防护).
+  const selectedRow = resolveSelectedRow(items, selectedId)
   const totalPages = pageCount(result.total, result.pageSize)
 
   const applyFilters = (nextFinal: TraceFinalState | '', nextLabel: LabelStatus | '') => {
@@ -149,7 +151,7 @@ export default function AuditPage() {
               <button
                 type="button"
                 key={row.traceId}
-                className={row.traceId === selectedRow.traceId ? 'selected' : ''}
+                className={row.traceId === selectedRow?.traceId ? 'selected' : ''}
                 onClick={() => openRow(row)}
               >
                 <small>
@@ -191,6 +193,7 @@ export default function AuditPage() {
               <>
                 <h2>记录详情 · {shortTime(selectedRow.receivedAt)}</h2>
                 <DetailTabs
+                  key={selectedRow.traceId}
                   row={selectedRow}
                   workflow={workflow}
                   workflowLoading={loadWorkflow.running}
@@ -355,7 +358,11 @@ function LabelForm({ row, onSaved }: { row: AuditTraceSummaryV1; onSaved: (statu
       <div className="button-row">
         <button
           type="button"
-          disabled={submit.running || (approve ? Number(score) < 0 : false)}
+          disabled={
+            submit.running ||
+            (approve && Number(score) <= 0) ||
+            (corrected && (reply.trim() === '' || cues.trim() === ''))
+          }
           onClick={() => void submit.run()}
         >
           保存打标

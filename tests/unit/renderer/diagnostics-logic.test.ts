@@ -50,5 +50,15 @@ describe('diagnostics-logic', () => {
       expect(text).not.toContain('主播晚上好')
       expect(text).not.toContain('Authorization')
     })
+
+    it('marks low space in the copyable summary', () => {
+      const text = buildCopyableSummary({
+        lifecycle: 'RUNNING',
+        activity: 'LISTENING',
+        storageAvailableBytes: 512 * 1024 ** 2,
+        storageLowSpace: true,
+      })
+      expect(text).toContain('E_STORAGE_LOW')
+    })
   })
 })

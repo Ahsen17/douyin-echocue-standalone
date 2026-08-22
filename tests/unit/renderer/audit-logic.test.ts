@@ -6,6 +6,7 @@ import {
   localizeFinalState,
   localizeLabelStatus,
   pageCount,
+  resolveSelectedRow,
   shortTime,
 } from '../../../src/renderer/main/audit/audit-logic.js'
 
@@ -81,6 +82,27 @@ describe('audit-logic', () => {
       expect(shortTime('2026-08-22T00:00:00.000Z')).toBeTruthy()
       expect(shortTime(null)).toBe('')
       expect(shortTime('nope')).toBe('')
+    })
+  })
+
+  describe('resolveSelectedRow', () => {
+    const rows = [
+      { traceId: 'a' },
+      { traceId: 'b' },
+    ] as never as readonly import('@echocue/contracts').AuditTraceSummaryV1[]
+
+    it('returns the row matching the selected id', () => {
+      expect(resolveSelectedRow(rows, 'b')?.traceId).toBe('b')
+    })
+    it('defaults to the first row when nothing is selected', () => {
+      expect(resolveSelectedRow(rows, null)?.traceId).toBe('a')
+    })
+    it('returns null when the selected id left the page (never jumps to another row)', () => {
+      expect(resolveSelectedRow(rows, 'gone')).toBeNull()
+    })
+    it('returns null on an empty page', () => {
+      expect(resolveSelectedRow([], 'a')).toBeNull()
+      expect(resolveSelectedRow([], null)).toBeNull()
     })
   })
 })

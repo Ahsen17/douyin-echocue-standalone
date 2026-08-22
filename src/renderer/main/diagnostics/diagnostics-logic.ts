@@ -42,7 +42,7 @@ export function buildCopyableSummary(summary: DiagnosticSummaryV1): string {
     summary.lastE2eLatencyMs === undefined
       ? '最近端到端耗时：暂无'
       : `最近端到端耗时：${summary.lastE2eLatencyMs} ms`,
-    `审计存储可用：${formatBytes(summary.storageAvailableBytes)}`,
+    `审计存储可用：${formatBytes(summary.storageAvailableBytes)}${summary.storageLowSpace === true ? '（低空间预警 E_STORAGE_LOW）' : ''}`,
     summary.lastDomainError === undefined
       ? '最近领域错误：无'
       : `最近领域错误：${summary.lastDomainError}`,

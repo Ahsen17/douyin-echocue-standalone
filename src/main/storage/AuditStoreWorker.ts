@@ -513,7 +513,10 @@ export class AuditStoreWorker {
         buildAad('audit_snapshot', row.snapshot_id, row.content_type),
       );
       const parsed = JSON.parse(plaintext.toString('utf-8')) as { normalizedText?: unknown };
-      return typeof parsed.normalizedText === 'string' ? parsed.normalizedText : '';
+      if (typeof parsed.normalizedText !== 'string') return '';
+      // Comment text can exceed the AuditTraceSummary.commentText cap (2000);
+      // truncate so a long 弹幕 never fails the whole page's schema validation.
+      return parsed.normalizedText.length > 2000 ? parsed.normalizedText.slice(0, 2000) : parsed.normalizedText;
     } catch {
       // A decrypt/parse failure must not corrupt the whole page; show no preview.
       return '';

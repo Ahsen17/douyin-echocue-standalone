@@ -65,3 +65,15 @@ export function defaultRevisionCount(summary: AuditTraceSummaryV1 | null): numbe
   // edits keep succeeding after re-saves (audit.submitLabel rejects a mismatch).
   return summary?.revisionCount ?? 0
 }
+
+// The detail panel must never silently jump to another row: when the selected
+// trace is not on the current page (e.g. after a label save moves it out of a
+// filter), return null so the panel shows an empty state instead of mismatched
+// workflow/label state for a different trace.
+export function resolveSelectedRow(
+  items: readonly AuditTraceSummaryV1[],
+  selectedId: string | null,
+): AuditTraceSummaryV1 | null {
+  if (selectedId === null) return items[0] ?? null
+  return items.find((r) => r.traceId === selectedId) ?? null
+}

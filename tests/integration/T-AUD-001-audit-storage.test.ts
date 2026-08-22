@@ -425,6 +425,28 @@ describe('T-AUD-001: Audit Storage', () => {
     );
   });
 
+  it('searchTraces truncates an over-long comment to the 2000 cap (M6-10 review)', () => {
+    const sessionId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    const traceId = randomUUID();
+    worker.createTrace({ traceId, sessionId, sourceMessageId: 'msg-1', receivedAt: now });
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED', [
+      snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', {
+        sourceMessageId: 'msg-1',
+        rawText: '长'.repeat(3000),
+        normalizedText: '长'.repeat(3000),
+        receivedAt: now,
+        receivedMonotonicMs: 1,
+      }),
+    ]);
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'FILTERED', 'INPUT_SAFETY_FILTERED');
+
+    const res = worker.searchTraces({ page: 1, pageSize: 50 });
+    expect(res.items[0].commentText.length).toBe(2000);
+  });
+
   it('correction_envelope round-trips through the encryptor (M6-10 review / M-2)', () => {
     const { personaVersion } = setupPersonaAndVersion();
     const sessionId = randomUUID();
