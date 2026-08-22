@@ -14,6 +14,16 @@ export type { ProviderControlIpcOptions } from './provider-control-ipc.js';
 export { createProviderCredentialHandlers } from './provider-control-handlers.js';
 export type { ProviderCredentialHandlers } from './provider-control-handlers.js';
 export type { TextGenerationProvider } from './TextGenerationProvider.js';
+export { DeepSeekProvider } from './deepseek.js';
+export type { DeepSeekProviderOptions } from './deepseek.js';
+export {
+  OpenAiChatCompletionsProvider,
+  buildChatCompletionsRequest,
+  CHAT_COMPLETIONS_PATH,
+} from './openai-compat.js';
+export type { OpenAiChatCompletionsAdapterOptions, OpenAiAdapterType } from './openai-compat.js';
+export { extractProviderRequestId, parseProviderResponse } from './parse.js';
+export type { ProviderHttpResponse } from './parse.js';
 export {
   mapHttpStatusToProviderError,
   mapProviderErrorToDomain,

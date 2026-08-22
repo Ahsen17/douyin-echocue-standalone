@@ -4,10 +4,12 @@
  * SDK types must never cross the adapter boundary.
  */
 import type { ProviderConfigV1 } from '@echocue/contracts';
-import type { ProviderGenerateInput, ProviderGenerateResult } from './types.js';
+import type { ProviderAuditRecord, ProviderGenerateInput, ProviderGenerateResult } from './types.js';
 
 export interface TextGenerationProvider {
   readonly adapterType: ProviderConfigV1['adapterType'];
   /** Single-shot structured JSON generation; never re-entrant tool calls. */
   generateReply(input: ProviderGenerateInput): Promise<ProviderGenerateResult>;
+  /** Audit metadata of the most recent call (M5-09 persists it as LLM_REQUEST_META). */
+  getAuditRecord(): ProviderAuditRecord | null;
 }

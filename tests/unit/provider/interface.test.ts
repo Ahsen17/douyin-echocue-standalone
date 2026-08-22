@@ -78,8 +78,10 @@ describe('TextGenerationProvider stable interface', () => {
     const adapter: TextGenerationProvider = {
       adapterType: 'DEEPSEEK',
       generateReply: async () => ({ ok: true, output: { quick_reply: 'x', cues: ['a', 'b'] } }),
+      getAuditRecord: () => null,
     };
     expect(adapter.adapterType).toBe('DEEPSEEK');
     expect(typeof adapter.generateReply).toBe('function');
+    expect(typeof adapter.getAuditRecord).toBe('function');
   });
 });

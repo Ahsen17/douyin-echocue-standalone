@@ -211,6 +211,31 @@ export const ConnectionTestResultV1Schema = z.strictObject({
   status: z.enum(['OK', 'AUTH_FAILED', 'UNAVAILABLE']),
 });
 
+// Machine-readable shape of provider-contract-fixtures-v1.json (CONTRACT §6).
+export const ProviderFixtureResponseV1Schema = z.strictObject({
+  status: z.number().int().positive().optional(),
+  body: z.unknown().optional(),
+  abortAtMs: z.number().int().positive().optional(),
+});
+
+export const ProviderFixtureExpectedV1Schema = z.strictObject({
+  ok: z.boolean(),
+  quick_reply: z.string().optional(),
+  cues: z.array(z.string()).optional(),
+  providerError: ProviderErrorV1Schema.optional(),
+  domainError: DomainErrorV1Schema.optional(),
+  retry: z.boolean().optional(),
+});
+
+export const ProviderFixtureCaseV1Schema = z.strictObject({
+  id: z.string().min(1),
+  adapterType: z.enum(['DEEPSEEK', 'OPENAI_COMPATIBLE']).optional(),
+  config: ProviderConfigV1Schema.optional(),
+  request: z.unknown().optional(),
+  response: ProviderFixtureResponseV1Schema.optional(),
+  expected: ProviderFixtureExpectedV1Schema,
+});
+
 export const OverlayPreferenceV1Schema = z.strictObject({
   durationMs: z.number().int().min(1000).max(60000),
   width: z.number().int().min(320).max(1920),
@@ -321,6 +346,9 @@ export const AuditSubmitLabelRequestV1Schema = z.strictObject({
 
 export type ProviderConfigV1 = z.infer<typeof ProviderConfigV1Schema>;
 export type ConnectionTestResultV1 = z.infer<typeof ConnectionTestResultV1Schema>;
+export type ProviderFixtureResponseV1 = z.infer<typeof ProviderFixtureResponseV1Schema>;
+export type ProviderFixtureExpectedV1 = z.infer<typeof ProviderFixtureExpectedV1Schema>;
+export type ProviderFixtureCaseV1 = z.infer<typeof ProviderFixtureCaseV1Schema>;
 export type OverlayPreferenceV1 = z.infer<typeof OverlayPreferenceV1Schema>;
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 export type ServiceViewState = z.infer<typeof ServiceViewStateSchema>;
