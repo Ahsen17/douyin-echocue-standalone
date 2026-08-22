@@ -1,0 +1,6 @@
+{"schema_version":"1.0","id":"pre-000001","text":"今天状态真好，太有活力了","semantic_type":"positive_praise","description":"对主播状态和精神面貌的正面夸赞","reference_reply":"谢谢你，今天确实元气在线！","reference_cues":["自然接住夸奖","带动互动"],"tags":["正面","夸赞"],"enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-000002","text":"这反应也太快了吧，笑死我了","semantic_type":"funny_joke","description":"针对即时反应的轻松玩笑","reference_reply":"你们别夸，我一会儿就要骄傲了。","reference_cues":["轻松自嘲","接住笑点"],"tags":["玩笑","互动"],"enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-000003","text":"主播最近在追什么剧","semantic_type":"persona_relevant","description":"与主播个人兴趣直接相关的话题提问","reference_reply":"最近在补一部老剧，回头给你们安利。","enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-000004","text":"你们觉得明天会下雨吗","semantic_type":"interactive_question","description":"适合即时回应并延展的天气话题","enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-000005","text":"气氛也太燃了，全体起立","semantic_type":"atmosphere_boost","description":"带动直播间气氛的正向内容","reference_cues":["接住气氛","继续带动"],"enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-000006","text":"这类高风险的言论会被直接过滤","semantic_type":"filter_risk","description":"风险类脱敏示例，仅作检索分类参考","enabled":true,"is_bad_case":false}

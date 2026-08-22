@@ -1,0 +1,10 @@
+{"schema_version":"1.0","id":"pre-100001","text":"bad json line without closing brace
+[1,2,3]
+{"schema_version":"2.0","id":"pre-100002","text":"版本不支持的案例","semantic_type":"positive_praise","description":"用于验证 schema_version 拒绝","enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-100003","text":"","semantic_type":"positive_praise","description":"用于验证空 text 拒绝","enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-100004","text":"未知类型案例","semantic_type":"unknown_type","description":"用于验证 semantic_type 拒绝","enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-100005","text":"多余字段案例","semantic_type":"positive_praise","description":"用于验证多余字段拒绝","unexpected":true,"enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-100006","text":"bad case 初始必须为 false","semantic_type":"positive_praise","description":"用于验证 is_bad_case 拒绝","enabled":true,"is_bad_case":true}
+{"schema_version":"1.0","id":"pre-100007","text":"重复 id 案例","semantic_type":"positive_praise","description":"用于验证重复 id 拒绝","enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-100007","text":"重复 id 案例二","semantic_type":"positive_praise","description":"用于验证重复 id 拒绝","enabled":true,"is_bad_case":false}
+{"schema_version":"1.0","id":"pre-100008","text":"这里是我的手机号请勿外传","semantic_type":"positive_praise","description":"用于验证敏感内容拒绝","enabled":true,"is_bad_case":false}

@@ -1,0 +1,122 @@
+{
+  "version": "1",
+  "algorithm": "abs(MurmurHash3_x86_32(UTF-8, seed=0))",
+  "pythonPackage": "mmh3 5.2.1",
+  "tokens": [
+    {
+      "token": "主播",
+      "utf8hex": "e4b8bbe692ad",
+      "pythonIndex": 177447445
+    },
+    {
+      "token": "状态",
+      "utf8hex": "e78ab6e68081",
+      "pythonIndex": 1339242251
+    },
+    {
+      "token": "今天",
+      "utf8hex": "e4bb8ae5a4a9",
+      "pythonIndex": 70431191
+    },
+    {
+      "token": "真好",
+      "utf8hex": "e79c9fe5a5bd",
+      "pythonIndex": 1695726081
+    },
+    {
+      "token": "技术",
+      "utf8hex": "e68a80e69caf",
+      "pythonIndex": 1054187527
+    },
+    {
+      "token": "厉害",
+      "utf8hex": "e58e89e5aeb3",
+      "pythonIndex": 1487763220
+    },
+    {
+      "token": "共和国",
+      "utf8hex": "e585b1e5928ce59bbd",
+      "pythonIndex": 1041338232
+    },
+    {
+      "token": "武汉",
+      "utf8hex": "e6ada6e6b189",
+      "pythonIndex": 913340480
+    },
+    {
+      "token": "长江大桥",
+      "utf8hex": "e995bfe6b19fe5a4a7e6a1a5",
+      "pythonIndex": 108367299
+    },
+    {
+      "token": "笑死",
+      "utf8hex": "e7ac91e6adbb",
+      "pythonIndex": 1199394361
+    },
+    {
+      "token": "中华人民共和国",
+      "utf8hex": "e4b8ade58d8ee4babae6b091e585b1e5928ce59bbd",
+      "pythonIndex": 155544513
+    },
+    {
+      "token": "今天状态真好",
+      "utf8hex": "e4bb8ae5a4a9e78ab6e68081e79c9fe5a5bd",
+      "pythonIndex": 760493507
+    },
+    {
+      "token": "AI",
+      "utf8hex": "4149",
+      "pythonIndex": 863271227
+    },
+    {
+      "token": "hello",
+      "utf8hex": "68656c6c6f",
+      "pythonIndex": 613153351
+    },
+    {
+      "token": "test",
+      "utf8hex": "74657374",
+      "pythonIndex": 1167338989
+    },
+    {
+      "token": "bm25",
+      "utf8hex": "626d3235",
+      "pythonIndex": 1559311872
+    },
+    {
+      "token": "aaad",
+      "utf8hex": "61616164",
+      "pythonIndex": 889674131
+    },
+    {
+      "token": "😊",
+      "utf8hex": "f09f988a",
+      "pythonIndex": 1516188669
+    },
+    {
+      "token": "🚀",
+      "utf8hex": "f09f9a80",
+      "pythonIndex": 2137479269
+    },
+    {
+      "token": "❤️",
+      "utf8hex": "e29da4efb88f",
+      "pythonIndex": 750265027
+    },
+    {
+      "token": "🔥",
+      "utf8hex": "f09f94a5",
+      "pythonIndex": 703096328
+    },
+    {
+      "token": "AI技术",
+      "utf8hex": "4149e68a80e69caf",
+      "pythonIndex": 1618311488
+    },
+    {
+      "token": "主播😊",
+      "utf8hex": "e4b8bbe692adf09f988a",
+      "pythonIndex": 253257180
+    }
+  ]
+}

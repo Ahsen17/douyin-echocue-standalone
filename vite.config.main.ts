@@ -11,7 +11,7 @@ export default defineConfig({
     outDir: 'dist/main',
     emptyOutDir: true,
     rollupOptions: {
-      external: ['electron', 'path', 'fs', 'os', 'url', 'crypto', 'worker_threads'],
+      external: ['electron', 'path', 'fs', 'os', 'url', 'crypto', 'worker_threads', 'jieba-wasm'],
     },
     minify: false,
     sourcemap: true,

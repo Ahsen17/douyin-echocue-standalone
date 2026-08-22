@@ -34,4 +34,7 @@ export const FIXTURES = {
   BENCHMARK_POLICY: 'safety-routing-benchmark-policy-v1.json',
   BENCHMARK_PERSONAS: 'safety-routing-benchmark-personas-v1.json',
   MIGRATION_TEST: 'migration-contract-test.mjs',
+  BM25_HASH_FIXTURES: 'bm25-token-hash-fixtures-v1.json',
+  PRE_SET_VALID: 'pre-set-valid-v1.jsonl',
+  PRE_SET_INVALID: 'pre-set-invalid-v1.jsonl',
 } as const;
