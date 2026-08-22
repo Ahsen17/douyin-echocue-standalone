@@ -13,6 +13,9 @@ import {
   ProviderFixtureExpectedV1Schema,
   OverlayPreferenceV1Schema,
   SuggestionOutputV1Schema,
+  OutputValidationReasonV1Schema,
+  SuggestionSourceV1Schema,
+  ValidatedSuggestionV1Schema,
   AuditSearchRequestV1Schema,
   AuditSubmitLabelRequestV1Schema,
   AuditGetWorkflowRequestV1Schema,
@@ -144,6 +147,52 @@ test('rejects cue > 40 chars', () => expectInvalid(SuggestionOutputV1Schema, {
   quick_reply: '感谢',
   cues: ['一', 'a'.repeat(41)],
 }, 'cue 41 chars'));
+
+// OutputValidationReasonV1Schema
+console.log('\nOutputValidationReasonV1Schema');
+test('accepts all 13 reason codes', () => {
+  for (const code of [
+    'JSON_PARSE_FAILED', 'JSON_SCHEMA_FAILED', 'UNSAFE_CONTROL_CHAR',
+    'EMPTY_QUICK_REPLY', 'QUICK_REPLY_TOO_LONG',
+    'CUE_COUNT_INVALID', 'CUE_EMPTY', 'CUE_TOO_LONG', 'CUE_DUPLICATE',
+    'RISK_RULE_HIT', 'PERSONAL_INFO_HIT', 'FORBIDDEN_POLICY_HIT',
+    'PERSONA_REVIEW_UNCERTAIN',
+  ]) {
+    expectValid(OutputValidationReasonV1Schema, code, `reason ${code}`);
+  }
+});
+test('rejects an unknown reason code', () => expectInvalid(OutputValidationReasonV1Schema, 'NOT_A_REASON', 'unknown'));
+
+// SuggestionSourceV1Schema
+console.log('\nSuggestionSourceV1Schema');
+test('accepts llm and retrieval_payload', () => {
+  expectValid(SuggestionSourceV1Schema, 'llm', 'llm');
+  expectValid(SuggestionSourceV1Schema, 'retrieval_payload', 'retrieval_payload');
+});
+test('rejects unknown source', () => expectInvalid(SuggestionSourceV1Schema, 'golden', 'unknown'));
+
+// ValidatedSuggestionV1Schema
+console.log('\nValidatedSuggestionV1Schema');
+test('valid validated suggestion', () => expectValid(ValidatedSuggestionV1Schema, {
+  quickReply: '感谢支持！',
+  cues: ['欢迎关注', '点赞收藏'],
+  source: 'llm',
+}, 'valid'));
+test('validated suggestion from retrieval_payload', () => expectValid(ValidatedSuggestionV1Schema, {
+  quickReply: '谢谢你',
+  cues: ['接住夸奖', '继续互动'],
+  source: 'retrieval_payload',
+}, 'retrieval source'));
+test('rejects validated suggestion missing source', () => expectInvalid(ValidatedSuggestionV1Schema, {
+  quickReply: '感谢',
+  cues: ['一', '二'],
+}, 'missing source'));
+test('rejects validated suggestion with extra field', () => expectInvalid(ValidatedSuggestionV1Schema, {
+  quickReply: '感谢',
+  cues: ['一', '二'],
+  source: 'llm',
+  extra: true,
+}, 'extra field'));
 
 // AuditSearchRequestV1Schema
 console.log('\nAuditSearchRequestV1Schema');
