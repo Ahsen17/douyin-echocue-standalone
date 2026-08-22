@@ -32,4 +32,24 @@ describe('createGuardedHandler', () => {
     const handler = createGuardedHandler(isTrusted, () => 'done')
     expect(handler(TRUSTED, undefined)).toBe('done')
   })
+
+  it('rejects an untrusted sender synchronously even for an async handler', async () => {
+    const calls: unknown[] = []
+    const handler = createGuardedHandler(isTrusted, async (raw) => {
+      calls.push(raw)
+      return 'ok'
+    })
+    expect(() => handler(UNTRUSTED, 'payload')).toThrow(/untrusted sender/)
+    expect(calls).toEqual([])
+  })
+
+  it('applies the sender guard before schema/domain validation', () => {
+    const handler = createGuardedHandler(isTrusted, (raw) => {
+      if (typeof raw !== 'string') throw new Error('schema error')
+      return raw
+    })
+    // Untrusted sender with a malformed payload: the guard wins, not the schema.
+    expect(() => handler(UNTRUSTED, { malformed: true })).toThrow(/untrusted sender/)
+    expect(handler(TRUSTED, 'ok')).toBe('ok')
+  })
 })
