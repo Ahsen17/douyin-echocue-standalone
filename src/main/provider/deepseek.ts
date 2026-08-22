@@ -1,6 +1,6 @@
 /**
- * DeepSeek provider (M5-03). First adapter over the shared OpenAI-compatible base;
- * uses DeepSeek's OpenAI-compatible Chat Completions subset (RESEARCH §5.4, LLM §4).
+ * DeepSeek provider. Uses DeepSeek's OpenAI-compatible Chat Completions subset
+ * over the shared base (RESEARCH §5.4, LLM §4).
  */
 import { OpenAiChatCompletionsProvider, type OpenAiChatCompletionsAdapterOptions } from './openai-compat.js';
 

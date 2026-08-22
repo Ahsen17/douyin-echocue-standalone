@@ -1,8 +1,9 @@
 /**
- * OpenAI-compatible Chat Completions adapter base (M5-03 DeepSeek, M5-04 OpenAI-compatible).
- * Implements the TextGenerationProvider contract; SDK/wire differences never leak upward.
+ * OpenAI-compatible Chat Completions adapter base shared by DeepSeek and
+ * OpenAI-compatible providers. Implements the TextGenerationProvider contract;
+ * SDK/wire differences never leak upward.
  */
-import type { ProviderErrorV1 } from '@echocue/contracts';
+import type { ProviderConfigV1, ProviderErrorV1 } from '@echocue/contracts';
 import { fetchJson, ProviderTransportError, type FetchJsonInput } from './http.js';
 import { extractProviderRequestId, parseProviderResponse } from './parse.js';
 import type {
@@ -13,7 +14,11 @@ import type {
 } from './types.js';
 import type { TextGenerationProvider } from './TextGenerationProvider.js';
 
-export type OpenAiAdapterType = 'DEEPSEEK' | 'OPENAI_COMPATIBLE';
+/** Adapter types this wire protocol supports, derived from the shared contract. */
+export type OpenAiAdapterType = Extract<
+  ProviderConfigV1['adapterType'],
+  'DEEPSEEK' | 'OPENAI_COMPATIBLE'
+>;
 
 export interface OpenAiChatCompletionsAdapterOptions {
   adapterType: OpenAiAdapterType;

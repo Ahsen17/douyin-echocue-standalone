@@ -16,6 +16,8 @@ export type { ProviderCredentialHandlers } from './provider-control-handlers.js'
 export type { TextGenerationProvider } from './TextGenerationProvider.js';
 export { DeepSeekProvider } from './deepseek.js';
 export type { DeepSeekProviderOptions } from './deepseek.js';
+export { OpenAiCompatibleProvider } from './openai-compatible.js';
+export type { OpenAiCompatibleProviderOptions } from './openai-compatible.js';
 export {
   OpenAiChatCompletionsProvider,
   buildChatCompletionsRequest,

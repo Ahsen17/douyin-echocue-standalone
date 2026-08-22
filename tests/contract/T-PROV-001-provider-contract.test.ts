@@ -6,7 +6,7 @@ import {
 } from '@echocue/contracts';
 import { loadJsonFixture, FIXTURES } from '../fixtures/loader.js';
 import {
-  DeepSeekProvider,
+  OpenAiCompatibleProvider,
   parseProviderResponse,
   ProviderTransportError,
 } from '../../src/main/provider/index.js';
@@ -106,13 +106,14 @@ describe('T-PROV-001: Provider Contract Fixtures', () => {
     expect(c.expected.providerError).toBe('TIMEOUT');
     expect(c.expected.domainError).toBe('E_PROVIDER_TIMEOUT');
     expect(c.expected.retry).toBe(false);
-    // M-3: drive the real adapter so the timeout path is exercised, not just asserted.
-    const provider = new DeepSeekProvider({
+    // Drive the adapter declared by the fixture (OPENAI_COMPATIBLE) so the timeout
+    // path is exercised, not just asserted against fixture metadata.
+    const provider = new OpenAiCompatibleProvider({
       fetchJsonImpl: async () => {
         throw new ProviderTransportError('TIMEOUT', 'fixture timeout');
       },
     });
-    const result = await provider.generateReply(makeInput());
+    const result = await provider.generateReply(makeInput({ adapterType: 'OPENAI_COMPATIBLE' }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('TIMEOUT');
   });
