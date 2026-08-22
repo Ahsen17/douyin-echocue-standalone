@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
@@ -54,9 +54,23 @@ export class MainWindow {
   }
 
   private registerIpcHandlers(): void {
-    ipcMain.on(IpcChannel.WindowClose, () => this.hide())
-    ipcMain.on(IpcChannel.WindowMinimize, () => this.minimize())
-    ipcMain.on(IpcChannel.WindowMaximize, () => this.toggleMaximize())
+    // CONTRACT §7: window chrome must only respond to this window's own sender.
+    // Fire-and-forget channel: ignore untrusted senders (fail closed) rather
+    // than throw — a throw in an ipcMain.on listener is an uncaught main error.
+    const fromThisWindow = (event: { sender: WebContents }): boolean =>
+      event.sender === this.window?.webContents
+    ipcMain.on(IpcChannel.WindowClose, (e) => {
+      if (!fromThisWindow(e)) return
+      this.hide()
+    })
+    ipcMain.on(IpcChannel.WindowMinimize, (e) => {
+      if (!fromThisWindow(e)) return
+      this.minimize()
+    })
+    ipcMain.on(IpcChannel.WindowMaximize, (e) => {
+      if (!fromThisWindow(e)) return
+      this.toggleMaximize()
+    })
   }
 
   public getWindow(): BrowserWindow | null {
