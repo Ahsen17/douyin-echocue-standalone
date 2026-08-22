@@ -61,3 +61,5 @@ export { POSITIVE_SEMANTIC_TYPES, evaluateSemanticFilter } from './semantic-filt
 export type { SemanticFilterDecision } from './semantic-filter.js';
 export { evaluateRetrieval } from './evaluate.js';
 export type { CalibratedRetrieval, EvaluateOptions } from './evaluate.js';
+export { buildRetrievalResult, evaluateDirectPush } from './direct-push.js';
+export type { BuildRetrievalResultArgs, DirectPushContext, DirectPushDecision } from './direct-push.js';
