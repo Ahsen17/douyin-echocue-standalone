@@ -31,8 +31,8 @@ while a suggestion is showing are discarded, not queued.
 - [x] M2 Persona, safety and routing — member/alias CRUD, persona draft/publish/rollback, safety rule compiler, comment normalization and member routing. *(POC sign-off pending real samples)*
 - [x] M3 Qdrant and BM25 — bundled Qdrant sidecar, jieba-BM25 pipeline, and dual `pre_set` / `golden_set` retrieval with calibration and rerank. *(POC blocked on real Chinese retrieval samples)*
 - [x] M4 douyinLive ingestion and state machine — bundled douyinLive sidecar, local WebSocket adapter, lifecycle/activity state machine. *(POC blocked on a real live room)*
-- [x] M5 Provider and orchestration — provider config/connection test, stable `TextGenerationProvider`, DeepSeek and OpenAI-compatible adapters, deterministic prompt assembly, and real-time `SuggestionAttempt` orchestration. *(9/9 tasks complete)*
-- [x] M6 Renderer and overlay — seven formal UI entries and the standalone always-on-top overlay window. *(11/11 tasks complete)*
+- [x] M5 Provider and orchestration — provider config/connection test, stable `TextGenerationProvider`, DeepSeek and OpenAI-compatible adapters, deterministic prompt assembly, and real-time `SuggestionAttempt` orchestration. *(9/9 tasks complete; 2026-08 freshness budget calibrated to 5s, pending real-room measurement)*
+- [x] M6 Renderer and overlay — seven formal UI entries and the standalone always-on-top overlay window. *(11/11 tasks complete; overlay shows the triggering comment's sent time)*
 - [ ] M7 Feedback and release — `golden_set` feedback loop, integration/E2E acceptance, and Windows packaging/sign-off.
 
 ### High-level architecture
