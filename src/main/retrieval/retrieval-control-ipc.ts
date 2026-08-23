@@ -22,4 +22,5 @@ export function wireRetrievalControl(options: RetrievalControlIpcOptions): void 
 
   ipcMain.handle(IpcChannel.RetrievalGetStatus, createGuardedHandler(isTrustedSender, () => handlers.getStatus()));
   ipcMain.handle(IpcChannel.RetrievalImportPreSet, createGuardedHandler(isTrustedSender, (raw) => handlers.importPreSet(raw)));
+  ipcMain.handle(IpcChannel.RetrievalGetCollectionCounts, createGuardedHandler(isTrustedSender, () => handlers.getCollectionCounts()));
 }
