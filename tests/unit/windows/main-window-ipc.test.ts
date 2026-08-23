@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('electron', () => ({
+  app: { isPackaged: false },
   BrowserWindow: mocks.BrowserWindowMock,
   ipcMain: mocks.ipcMain,
 }));

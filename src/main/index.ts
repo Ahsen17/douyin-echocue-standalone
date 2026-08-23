@@ -17,6 +17,8 @@ import { wireConfigControl } from './config/index.js'
 import { wirePersonaControl } from './persona/index.js'
 import { wireSafetyControl } from './safety/index.js'
 import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
+import { resolveResourcePath } from './util/index.js'
+import { SIDECAR_PINS, sidecarSha256 } from './sidecar-pins.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -26,6 +28,19 @@ let overlayWindowInstance: OverlayWindow | null = null
 let trayManager: TrayManager | null = null
 let services: CreatedServiceController | null = null
 let isExplicitQuit = false
+
+// Grace period for windows/services to initialize before the --smoke-quit hook
+// (T-PKG-001) walks the real graceful-exit path and quits.
+const SMOKE_QUIT_DELAY_MS = 4000
+
+if (app.isPackaged) {
+  // RUNBOOK §2.3: data root is %LOCALAPPDATA%\Echocue (Local), not the default
+  // Roaming userData, so the (potentially large) audit/Qdrant data does not
+  // roam and never touches the install directory. Electron allows setPath
+  // before ready; nothing reads userData earlier than this module scope.
+  const localAppData = join(dirname(app.getPath('appData')), 'Local', 'Echocue')
+  app.setPath('userData', localAppData)
+}
 
 function getIsExplicitQuit(): boolean {
   return isExplicitQuit
@@ -54,7 +69,7 @@ async function doQuit(): Promise<void> {
 
 function resolveAssetBinary(kind: 'qdrant' | 'douyinLive'): string {
   const name = process.platform === 'win32' ? `${kind}_windows.exe` : `${kind}_linux`
-  return join(process.cwd(), 'assets', name)
+  return resolveResourcePath(join('assets', name))
 }
 
 app.whenReady().then(async () => {
@@ -84,7 +99,18 @@ app.whenReady().then(async () => {
       safeStorage,
       douyinLiveBinaryPath: resolveAssetBinary('douyinLive'),
       qdrantBinaryPath: resolveAssetBinary('qdrant'),
-      migrationPath: join(process.cwd(), 'docs/06-data-interface/migrations/001_initial_schema.sql'),
+      migrationPath: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '001_initial_schema.sql')),
+      qdrantConfigTemplatePath: resolveResourcePath(join('resources', 'qdrant-config.yaml')),
+      sidecarPins: {
+        qdrant: {
+          version: SIDECAR_PINS.qdrant.version,
+          sha256: sidecarSha256('qdrant'),
+        },
+        douyinLive: {
+          version: SIDECAR_PINS.douyinLive.version,
+          sha256: sidecarSha256('douyinLive'),
+        },
+      },
       keyVersion: '1',
       displaySink: createOverlayDisplaySink({ overlayWindow: overlayWindowInstance }),
       cleanupOnStop: () => {
@@ -124,6 +150,15 @@ app.whenReady().then(async () => {
     onShow: showMainWindow,
     onQuit: doQuit,
   })
+
+  // T-PKG-001 install-verify hook: by this point bootstrap (if it can succeed)
+  // has run and windows/tray exist. Trigger the same graceful-exit path the tray
+  // uses, then quit. Only fires when the flag is explicitly passed to the app.
+  if (process.argv.includes('--smoke-quit')) {
+    setTimeout(() => {
+      void doQuit()
+    }, SMOKE_QUIT_DELAY_MS)
+  }
 })
 
 // Tray controls quit; do not exit on all-windows-closed

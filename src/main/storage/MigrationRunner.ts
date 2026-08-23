@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export interface MigrationFile {
@@ -14,6 +15,9 @@ export class MigrationRunner {
   ) {}
 
   run(): DatabaseSync {
+    // node:sqlite does not create parent directories; the first launch must be
+    // able to create the audit subdir inside a fresh user-data root.
+    mkdirSync(dirname(this.dbPath), { recursive: true });
     const db = new DatabaseSync(this.dbPath);
     try {
       db.exec('PRAGMA foreign_keys=ON');

@@ -2,7 +2,8 @@ import { mkdtemp, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { DatabaseSync } from 'node:sqlite';
-import { WebSocketServer, type WebSocket } from 'ws';
+import type { WebSocketServer, WebSocket } from 'ws';
+import { createTestWebSocketServer } from '../integration/ws-test-server.js';
 import type {
   AuditWorkflowV1,
   OverlayDisplayPayloadV1,
@@ -22,7 +23,6 @@ import type { RetrievalRawHit } from '../../src/main/retrieval/index.js';
 import type { CompiledSafetyRuleV1 } from '../../src/main/safety/index.js';
 import type { TextGenerationProvider } from '../../src/main/provider/index.js';
 import { uuidv7 } from '../../src/main/util/index.js';
-import { freePort } from '../integration/retrieval/qdrant-test-utils.js';
 
 const MIGRATION_PATH = join(
   process.cwd(),
@@ -150,8 +150,7 @@ export async function buildMockStreamHarness(
 
   const machine = new ServiceStateMachine();
   const sidecar = new NoopSidecar();
-  const serverPort = await freePort();
-  const server = new WebSocketServer({ host: '127.0.0.1', port: serverPort });
+  const { server, port: serverPort } = await createTestWebSocketServer();
 
   const shown: DisplayedRecord[] = [];
   const providerCalls = { count: 0 };

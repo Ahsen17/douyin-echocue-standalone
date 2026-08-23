@@ -33,6 +33,10 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "start": "electron .",
     "preview": "npm run build && npm run start",
+    "icons": "tsx scripts/generate-icons.ts",
+    "package:win": "electron-builder --win nsis --x64",
+    "package:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/win-install-verify.ps1",
+    "release:manifest": "tsx scripts/generate-release-manifest.ts",
     "license:scan": "license-checker --json --out dist/compliance/licenses.json",
     "license:check": "node scripts/license-check.js",
     "sbom": "cyclonedx-npm --ignore-npm-errors --output-format json --output-file dist/compliance/sbom.cdx.json",
@@ -43,7 +47,7 @@
     "live-streaming",
     "ai-assistant"
   ],
-  "author": "",
+  "author": "Ahsen17",
   "license": "Apache-2.0",
   "dependencies": {
     "@echocue/contracts": "*",
@@ -61,6 +65,7 @@
   },
   "devDependencies": {
     "@cyclonedx/cyclonedx-npm": "6.0.1",
+    "@resvg/resvg-js": "2.6.2",
     "@types/murmurhash3js-revisited": "3.0.3",
     "@types/node": "22.20.1",
     "@types/react": "18.3.31",

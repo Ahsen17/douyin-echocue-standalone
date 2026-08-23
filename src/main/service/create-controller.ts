@@ -28,6 +28,12 @@ export interface CreateServiceControllerOptions {
   safeStorage: SafeStorageLike;
   douyinLiveBinaryPath: string;
   qdrantBinaryPath: string;
+  qdrantConfigTemplatePath?: string;
+  /** Version+SHA-256 pins re-verified at every sidecar start (E_SIDECAR_START_FAILED on mismatch). */
+  sidecarPins?: {
+    qdrant: { version: string; sha256: string };
+    douyinLive: { version: string; sha256: string };
+  };
   migrationPath: string;
   keyVersion: string;
   cleanupOnStop: () => void;
@@ -89,10 +95,15 @@ export async function createServiceController(
   const douyinSidecar = new DouyinLiveSidecarManager({
     binaryPath: options.douyinLiveBinaryPath,
     dataDir: join(options.dataDir, 'douyin'),
+    expectedVersion: options.sidecarPins?.douyinLive.version,
+    sha256: options.sidecarPins?.douyinLive.sha256,
   });
   const qdrantSidecar = new QdrantSidecarManager({
     binaryPath: options.qdrantBinaryPath,
     dataDir: join(options.dataDir, 'qdrant'),
+    configTemplatePath: options.qdrantConfigTemplatePath,
+    expectedVersion: options.sidecarPins?.qdrant.version,
+    sha256: options.sidecarPins?.qdrant.sha256,
   });
   const qdrantClient = new QdrantClient({
     url: `http://${QDRANT_LOOPBACK_HOST}:${QDRANT_HTTP_PORT}`,

@@ -3,6 +3,7 @@ import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { IpcChannel } from '../../shared/ipc-channels.js'
+import { resolveResourcePath } from '../util/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -21,6 +22,7 @@ export class MainWindow {
       width: 1200,
       height: 800,
       frame: false,
+      icon: resolveResourcePath(join('build', 'icon.png')),
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,

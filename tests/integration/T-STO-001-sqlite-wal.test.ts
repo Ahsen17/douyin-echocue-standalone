@@ -228,7 +228,10 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
       expect(bytesPerThousand).toBeLessThan(4 * 1024 * 1024);
       worker.close();
     },
-    30_000,
+    // Growth measurement over 200 HMAC-per-transition writes exceeds 30s under
+    // full-suite CPU contention on the Windows CI runner; it measures a size
+    // ratio, not timing, so a longer budget only adds headroom.
+    60_000,
   );
 
   it('rejects the startup gate when the data volume has < 2 GiB free', async () => {
