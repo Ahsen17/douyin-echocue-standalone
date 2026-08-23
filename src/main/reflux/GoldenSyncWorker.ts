@@ -99,12 +99,16 @@ export class GoldenSyncWorker {
         } catch (err) {
           result.failed += 1;
           if (err instanceof RefluxPayloadError) {
-            // Permanent data problem: never auto-retry (M7-03).
+            // Permanent data problem: never auto-retry (M7-03). The message is a
+            // fixed internal string, safe to persist.
             this.audit.failSyncJob(job.jobId, job.feedbackId, err.message, true);
           } else {
             // Infrastructure failure: fail this job and stop the batch; the
-            // backoff timer re-arms it on a later sweep.
-            this.audit.failSyncJob(job.jobId, job.feedbackId, String(err));
+            // backoff timer re-arms it on a later sweep. A Qdrant error may echo
+            // the golden request body (reply/comment text), so only the error
+            // class is persisted — never the raw message (安全红线).
+            const safe = err instanceof Error ? err.name : 'UnknownSyncError';
+            this.audit.failSyncJob(job.jobId, job.feedbackId, safe);
             break;
           }
         }

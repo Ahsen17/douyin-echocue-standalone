@@ -140,7 +140,8 @@ describe('GoldenSyncWorker.processPending (M7-02/03)', () => {
 
     const result = await worker.processPending();
     expect(result.failed).toBe(1);
-    expect(audit.failSyncJob).toHaveBeenCalledWith('job-1', ctx.feedbackId, 'Error: qdrant 503');
+    // Only the error class is persisted; a Qdrant error must not echo the golden payload.
+    expect(audit.failSyncJob).toHaveBeenCalledWith('job-1', ctx.feedbackId, 'Error');
     expect(audit.failSyncJob.mock.calls[0][3]).not.toBe(true); // not permanent
   });
 
