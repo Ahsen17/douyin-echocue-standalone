@@ -111,6 +111,26 @@ describe('T-OVR-001: Overlay Window Behavior', () => {
     });
   });
 
+  it('re-seeds the position from the prefs-applied size on first show (M3)', async () => {
+    // The construction seed uses DEFAULT size (settings not loaded yet); once
+    // prefs are known, the first show re-centers using the real size.
+    // Primary 1920x1080 with 600x300 prefs → x=(1920-600)/2=660, y=(1080-300)*0.6=468.
+    mocks.windowObj.getBounds.mockReturnValue({ x: 0, y: 0, width: 600, height: 300 });
+    const win = new OverlayWindow({
+      getSettings: async () => ({ ...PREFS, width: 600, height: 300 }),
+    });
+    const pending = win.showSuggestion(PAYLOAD, 'req-m3');
+    await flush();
+    expect(mocks.windowObj.setBounds).toHaveBeenCalledWith({
+      x: 660,
+      y: 468,
+      width: 600,
+      height: 300,
+    });
+    win.ack('req-m3');
+    await pending;
+  });
+
   it('hides the overlay when the display window ends', async () => {
     const win = new OverlayWindow({ getSettings: async () => null });
     await win.hideSuggestion();
@@ -143,11 +163,18 @@ describe('T-OVR-001: Overlay Window Behavior', () => {
   });
 
   it('restores to a safe position when the last position is off-screen', async () => {
-    mocks.windowObj.getBounds.mockReturnValue({ x: 5000, y: 5000, width: 800, height: 200 });
     const win = new OverlayWindow({ getSettings: async () => null });
+    // First show seeds the default position and sets the seed flag.
+    const first = win.showSuggestion(PAYLOAD, 'req-2a');
+    await flush();
+    win.ack('req-2a');
+    await first;
+    // Simulate the user dragging the overlay off-screen, then a fresh show.
+    mocks.windowObj.getBounds.mockReturnValue({ x: 5000, y: 5000, width: 800, height: 200 });
     const pending = win.showSuggestion(PAYLOAD, 'req-2');
     await flush();
     // Primary 1920x1080, window 800x200 → bottom-right corner with 16px margin.
+    // The seed flag is set, so ensureOnScreen clamps without re-centering.
     expect(mocks.windowObj.setBounds).toHaveBeenCalledWith({
       x: 1920 - 800 - 16,
       y: 1080 - 200 - 16,
