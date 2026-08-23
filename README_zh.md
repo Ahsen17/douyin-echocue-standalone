@@ -11,7 +11,7 @@
 [English](README.md) | 简体中文
 
 Echocue 是一款面向抖音直播主播与运营团队的 Windows 独立桌面应用（Electron + React + TypeScript）。
-它将实时弹幕转化为更快、与人设一致的回复建议：从 WebSocket 帧到达，到置顶浮窗渲染出建议，端到端 P95 时延目标不超过 3 秒。
+它将实时弹幕转化为更快、与人设一致的回复建议：从 WebSocket 帧到达，到置顶浮窗渲染出建议，端到端 P95 时延**目标**不超过 3 秒。
 
 每条消息都流经同一条可审计、可取消的单通道流水线：安全过滤 → 人设路由 → Qdrant（BM25）检索 → 可选 LLM 生成 → 浮窗展示。
 同一时刻只进行一次建议尝试；建议展示期间收到的新消息直接丢弃，不排队。
@@ -26,12 +26,12 @@ Echocue 是一款面向抖音直播主播与运营团队的 Windows 独立桌面
 
 - [x] M0 工程基线与契约 — Electron + Vite + React + TypeScript 工程、共享 Zod 契约包、分层测试骨架、锁定依赖与许可证/SBOM。
 - [x] M1 本机基础设施 — `settings.json` 配置仓库、safeStorage 凭证、AES-GCM/HMAC/DPAPI 加密、SQLite 审计 worker、主窗口/托盘壳层、匿名化遥测。
-- [x] M2 人设、安全与路由 — 成员/别名 CRUD、人设草稿/发布/回滚、安全规则编译器、弹幕规范化与成员路由。*（POC 签核待甲方样本）*
-- [x] M3 Qdrant 与 BM25 — 随包 Qdrant sidecar、jieba-BM25 流水线、`pre_set`/`golden_set` 双库检索及 calibration 与跨库 rerank。*（POC 阻塞：依赖真实中文检索样本）*
-- [x] M4 douyinLive 接入与状态机 — 随包 douyinLive sidecar、本地 WebSocket adapter、lifecycle/activity 状态机。*（POC 阻塞：依赖真实开播房间）*
-- [x] M5 Provider 与实时编排 — Provider 配置/连接测试、稳定的 `TextGenerationProvider`、DeepSeek 与 OpenAI-compatible 双 adapter、确定性 PromptAssembler、实时 `SuggestionAttempt` 编排。*（9/9 任务完成；2026-08 freshness 预算校准至 5s，待实测）*
-- [x] M6 正式 Renderer 与独立浮窗 — 七个正式功能入口与独立置顶浮窗。*（11/11 任务完成；浮窗新增弹幕发出时间展示）*
-- [ ] M7 回流、集成、验收与发布 — `golden_set` 回流闭环、集成/E2E 验收、Windows 打包与签核。
+- [x] M2 人设、安全与路由 — 成员/别名 CRUD、人设草稿/发布/回滚、安全规则编译器、弹幕规范化与成员路由。
+- [x] M3 Qdrant 与 BM25 — 随包 Qdrant sidecar、jieba-BM25 流水线、`pre_set`/`golden_set` 双库检索及 calibration 与跨库 rerank。
+- [x] M4 douyinLive 接入与状态机 — 随包 douyinLive sidecar、本地 WebSocket adapter、lifecycle/activity 状态机。
+- [x] M5 Provider 与实时编排 — Provider 配置/连接测试、稳定的 `TextGenerationProvider`、DeepSeek 与 OpenAI-compatible 双 adapter、确定性 PromptAssembler、实时 `SuggestionAttempt` 编排。
+- [x] M6 正式 Renderer 与独立浮窗 — 七个正式功能入口与独立置顶浮窗。
+- [x] M7 回流、集成、验收与发布 — `golden_set` 回流闭环、集成/E2E 验收、Windows 打包与签核。
 
 ### 总体架构
 
@@ -142,3 +142,19 @@ assets/          随包 sidecar 二进制（douyinLive、Qdrant）
 ## License
 
 本项目基于 [Apache License 2.0](LICENSE) 开源。
+
+---
+
+**题外话**
+
+1. 项目的所有需求分析和设计、MVP、里程碑等文档（见 `docs/` ）完整提交 Github，未作任何删减，供其他同好交流学习用。
+2. 项目完全采用 Vibe Coding，我几乎没怎么 CR。所有子任务进度档也完整提交（见 `progress/`），方便后续 Coding Harness 交流鉴。
+3. UI 原型在目录 `prototype/` 下，实际产品 UI 与初版设计有**大出入**，这里仅供参考。
+4. EXE 使用方式很简单，试试就会了，我就没有单独写操作指引文了。
+5. 本项目派生自 [Douyin-EchoCue](https://github.com/Ahsen17/Douyin-EchoCue)，项目已 **ARCHIVED**，具体原因可见该项目 Issue。
+
+**特别鸣谢：** 
+
+[douyinLive](https://github.com/Ahsen17/douyinLive)
+
+@[jwwsjlm](https://github.com/jwwsjlm)
