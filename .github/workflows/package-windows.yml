@@ -32,9 +32,6 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      - name: Create compliance output directory
-        run: mkdir -p dist/compliance
-
       - name: License check + SBOM
         run: npm run compliance
 

@@ -65,6 +65,8 @@ npm run typecheck && npm run test:contracts && npm run test && npm run build
 
 ## 已知限制 / 偏差
 - **原生 Windows Job Object 未实现**：沿用 M3-01/M4-01 记录的 taskkill tree-kill 偏差；T-PKG-001 以「无孤儿进程」可观察结果验收。
+- **sidecar 运行期校验范围（第二轮审查修正）**：douyinLive pin（SHA/版本）在 `ServiceController.start()` 时生效；**qdrant pin 目前潜伏**——应用未接线 `qdrantSidecar.start()`（qdrant 初始化属未实现功能缺口，见 progress/M7/M7-qdrant-init-preset-import-gap.md），其 SHA/版本校验尚未在运行期执行。
+- **pin 运行期路径未被 CI 冒烟覆盖**：`--smoke-quit` 冒烟不启动服务（无用户动作），pin 校验不执行；单测覆盖「pins==实际二进制==assets/README」（sidecar-pins.test.ts）与 manager 的 sha/版本拒绝逻辑（M3-01/M4-01 用假 hash），真实集成校验留真实数据场景（M4-05/M7-10）。
 - **no-orphan smoke 未实际拉起 sidecar**：sidecar 仅用户启动服务时拉起，smoke 阶段无进程；真实启动→退出的无残留验证归 M4-05 / M7-10。
 - **单版本升级代理**：CI 用同一安装包「重装不丢数据」代理升级；真实旧→新跨版本升级（含 migration）归 M7-10。
 - **electron-builder 首次构建下载 NSIS/winCodeSign**：属构建期工具下载，非运行期静默下载（A-09 验收点是运行期不下载 sidecar）。

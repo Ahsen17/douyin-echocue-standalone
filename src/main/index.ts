@@ -18,7 +18,7 @@ import { wirePersonaControl } from './persona/index.js'
 import { wireSafetyControl } from './safety/index.js'
 import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
 import { resolveResourcePath } from './util/index.js'
-import { SIDECAR_PINS } from './sidecar-pins.js'
+import { SIDECAR_PINS, sidecarSha256 } from './sidecar-pins.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -101,7 +101,16 @@ app.whenReady().then(async () => {
       qdrantBinaryPath: resolveAssetBinary('qdrant'),
       migrationPath: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '001_initial_schema.sql')),
       qdrantConfigTemplatePath: resolveResourcePath(join('resources', 'qdrant-config.yaml')),
-      sidecarPins: SIDECAR_PINS,
+      sidecarPins: {
+        qdrant: {
+          version: SIDECAR_PINS.qdrant.version,
+          sha256: sidecarSha256('qdrant'),
+        },
+        douyinLive: {
+          version: SIDECAR_PINS.douyinLive.version,
+          sha256: sidecarSha256('douyinLive'),
+        },
+      },
       keyVersion: '1',
       displaySink: createOverlayDisplaySink({ overlayWindow: overlayWindowInstance }),
       cleanupOnStop: () => {

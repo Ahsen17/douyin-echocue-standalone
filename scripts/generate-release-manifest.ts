@@ -131,8 +131,8 @@ function main(): void {
   // Probe the Windows binaries for real versions; fall back to assets/README
   // pins when the exe cannot run (e.g. a local non-Windows run).
   const readme = readFileSync(join(root, 'assets', 'README.md'), 'utf8');
-  const qdrantFallback = readme.match(/Qdrant v([\d.]+)/)?.[0] ?? 'unknown';
-  const douyinFallback = readme.match(/DouyinLive Danmaku Server v([\d.]+)/)?.[0] ?? 'unknown';
+  const qdrantFallback = `Qdrant v${readme.match(/Qdrant v([\d.]+)/)?.[1] ?? 'unknown'}`;
+  const douyinFallback = `douyinLive v${readme.match(/DouyinLive Danmaku Server v([\d.]+)/)?.[1] ?? 'unknown'}`;
   const qdrant = probeVersion(join(root, 'assets', 'qdrant_windows.exe')) ?? qdrantFallback;
   const douyin = probeVersion(join(root, 'assets', 'douyinLive_windows.exe')) ?? douyinFallback;
 
