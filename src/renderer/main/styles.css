@@ -141,6 +141,7 @@ textarea{height:115px}
 .label-form{max-width:620px}
 .label-summary,.empty-state{padding:18px;background:#f4f7fb;border-radius:8px}
 .label-summary b,.empty-state b{color:var(--ink)}
+.label-summary p{font-size:13px;line-height:1.6}
 
 /* ---- Overlay preference preview ---- */
 .overlay{flex:1;background:#111827;color:#f8fbff;border-radius:12px;padding:26px;min-height:270px;max-width:760px}
@@ -170,6 +171,33 @@ textarea{height:115px}
 .button-wide{width:100%;margin-top:28px}
 .signin-note{display:flex;gap:9px;margin-top:24px;color:var(--subtle);font-size:11px;line-height:1.55}
 .note-icon{display:grid;flex:0 0 16px;width:16px;height:16px;place-items:center;border:1px solid #c6d0d9;border-radius:50%;font-size:10px;font-weight:700}
+
+/* ---- Workspace font scale (login excluded): unify page titles and bump
+   sidebar / in-page / hint text by one step for readability (TD-style) ---- */
+.app .page-heading h1,
+.app .page-heading h2{font-size:28px;letter-spacing:-.025em;margin:0 0 8px}
+.app .page-heading p{font-size:14px}
+.app h2{font-size:16px}
+.app button{font-size:14px}
+.app aside>button{font-size:14px}
+.app label{font-size:14px}
+.app .titlebar-title{font-size:16px}
+.app .account-chip strong{font-size:13px}
+.app .account-chip small{font-size:11px}
+.app .avatar{font-size:13px}
+.app .text-button{font-size:12px}
+.app .inline-message{font-size:13px}
+.app .badge{font-size:11px}
+.app .tag{font-size:13px}
+.app .pager button{font-size:13px}
+.app .audit-list span{font-size:12px}
+.app .audit-list small{font-size:11px}
+.app .workflow small{font-size:12px}
+.app .workflow summary{font-size:13px}
+.app .workflow pre{font-size:13px}
+.app .reason-badge{font-size:11px}
+.app .overlay small{font-size:12px}
+.app .tabs button{font-size:14px}
 
 @media(max-width:1080px){
   .app{grid-template-columns:210px 1fr}
