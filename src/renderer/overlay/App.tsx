@@ -57,7 +57,12 @@ function App() {
       setReq(null)
       setRemainingSec(null)
     })
-    const offPreference = echocue.overlay.onPreference((p) => setPrefs(p))
+    const offPreference = echocue.overlay.onPreference((p) => {
+      // Write the ref synchronously: the Display IPC follows in the same task
+      // loop, and React state updates lag it, so onDisplay must see fresh prefs.
+      prefsRef.current = p
+      setPrefs(p)
+    })
     return () => {
       offDisplay()
       offHide()
@@ -69,7 +74,7 @@ function App() {
   useEffect(() => {
     if (req === null) return
     const id = setInterval(() => {
-      setRemainingSec((prev) => (prev === null || prev <= 1 ? prev : prev - 1))
+      setRemainingSec((prev) => (prev === null || prev <= 0 ? prev : prev - 1))
     }, 1000)
     return () => clearInterval(id)
   }, [req])

@@ -120,11 +120,13 @@ export class OverlayWindow {
     }
     await this.waitReady();
     await this.applyPreferences(await this.readPrefs());
-    this.ensureOnScreen();
     // First show only: re-seed the default position from the prefs-applied size
     // (the construction seed used DEFAULT size). Later shows keep the dragged
     // spot — the seed flag stays set for the window's lifetime (review M3).
     this.seedDefaultPosition();
+    // ensureOnScreen runs AFTER the seed so an oversized pref cannot leave the
+    // seeded top off-screen un-clamped (review m-2).
+    this.ensureOnScreen();
     // Re-read after the awaits: a destroy() during them nulls the instance.
     const win = this.window;
     if (win === null || win.isDestroyed()) return { ok: false, reason: 'overlay unavailable' };
