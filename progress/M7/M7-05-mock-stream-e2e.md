@@ -60,5 +60,9 @@
 - E2E harness `close()` 无超时保护（若未来某场景 adapter 未释放连接会挂起）；`buildMockStreamHarness` 中途抛错不清理临时目录。健壮性建议，暂不影响现有场景。
 - E2E 真实时钟场景的 CI 抖动风险已在上文说明（轮询终态 + 宽松超时缓解）。
 
-## 批次审查
-本任务（M7-04 + M7-05 同批次）的批次级验证、Subagent 严格审查、PR/CI/合并与进度收尾见批次收尾文档。
+## 批次审查（两轮，均非 fork Subagent，base 079dce2）
+**第一轮**（→ head 18cae13）：**无阻断**；1 个重要项（去重修复不完整：展示期重复帧/抑制消息重传仍触发 UNIQUE 冲突 → 误判审计故障停服）+ 3 项建议。已修复（见「生产代码改动」）+ 措辞更正 + 留档，验证 977→982。
+
+**第二轮**（→ head 36e91c9，全新非 fork 代理）：**无阻断、无重要项**；第一轮重要项经独立核查确认已正确修复（路径 A/B 均不再触发冲突、`beginTrace` 静默丢弃完整、`evictSeenHalf` 兜底优雅、无新回归）。剩余 4 项非阻断建议留档：`evictSeenHalf` 无直达单测（SEEN_SET_MAX=100k 难触达）、T-SCOPE-001 断言脆弱性、E2E harness close() 无超时/构造抛错不清理、`beginTrace` 非 Audit 错误重抛为 base 既有行为。`isUniqueConstraintError` 依赖 SQLite 错误消息字符串（当前 node:sqlite 实测成立，跨版本理论变动风险）。
+
+批次级验证（第一轮修复后）：typecheck 零错误 · contracts 149 · 全量 982 passed / 10 todo / 0 failed · build 成功。
