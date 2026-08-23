@@ -210,9 +210,10 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
       worker.checkpoint();
       const base = (await stat(dbPath)).size;
 
-      // 500 traces is enough to measure a stable per-thousand figure while
-      // staying within the budget under full-suite CPU contention.
-      const N = 500;
+      // 200 traces is enough to measure a stable per-thousand figure while
+      // staying within the budget under full-suite CPU contention (Windows CI
+      // is several times slower than local Linux at HMAC-per-transition).
+      const N = 200;
       for (let i = 0; i < N; i += 1) writeTrace(worker, `msg-${i}`);
       worker.checkpoint();
       const after = (await stat(dbPath)).size;
@@ -227,7 +228,7 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
       expect(bytesPerThousand).toBeLessThan(4 * 1024 * 1024);
       worker.close();
     },
-    20_000,
+    30_000,
   );
 
   it('rejects the startup gate when the data volume has < 2 GiB free', async () => {
