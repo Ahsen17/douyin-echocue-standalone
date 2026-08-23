@@ -1,0 +1,56 @@
+# Windows x64 standalone packaging. One-click NSIS install to the per-user
+# directory (no admin, no path selection); user data lives separately under
+# %LOCALAPPDATA%\Echocue (see RUNBOOK §2.3) and is never written into the
+# install dir. Sidecars/migration/icon are bundled as extraResources and
+# resolved at runtime via src/main/util/resource-path.ts — the repo-relative
+# `to` paths below are what that helper re-derives inside process.resourcesPath.
+appId: com.echocue.desktop
+productName: Echocue
+asar: true
+
+directories:
+  output: release
+  buildResources: build
+
+# Vite bundles everything except node builtins, electron, jieba-wasm and
+# @qdrant/js-client-rest (vite.config.main.ts). Only those two scopes plus
+# undici (a hoisted transitive dep of @qdrant/js-client-rest) must ship as real
+# node_modules; the rest is already inside dist/**. Restricting `files` also
+# keeps Linux sidecars, docs and sources out of the installer.
+files:
+  - dist/**
+  - node_modules/jieba-wasm/**
+  - node_modules/@qdrant/**
+  - node_modules/undici/**
+
+# jieba-wasm instantiates its .wasm from disk; unpack it so the real file path
+# is available outside app.asar.
+asarUnpack:
+  - node_modules/jieba-wasm/**
+
+extraResources:
+  - from: assets/qdrant_windows.exe
+    to: assets/qdrant_windows.exe
+  - from: assets/douyinLive_windows.exe
+    to: assets/douyinLive_windows.exe
+  - from: resources/qdrant-config.yaml
+    to: resources/qdrant-config.yaml
+  - from: docs/06-data-interface/migrations/001_initial_schema.sql
+    to: docs/06-data-interface/migrations/001_initial_schema.sql
+  - from: build/icon.png
+    to: build/icon.png
+  - from: build/tray.png
+    to: build/tray.png
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  allowElevation: false

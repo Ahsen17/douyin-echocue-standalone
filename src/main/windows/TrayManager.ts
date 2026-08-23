@@ -1,4 +1,6 @@
 import { Tray, Menu, nativeImage, dialog } from 'electron'
+import { join } from 'path'
+import { resolveResourcePath } from '../util/index.js'
 
 interface TrayManagerOptions {
   onShow: () => void
@@ -22,9 +24,10 @@ export class TrayManager {
   }
 
   private createTray(): void {
-    const icon = nativeImage.createFromDataURL(
-      `data:image/png;base64,${FALLBACK_ICON_BASE64}`,
-    )
+    const trayImage = nativeImage.createFromPath(resolveResourcePath(join('build', 'tray.png')))
+    const icon = trayImage.isEmpty()
+      ? nativeImage.createFromDataURL(`data:image/png;base64,${FALLBACK_ICON_BASE64}`)
+      : trayImage
     this.tray = new Tray(icon)
     this.tray.setToolTip('Echocue：未启动')
     this.tray.setContextMenu(this.buildMenu())

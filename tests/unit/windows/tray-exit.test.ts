@@ -36,13 +36,17 @@ const mocks = vi.hoisted(() => {
         return {};
       }),
     },
-    nativeImageMock: { createFromDataURL: vi.fn(() => ({})) },
+    nativeImageMock: {
+      createFromDataURL: vi.fn(() => ({})),
+      createFromPath: vi.fn(() => ({ isEmpty: () => true })),
+    },
     dialogMock: { showMessageBoxSync: vi.fn(() => 0) },
     menuItems,
   };
 });
 
 vi.mock('electron', () => ({
+  app: { isPackaged: false },
   BrowserWindow: mocks.BrowserWindowMock,
   ipcMain: mocks.ipcMain,
   Tray: mocks.TrayMock,

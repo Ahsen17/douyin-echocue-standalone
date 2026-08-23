@@ -28,6 +28,7 @@ export interface CreateServiceControllerOptions {
   safeStorage: SafeStorageLike;
   douyinLiveBinaryPath: string;
   qdrantBinaryPath: string;
+  qdrantConfigTemplatePath?: string;
   migrationPath: string;
   keyVersion: string;
   cleanupOnStop: () => void;
@@ -93,6 +94,7 @@ export async function createServiceController(
   const qdrantSidecar = new QdrantSidecarManager({
     binaryPath: options.qdrantBinaryPath,
     dataDir: join(options.dataDir, 'qdrant'),
+    configTemplatePath: options.qdrantConfigTemplatePath,
   });
   const qdrantClient = new QdrantClient({
     url: `http://${QDRANT_LOOPBACK_HOST}:${QDRANT_HTTP_PORT}`,

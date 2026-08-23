@@ -2,3 +2,4 @@ node_modules
 .npm_cache
 dist
 dist_electron
+release

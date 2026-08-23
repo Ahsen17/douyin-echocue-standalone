@@ -22,7 +22,6 @@ import type { RetrievalRawHit } from '../../src/main/retrieval/index.js';
 import type { CompiledSafetyRuleV1 } from '../../src/main/safety/index.js';
 import type { TextGenerationProvider } from '../../src/main/provider/index.js';
 import { uuidv7 } from '../../src/main/util/index.js';
-import { freePort } from '../integration/retrieval/qdrant-test-utils.js';
 
 const MIGRATION_PATH = join(
   process.cwd(),
@@ -150,8 +149,19 @@ export async function buildMockStreamHarness(
 
   const machine = new ServiceStateMachine();
   const sidecar = new NoopSidecar();
-  const serverPort = await freePort();
-  const server = new WebSocketServer({ host: '127.0.0.1', port: serverPort });
+  // Bind to ephemeral port 0 and read the OS-assigned port. freePort() (bind to
+  // 0, close, rebind) had a TOCTOU race where parallel workers could collide
+  // (EADDRINUSE) on the re-bound port.
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', resolve);
+    server.once('error', reject);
+  });
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('unable to allocate mock stream WS port');
+  }
+  const serverPort = address.port;
 
   const shown: DisplayedRecord[] = [];
   const providerCalls = { count: 0 };
