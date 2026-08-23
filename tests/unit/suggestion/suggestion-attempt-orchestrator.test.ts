@@ -312,10 +312,18 @@ describe('SuggestionAttemptOrchestrator', () => {
   it('dedups repeated source_message_id within a session', async () => {
     const { audit, orchestrator } = harness();
     await orchestrator.startSession({ sessionId: 's1' });
-    orchestrator.handleComment(makeComment());
-    orchestrator.handleComment(makeComment());
-    const lowValue = audit.transitions.filter((t) => t.reason === 'LOW_VALUE');
-    expect(lowValue.length).toBe(1);
+    // A filtered first comment keeps activity LISTENING so the duplicate lands
+    // on the dedup path (the DISPLAYING guard runs first by design).
+    orchestrator.handleComment(makeComment({ normalizedText: '主播加微信多少' }));
+    await flush();
+    const traceCount = audit.traces.length;
+    const transitionCount = audit.transitions.length;
+    orchestrator.handleComment(makeComment({ normalizedText: '主播加微信多少' }));
+    await flush();
+    // audit_trace's UNIQUE(session_id, source_message_id) forbids a second row
+    // for the same message; the duplicate is dropped without writing anything.
+    expect(audit.traces).toHaveLength(traceCount);
+    expect(audit.transitions).toHaveLength(transitionCount);
   });
 
   it('takes the golden direct path with zero provider calls', async () => {

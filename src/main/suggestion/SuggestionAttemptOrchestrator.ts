@@ -182,17 +182,10 @@ export class SuggestionAttemptOrchestrator {
     }
 
     // Session dedup by source_message_id (ARCH §4.1); bounded to bound memory.
+    // A duplicate frame is dropped silently: its first occurrence already owns a
+    // trace, and audit_trace's UNIQUE(session_id, source_message_id) forbids a
+    // second row for the same message.
     if (this.session.seen.has(comment.sourceMessageId)) {
-      this.createTrace(processingComment);
-      this.transition(processingComment, null, 'RECEIVED', 'EVENT_RECEIVED', [
-        this.snap('RAW_EVENT_JSON', 'RAW_WS_EVENT', comment.rawEvent),
-      ]);
-      this.transition(processingComment, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK', [
-        this.snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', comment),
-      ]);
-      this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'LOW_VALUE', [
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'session duplicate' }),
-      ]);
       return;
     }
     this.session.seen.add(comment.sourceMessageId);
