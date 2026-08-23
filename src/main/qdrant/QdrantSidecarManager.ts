@@ -97,6 +97,10 @@ export class QdrantSidecarManager {
   private readonly sha256?: string;
 
   private child: ChildProcess | null = null;
+  // In-flight start promise: makes start() idempotent under concurrent callers
+  // (boot + import path) and lets stop() wait for a pending start before killing
+  // so no child is spawned after exit.
+  private starting: Promise<QdrantSidecarHandle> | null = null;
   private stderrTail = '';
 
   constructor(options: QdrantSidecarOptions) {
@@ -121,9 +125,33 @@ export class QdrantSidecarManager {
   }
 
   async start(): Promise<QdrantSidecarHandle> {
+    // Check the reserved slot first: doStart spawns in its synchronous prefix
+    // (no sha256 → no pre-spawn await), so a concurrent caller must be handed
+    // the in-flight promise, not hit the "already running" child guard.
+    if (this.starting) return this.starting;
     if (this.child !== null && this.child.exitCode === null) {
       throw new SidecarStartFailedError('qdrant sidecar is already running');
     }
+    // Reserve the start slot synchronously BEFORE doStart runs: doStart can
+    // spawn in its synchronous prefix (no sha256 → no pre-spawn await), so a
+    // concurrent caller must observe the in-flight promise instead of spawning
+    // a second process.
+    let resolveStart!: (handle: QdrantSidecarHandle) => void;
+    let rejectStart!: (err: unknown) => void;
+    const startPromise = new Promise<QdrantSidecarHandle>((resolve, reject) => {
+      resolveStart = resolve;
+      rejectStart = reject;
+    });
+    this.starting = startPromise;
+    void this.doStart().then(resolveStart, rejectStart);
+    try {
+      return await startPromise;
+    } finally {
+      if (this.starting === startPromise) this.starting = null;
+    }
+  }
+
+  private async doStart(): Promise<QdrantSidecarHandle> {
     this.stderrTail = '';
 
     if (!existsSync(this.binaryPath)) {
@@ -178,12 +206,27 @@ export class QdrantSidecarManager {
       }
       return { pid: child.pid ?? 0, httpPort: this.httpPort };
     } catch (err) {
-      await this.stop();
+      await this.killChild();
       throw err;
     }
   }
 
   async stop(): Promise<void> {
+    // A start may be in flight (boot or import path). Await it first so no child
+    // is spawned after this stop returns (avoids an orphan on exit); the wait is
+    // bounded by the startup timeout. A failed start already ran killChild().
+    const pending = this.starting;
+    if (pending) {
+      try {
+        await pending;
+      } catch {
+        /* handled by doStart's own cleanup */
+      }
+    }
+    await this.killChild();
+  }
+
+  private async killChild(): Promise<void> {
     const child = this.child;
     this.child = null;
     if (!child || child.exitCode !== null || child.signalCode !== null) return;

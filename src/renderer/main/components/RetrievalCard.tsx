@@ -38,6 +38,24 @@ export default function RetrievalCard({ serviceLifecycle, onNavigate }: Retrieva
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceLifecycle])
 
+  const block = deriveRetrievalBlock(status, refresh.running)
+  // Poll while the sidecar is not ready (cold start can exceed mount time) so a
+  // slow Qdrant boot does not leave the card stuck on a stale "unavailable".
+  const blockRef = useRef(block)
+  blockRef.current = block
+  const refreshRunRef = useRef(refresh.run)
+  refreshRunRef.current = refresh.run
+  useEffect(() => {
+    const id = setInterval(() => {
+      const current = blockRef.current
+      if (current.kind === 'unavailable' || current.kind === 'needs-import') {
+        void refreshRunRef.current()
+      }
+    }, 5000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function handleFileChange(file: File | undefined): void {
     if (!file) return
     if (file.size > MAX_PRE_SET_BYTES) {
@@ -58,7 +76,6 @@ export default function RetrievalCard({ serviceLifecycle, onNavigate }: Retrieva
     reader.readAsText(file)
   }
 
-  const block = deriveRetrievalBlock(status, refresh.running)
   const importArea = block.kind !== 'loading' && block.kind !== 'unavailable'
 
   return (

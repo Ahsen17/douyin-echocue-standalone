@@ -26,15 +26,21 @@ export interface RetrievalControlHandlers {
 // Bound the IPC error list; the importer reports the whole package, the UI only
 // needs the head plus a total marker.
 const MAX_REPORTED_ERRORS = 100;
+// The strict importer can surface an unvalidated id/path from a schema-failing
+// line; clamp so the IPC contract (id ≤68, path ≤128) stays valid on the wire.
+const MAX_ERROR_ID = 68;
+const MAX_ERROR_PATH = 128;
 
 // Core retrieval-init IPC logic, electron-free for unit-testing. getStatus is
 // read-only; importPreSet reuses the strict importer + atomic bootstrap so a
 // failed package never leaves partial active data (PRESET §7).
 export function createRetrievalControlHandlers(deps: RetrievalControlDeps): RetrievalControlHandlers {
   const doBootstrap = deps.bootstrap ?? bootstrapPreSet;
-  // Serialize imports: bootstrap is atomic but concurrent runs would race the
-  // alias switch, so a new import waits for the previous one to settle.
-  let inFlight: Promise<unknown> | null = null;
+  // Serialize imports as a promise chain: bootstrap is atomic but concurrent
+  // runs would race the alias switch, so every call queues behind the previous
+  // one. The chain tail never rejects, so a failed import does not poison the
+  // next queued call.
+  let chain: Promise<unknown> = Promise.resolve();
 
   const ensureQdrant = async (): Promise<void> => {
     if (await deps.qdrant.isHealthy()) return;
@@ -67,29 +73,38 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
       throw new Error('服务运行中，请先停止服务后再导入检索数据');
     }
     const content = parsed.data.content;
-    if (inFlight) await inFlight;
+    const prev = chain;
     const task = (async (): Promise<PreSetImportResultV1> => {
+      await prev;
+      // Re-check after the queue wait: the service may have started while this
+      // import was queued behind another (RUNBOOK §8.2 requires a stopped state).
+      if (!deps.isServiceStopped()) {
+        throw new Error('服务运行中，请先停止服务后再导入检索数据');
+      }
       await ensureQdrant();
       const imported = importPreSetStrict({ content });
       if (!imported.ok) {
-        const errors: PreSetImportErrorV1[] = imported.errors;
         return {
           ok: false,
-          errors: errors.slice(0, MAX_REPORTED_ERRORS),
-          truncated: errors.length > MAX_REPORTED_ERRORS,
+          errors: imported.errors.slice(0, MAX_REPORTED_ERRORS).map(toContractError),
+          truncated: imported.errors.length > MAX_REPORTED_ERRORS,
         };
       }
       const profile = await doBootstrap(deps.client, { content });
       return { ok: true, profile, entryCount: imported.entries.length };
     })();
-    const tracked = task.catch(() => undefined);
-    inFlight = tracked;
-    try {
-      return await task;
-    } finally {
-      if (inFlight === tracked) inFlight = null;
-    }
+    chain = task.catch(() => undefined);
+    return task;
   };
 
   return { getStatus, importPreSet };
+}
+
+function toContractError(error: PreSetImportErrorV1): PreSetImportErrorV1 {
+  return {
+    line: error.line,
+    ...(error.id !== undefined && error.id.length > 0 ? { id: error.id.slice(0, MAX_ERROR_ID) } : {}),
+    ...(error.path !== undefined && error.path.length > 0 ? { path: error.path.slice(0, MAX_ERROR_PATH) } : {}),
+    errorCode: error.errorCode,
+  };
 }

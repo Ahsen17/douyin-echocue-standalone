@@ -159,7 +159,12 @@ app.whenReady().then(async () => {
       qdrant: services.qdrant,
       qdrantClient: services.qdrantClient,
       isTrustedSender,
-      isServiceStopped: () => services?.stateMachine.getViewState().lifecycle === 'STOPPED',
+      // Import is only legal when truly idle: the lifecycle stays STOPPED through
+      // the gate phase, so also consult controller.isStarting() to close the
+      // import-vs-start race (RUNBOOK §8.2).
+      isServiceStopped: () =>
+        services?.stateMachine.getViewState().lifecycle === 'STOPPED' &&
+        !services?.controller.isStarting(),
     })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble

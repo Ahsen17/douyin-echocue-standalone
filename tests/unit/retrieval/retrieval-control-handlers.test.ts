@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Bm25ZhJiebaProfileV1 } from '@echocue/contracts';
+import { PreSetImportResultV1Schema } from '@echocue/contracts';
 import type { QdrantClient } from '@qdrant/js-client-rest';
 import type { QdrantSidecarManager } from '../../../src/main/qdrant/index.js';
 import { createRetrievalControlHandlers } from '../../../src/main/retrieval/index.js';
@@ -174,6 +175,81 @@ describe('retrieval.importPreSet', () => {
     expect(b.ok).toBe(true);
     expect(bootstrap).toHaveBeenCalledTimes(2);
     expect(maxActive).toBe(1);
+  });
+
+  it('serializes three concurrent imports so bootstrap never overlaps (promise chain)', async () => {
+    const fakes = makeFakes();
+    let active = 0;
+    let maxActive = 0;
+    const bootstrap = vi.fn(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      active -= 1;
+      return PROFILE;
+    });
+    const handlers = makeHandlers(fakes, { bootstrap });
+    const [a, b, c] = await Promise.all([
+      handlers.importPreSet({ content: VALID_CONTENT }),
+      handlers.importPreSet({ content: VALID_CONTENT }),
+      handlers.importPreSet({ content: VALID_CONTENT }),
+    ]);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(c.ok).toBe(true);
+    expect(bootstrap).toHaveBeenCalledTimes(3);
+    expect(maxActive).toBe(1);
+  });
+
+  it('re-checks the stopped guard after queuing behind another import', async () => {
+    const fakes = makeFakes();
+    let serviceStopped = true;
+    let releaseFirst!: () => void;
+    let markEntered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    const bootstrap = vi.fn(async () => {
+      markEntered();
+      await gate;
+      return PROFILE;
+    });
+    const handlers = makeHandlers(fakes, { bootstrap, isServiceStopped: () => serviceStopped });
+    const first = handlers.importPreSet({ content: VALID_CONTENT });
+    // Wait until the first import has passed its own guard and entered bootstrap,
+    // then queue a second import behind it and start the service in between.
+    await entered;
+    const second = handlers.importPreSet({ content: VALID_CONTENT });
+    // Attach the rejection handler immediately so the queued abort is not an
+    // unhandled rejection while the first import is still being awaited.
+    const secondError = second.then(
+      () => null,
+      (err: unknown) => err,
+    );
+    serviceStopped = false;
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ ok: true });
+    const err = await secondError;
+    expect(err).not.toBeNull();
+    expect((err as Error).message).toMatch(/停止服务/);
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+  });
+
+  it('clamps over-long error id/path so the result still satisfies the IPC schema', async () => {
+    const fakes = makeFakes();
+    const handlers = makeHandlers(fakes);
+    const longId = `pre-${'x'.repeat(100)}`;
+    const bad = `{"schema_version":"1.0","id":"${longId}","text":"","semantic_type":"positive_praise","description":"d","enabled":true,"is_bad_case":false}`;
+    const result = await handlers.importPreSet({ content: bad });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const err = result.errors[0];
+    expect(err.errorCode).toBe('PRE_SET_SCHEMA');
+    expect(err.id?.length).toBeLessThanOrEqual(68);
+    expect(PreSetImportResultV1Schema.safeParse(result).success).toBe(true);
   });
 
   it('rejects a malformed request payload before touching qdrant', async () => {

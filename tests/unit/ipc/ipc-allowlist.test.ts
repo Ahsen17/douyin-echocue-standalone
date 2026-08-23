@@ -8,6 +8,7 @@ import { wirePersonaControl } from '../../../src/main/persona/persona-control-ip
 import { wireSafetyControl } from '../../../src/main/safety/safety-control-ipc.js';
 import { wireAuditControl } from '../../../src/main/audit/audit-control-ipc.js';
 import { wireDiagnosticsControl } from '../../../src/main/telemetry/diagnostics-control-ipc.js';
+import { wireRetrievalControl } from '../../../src/main/retrieval/index.js';
 import { wireOverlayControl } from '../../../src/main/overlay/overlay-control-ipc.js';
 
 // Tests bypass tsc (tests/ is excluded from tsconfig), so domain stubs are
@@ -38,6 +39,12 @@ function registerMainWires(isTrustedSender: (contents: unknown) => boolean): voi
   wireSafetyControl({ safety: {}, isTrustedSender: isTrustedSender as never });
   wireAuditControl({ audit: {}, isTrustedSender: isTrustedSender as never });
   wireDiagnosticsControl({ diagnostics: {}, isTrustedSender: isTrustedSender as never });
+  wireRetrievalControl({
+    qdrant: {} as never,
+    qdrantClient: {} as never,
+    isTrustedSender: isTrustedSender as never,
+    isServiceStopped: () => true,
+  });
 }
 
 function registerOverlayWire(isOverlayTrustedSender: (contents: unknown) => boolean): void {
@@ -74,6 +81,8 @@ const HANDLE_CHANNELS = [
   IpcChannel.SafetySaveDraft,
   IpcChannel.SafetyPublish,
   IpcChannel.DiagnosticsGetSummary,
+  IpcChannel.RetrievalGetStatus,
+  IpcChannel.RetrievalImportPreSet,
   IpcChannel.AuditSearch,
   IpcChannel.AuditGetWorkflow,
   IpcChannel.AuditSubmitLabel,
@@ -94,7 +103,7 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     vi.clearAllMocks();
   });
 
-  it('registers exactly the 27 request channels and no broadcast/send-only channel', () => {
+  it('registers exactly the 29 request channels and no broadcast/send-only channel', () => {
     registerMainWires(() => true);
     registerOverlayWire(() => true);
     const registered = [...mocks.registered.keys()].sort();
@@ -255,6 +264,24 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
       activity: 'IDLE',
     });
     expect(diagnostics.getSummary).toHaveBeenCalledTimes(1);
+    mocks.registered.clear();
+
+    const qdrant = { isHealthy: vi.fn().mockResolvedValue(true), start: vi.fn() };
+    const qdrantClient = {
+      collectionExists: vi.fn().mockResolvedValue({ exists: false }),
+      getCollection: vi.fn(),
+    };
+    wireRetrievalControl({
+      qdrant: qdrant as never,
+      qdrantClient: qdrantClient as never,
+      isTrustedSender: isMain as never,
+      isServiceStopped: () => true,
+    });
+    await expect(call(IpcChannel.RetrievalGetStatus, mainWc)).resolves.toEqual({
+      qdrantHealthy: true,
+      ready: false,
+    });
+    expect(qdrantClient.collectionExists).toHaveBeenCalledTimes(1);
     mocks.registered.clear();
 
     const overlayWindow = { ack: vi.fn() };
