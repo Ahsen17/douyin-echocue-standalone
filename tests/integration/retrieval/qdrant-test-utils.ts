@@ -61,7 +61,9 @@ export async function startTestQdrant(): Promise<TestQdrant> {
     configTemplatePath: resolveQdrantConfigTemplate(),
     httpPort,
     grpcPort,
-    startupTimeoutMs: 20_000,
+    // Windows CI (2-CPU runner) spawns many sidecars in parallel; cold start of
+    // the Go binary + collection load can exceed 20s under contention.
+    startupTimeoutMs: 60_000,
     expectedVersion: '1.19.0',
   });
   await manager.start();
