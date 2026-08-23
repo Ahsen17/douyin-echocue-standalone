@@ -127,6 +127,16 @@ describe('audit-logic', () => {
       expect(extractSuggestionFromWorkflow(emptyCues)).toEqual({ quickReply: '谢谢支持', cues: [] })
     })
 
+    it('drops empty-string cues instead of the whole reply (n-3)', () => {
+      const wf = base([{
+        snapshotId: 's6',
+        role: 'DIRECT_PAYLOAD',
+        contentType: 'SUGGESTION_JSON',
+        plaintext: JSON.stringify({ quick_reply: '谢谢支持', cues: ['接住', ''] }),
+      }])
+      expect(extractSuggestionFromWorkflow(wf)).toEqual({ quickReply: '谢谢支持', cues: ['接住'] })
+    })
+
     it('returns null when the workflow has no suggestion snapshot', () => {
       expect(extractSuggestionFromWorkflow(base([]))).toBeNull()
       expect(extractSuggestionFromWorkflow(null)).toBeNull()
