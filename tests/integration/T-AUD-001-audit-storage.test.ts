@@ -275,7 +275,7 @@ describe('T-AUD-001: Audit Storage', () => {
     expect(worker.getTraceWorkflowV1(randomUUID())).toBeNull();
   });
 
-  it('submitLabel writes a revision, updates trace status, and creates no outbox job (M6-10)', () => {
+  it('submitLabel writes a revision, updates trace status, and creates an UPSERT outbox job (M7-01)', () => {
     const { personaVersion } = setupPersonaAndVersion();
     const sessionId = randomUUID();
     const now = new Date().toISOString();
@@ -319,12 +319,13 @@ describe('T-AUD-001: Audit Storage', () => {
     const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
     try {
       const feedback = reader.prepare(
-        `SELECT revision_no, label_status, quality_score, source_collection, source_point_id, is_bad_case
+        `SELECT revision_no, label_status, quality_score, sync_status, source_collection, source_point_id, is_bad_case
          FROM suggestion_feedback WHERE trace_id = ?`,
       ).get(traceId) as {
         revision_no: number;
         label_status: string;
         quality_score: number;
+        sync_status: string;
         source_collection: string | null;
         source_point_id: string | null;
         is_bad_case: number;
@@ -333,9 +334,21 @@ describe('T-AUD-001: Audit Storage', () => {
       expect(feedback.label_status).toBe('ACCEPTED');
       expect(feedback.quality_score).toBe(90);
       expect(feedback.source_collection).toBeNull();
-      // No outbox job is created by M6-10 (reflux is M7-01).
-      const jobs = reader.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
-      expect(jobs.n).toBe(0);
+      // ACCEPTED >=85 refluxes: an UPSERT job is written in the same transaction.
+      const jobs = reader.prepare(
+        `SELECT job_id, feedback_id, action, state, idempotency_key FROM qdrant_sync_job`,
+      ).all() as Array<{
+        job_id: string;
+        feedback_id: string;
+        action: string;
+        state: string;
+        idempotency_key: string;
+      }>;
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].action).toBe('UPSERT');
+      expect(jobs[0].state).toBe('PENDING');
+      expect(jobs[0].idempotency_key).toMatch(/^[0-9a-f-]{36}:1:UPSERT$/);
+      expect(feedback.sync_status).toBe('PENDING');
 
       const trace = reader.prepare(
         `SELECT label_status, current_feedback_id FROM audit_trace WHERE trace_id = ?`,
@@ -391,12 +404,14 @@ describe('T-AUD-001: Audit Storage', () => {
     const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
     try {
       const rows = reader.prepare(
-        `SELECT revision_no, quality_score FROM suggestion_feedback WHERE trace_id = ? ORDER BY revision_no`,
-      ).all(traceId) as Array<{ revision_no: number; quality_score: number }>;
+        `SELECT revision_no, quality_score, sync_status FROM suggestion_feedback WHERE trace_id = ? ORDER BY revision_no`,
+      ).all(traceId) as Array<{ revision_no: number; quality_score: number; sync_status: string }>;
       expect(rows.map((r) => r.revision_no)).toEqual([1, 2]);
       expect(rows.map((r) => r.quality_score)).toEqual([85, 70]);
+      // Only the >=85 revision refluxes; the later 70 edit stays SQLite-only.
+      expect(rows.map((r) => r.sync_status)).toEqual(['PENDING', 'NOT_REQUIRED']);
       const jobs = reader.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
-      expect(jobs.n).toBe(0);
+      expect(jobs.n).toBe(1);
     } finally {
       reader.close();
     }
@@ -500,6 +515,9 @@ describe('T-AUD-001: Audit Storage', () => {
         correctedQuickReply: '谢谢大家！',
         correctedCues: ['接住夸奖', '邀请互动'],
       });
+      // A corrected answer always refluxes via an UPSERT outbox job (M7-01).
+      const jobs = reader.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
+      expect(jobs.n).toBe(1);
     } finally {
       reader.close();
     }
@@ -546,9 +564,13 @@ describe('T-AUD-001: Audit Storage', () => {
       expect(row.is_bad_case).toBe(1);
       expect(row.source_collection).toBe('golden_set');
       expect(row.source_point_id).toBe('golden-1');
-      // No outbox job yet (M7-01 owns reflux).
-      const jobs = reader.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
-      expect(jobs.n).toBe(0);
+      // A rejected golden direct source creates a SET_BAD_CASE outbox job.
+      const jobs = reader.prepare(
+        `SELECT action, state FROM qdrant_sync_job`,
+      ).all() as Array<{ action: string; state: string }>;
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].action).toBe('SET_BAD_CASE');
+      expect(jobs[0].state).toBe('PENDING');
     } finally {
       reader.close();
     }
