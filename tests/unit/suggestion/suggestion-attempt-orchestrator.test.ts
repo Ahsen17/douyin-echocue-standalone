@@ -632,9 +632,9 @@ describe('SuggestionAttemptOrchestrator', () => {
       return { provider, release: () => releaseGeneration() };
     }
 
-    it('applies the t0 cap when windowMaxAge is large and selection is immediate', async () => {
+    it('applies the t0 cap when selection is delayed past the selection budget', async () => {
       const { release } = gatedProvider();
-      let now = 2000;
+      let now = 4000;
       const { orchestrator } = harness({
         retriever: makeRetriever([preHit(0.9)]) as never,
         windowMaxAgeMs: 100000,
@@ -644,8 +644,8 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(t0+3000, selectedAt+2500, t0+windowMaxAge) = min(4000, 4500, 101000) = 4000.
-      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(4000);
+      // min(t0+5000, selectedAt+2500, t0+windowMaxAge) = min(6000, 6500, 101000) = 6000.
+      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(6000);
       release();
     });
 

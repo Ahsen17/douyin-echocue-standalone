@@ -162,7 +162,9 @@ export async function createServiceController(
     validator: new SuggestionOutputValidator(),
     displaySink: options.displaySink ?? createStubDisplaySink(),
     nowMonotonic: () => performance.now(),
-    windowMaxAgeMs: 1500,
+    // 2026-08 校准：整个过期时间放宽到 5s（与 T0_FRESHNESS_BUDGET_MS 同步），
+    // 给 LLM 真实预算；TODO 见 SuggestionAttemptOrchestrator 常量注释。
+    windowMaxAgeMs: 5000,
     candidateMaxCount: 50,
     directPushThreshold: 0.85,
     // PRD: 展示窗口默认 10 秒；M6-06 从用户偏好按次读取（UI §7 应用于下一次展示）。

@@ -92,7 +92,8 @@ export class SettingsStore {
       internalRetrieval: {
         calibrationVersion: 'v1.0',
         directPushThreshold: 0.85,
-        windowMaxAgeMs: 1500,
+        // 2026-08 校准：默认放宽到 5s，与编排器常量保持一致（当前未接线进运行时）。
+        windowMaxAgeMs: 5000,
         candidateMaxCount: 50,
       },
     };
