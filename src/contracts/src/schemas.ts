@@ -183,6 +183,8 @@ export const RetrievalInitStatusV1Schema = z.strictObject({
 // Diagnostic visibility of the two local collections (UI §8.1): anonymous point
 // counts only, so the host can confirm backflow into golden_set without exposing
 // any case payload. 0 means the collection is absent or empty, never an error.
+// Sanctioned T-SCOPE-001 exception: the golden key is allowed here by design
+// (the retrieval.getCollectionCounts channel is in the sanctioned allowlist).
 export const CollectionCountsV1Schema = z.strictObject({
   preSetPointCount: z.number().int().nonnegative(),
   goldenSetPointCount: z.number().int().nonnegative(),
