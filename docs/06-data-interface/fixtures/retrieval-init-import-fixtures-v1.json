@@ -1,0 +1,40 @@
+{
+  "version": "1",
+  "description": "Retrieval init status + pre_set import IPC payloads (T-RET-001, runtime init gap fix).",
+  "status": {
+    "ready": {
+      "qdrantHealthy": true,
+      "ready": true,
+      "profileId": "018f0a1b2c3d4e5f6a7b8c9d",
+      "preSetSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "needsImport": { "qdrantHealthy": true, "ready": false },
+    "unavailable": { "qdrantHealthy": false, "ready": false, "error": "E_QDRANT_UNAVAILABLE" }
+  },
+  "importResult": {
+    "ok": {
+      "ok": true,
+      "profile": {
+        "profileId": "018f0a1b2c3d4e5f6a7b8c9d",
+        "tokenizerVersion": "zh_jieba_search_v1",
+        "normalizationVersion": "zh_bm25_normalize_v1",
+        "preSetSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "avgDocLenBaseline": 12.5,
+        "k1": 1.2,
+        "b": 0.75,
+        "qdrantVersion": "1.19.0",
+        "calibrationArtifactId": "pending-calibration"
+      },
+      "entryCount": 6
+    },
+    "failed": {
+      "ok": false,
+      "errors": [
+        { "line": 2, "id": "pre-000002", "path": "/text", "errorCode": "PRE_SET_UNSAFE_CONTENT" },
+        { "line": 4, "id": "pre-000004", "errorCode": "PRE_SET_DUPLICATE_ID" },
+        { "line": 0, "errorCode": "PRE_SET_OVER_SIZE" }
+      ],
+      "truncated": true
+    }
+  }
+}

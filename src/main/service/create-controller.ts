@@ -52,6 +52,9 @@ export interface CreatedServiceController {
   readonly diagnostics: DiagnosticsSource;
   /** Transactional outbox consumer (M7-02); started by main/index.ts. */
   readonly goldenSync: GoldenSyncWorker;
+  /** Retrieval-init IPC (retrieval.getStatus/importPreSet) and boot-sidecar start. */
+  readonly qdrant: QdrantSidecarManager;
+  readonly qdrantClient: QdrantClient;
   readonly shutdown: () => void;
 }
 
@@ -230,6 +233,8 @@ export async function createServiceController(
     audit,
     diagnostics,
     goldenSync,
+    qdrant: qdrantSidecar,
+    qdrantClient,
     shutdown,
   };
 }

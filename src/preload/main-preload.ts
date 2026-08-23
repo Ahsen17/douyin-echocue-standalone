@@ -15,6 +15,8 @@ import type {
   PersonaDetailV1,
   PersonaSummaryV1,
   PersonaVersionMetaV1,
+  PreSetImportResultV1,
+  RetrievalInitStatusV1,
   SafetyPolicyVersionMetaV1,
   SafetyPolicyViewV1,
   SafetySaveDraftRequestV1,
@@ -93,6 +95,11 @@ const echocueApi = {
       ipcRenderer.invoke(IpcChannel.SafetySaveDraft, input) as Promise<SafetySaveDraftResultV1>,
     publish: (safetyPolicyVersion: string) =>
       ipcRenderer.invoke(IpcChannel.SafetyPublish, { safetyPolicyVersion }) as Promise<SafetyPolicyVersionMetaV1>,
+  },
+  retrieval: {
+    getStatus: () => ipcRenderer.invoke(IpcChannel.RetrievalGetStatus) as Promise<RetrievalInitStatusV1>,
+    importPreSet: (content: string) =>
+      ipcRenderer.invoke(IpcChannel.RetrievalImportPreSet, { content }) as Promise<PreSetImportResultV1>,
   },
   diagnostics: {
     getSummary: () =>

@@ -104,6 +104,13 @@ export class ServiceController {
     return this.stateMachine.getViewState();
   }
 
+  // True while a start flow is in progress (gate → RUNNING). The lifecycle only
+  // leaves STOPPED at GATE_CONNECTING, so an import guard that checks lifecycle
+  // alone cannot see the earlier gate phase; this closes the import-vs-start race.
+  isStarting(): boolean {
+    return this.phase !== 'idle';
+  }
+
   async start(): Promise<ServiceViewState> {
     if (this.phase !== 'idle' || this.stateMachine.getViewState().lifecycle !== 'STOPPED') {
       throw new ServiceStartConflictError('service is already starting or running');
@@ -113,7 +120,15 @@ export class ServiceController {
     // mark the whole start flow as active so stop() can interrupt it at any await
     this.phase = 'gate';
 
-    const gate = await this.runGate();
+    let gate: Awaited<ReturnType<ServiceController['runGate']>>;
+    try {
+      gate = await this.runGate();
+    } catch (err) {
+      // An unexpected gate throw must not strand the controller in the start
+      // phase: isStarting() would then block retrieval imports forever.
+      this.phase = 'idle';
+      throw err;
+    }
     if (this.abortRequested) return this.afterAbort();
     if ('error' in gate) {
       this.enterStopped('SOURCE_ERROR', gate.error);

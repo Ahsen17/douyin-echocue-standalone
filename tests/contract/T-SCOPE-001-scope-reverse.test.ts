@@ -13,8 +13,13 @@ const FORBIDDEN_CHANNEL = [
   /danmaku/i,
   /audit.*(export|clear|purge|sync)|(export|clear|purge|sync).*audit/i,
   /multi.?room|mcn/i,
-  /golden|bad.?case|sync.?status|threshold|retrieval/i,
+  /golden|bad.?case|sync.?status|threshold/i,
 ];
+
+// Sanctioned user-facing retrieval-init surfaces (RUNBOOK §3.1: import pre_set +
+// readiness status). Any other retrieval.* channel would be an internal leak —
+// golden/bad-case/sync/threshold stay forbidden by FORBIDDEN_CHANNEL.
+const SANCTIONED_RETRIEVAL_CHANNELS = new Set(['retrieval.getStatus', 'retrieval.importPreSet']);
 
 const FORBIDDEN_USER_VISIBLE_KEY = [
   /golden|bad.?case|sync|threshold|score|confidence|envelope/i,
@@ -33,6 +38,13 @@ describe('T-SCOPE-001: Scope Reverse (范围反向)', () => {
     for (const pattern of FORBIDDEN_CHANNEL) {
       for (const channel of channels) {
         expect(channel).not.toMatch(pattern);
+      }
+    }
+    // A retrieval.* channel is only allowed as the sanctioned init surface; the
+    // internal retrieval knobs (golden/bad-case/sync/threshold) must never leak.
+    for (const channel of channels) {
+      if (channel.startsWith('retrieval.')) {
+        expect(SANCTIONED_RETRIEVAL_CHANNELS.has(channel)).toBe(true);
       }
     }
   });

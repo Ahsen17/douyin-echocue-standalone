@@ -69,6 +69,44 @@ function makeManager(dataDir: string, httpPort: number, grpcPort: number): Qdran
     }
   });
 
+  it('is idempotent under concurrent start calls (boot + import call sites)', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'echocue-qdrant-'));
+    const manager = makeManager(dataDir, await freePort(), await freePort());
+    try {
+      const [a, b] = await Promise.all([manager.start(), manager.start()]);
+      // Both callers observe the same single spawned process.
+      expect(a.pid).toBe(b.pid);
+      expect(a.pid).toBeGreaterThan(0);
+      expect(await manager.isHealthy()).toBe(true);
+      await manager.stop();
+      expect(manager.pid).toBeNull();
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 60_000);
+
+  it('stop() waits for a pending start and leaves no running child', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'echocue-qdrant-'));
+    const manager = makeManager(dataDir, await freePort(), await freePort());
+    try {
+      const startPromise = manager.start();
+      await manager.stop();
+      await startPromise.catch(() => undefined);
+      // By the time stop() returns, the pending start has settled and any child
+      // was killed — no orphan spawned after exit (T-PKG smoke-quit path).
+      expect(manager.pid).toBeNull();
+      expect(await manager.isHealthy()).toBe(false);
+      // The manager can still be restarted cleanly afterwards.
+      const handle = await manager.start();
+      expect(handle.pid).toBeGreaterThan(0);
+      expect(await manager.isHealthy()).toBe(true);
+      await manager.stop();
+      expect(manager.pid).toBeNull();
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    }
+  }, 60_000);
+
   it('rejects startup when the http port is already occupied', async () => {
     const blocker: HttpServer = createHttpServer((_req, res) => {
       res.writeHead(500);

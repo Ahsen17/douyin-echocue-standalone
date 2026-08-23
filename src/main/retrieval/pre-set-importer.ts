@@ -1,4 +1,5 @@
 import Ajv2020 from 'ajv/dist/2020.js';
+import type { PreSetImportErrorCodeV1 } from '@echocue/contracts';
 import { detectBuiltinRisk } from '../safety/index.js';
 import preSetSchemaV1 from '../../../docs/05-data-interface/schema/pre-set-v1.schema.json';
 import type { PreSetEntryV1 } from './types.js';
@@ -9,16 +10,9 @@ const DEFAULT_MAX_ROWS = 100_000;
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 const validatePreSetSchema = ajv.compile(preSetSchemaV1);
 
-export type PreSetImportErrorCode =
-  | 'PRE_SET_UTF8_BOM'
-  | 'PRE_SET_ENCODING'
-  | 'PRE_SET_OVER_SIZE'
-  | 'PRE_SET_OVER_ROWS'
-  | 'PRE_SET_EMPTY'
-  | 'PRE_SET_JSON'
-  | 'PRE_SET_SCHEMA'
-  | 'PRE_SET_DUPLICATE_ID'
-  | 'PRE_SET_UNSAFE_CONTENT';
+// Single source of truth: the union lives in @echocue/contracts so the same
+// codes cross the IPC boundary without a second enum.
+export type PreSetImportErrorCode = PreSetImportErrorCodeV1;
 
 export interface PreSetImportError {
   readonly line: number;

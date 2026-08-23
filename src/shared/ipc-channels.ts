@@ -28,6 +28,8 @@ export const IpcChannel = {
   SafetyGet: 'safety.get',
   SafetySaveDraft: 'safety.saveDraft',
   SafetyPublish: 'safety.publish',
+  RetrievalGetStatus: 'retrieval.getStatus',
+  RetrievalImportPreSet: 'retrieval.importPreSet',
   DiagnosticsGetSummary: 'diagnostics.getSummary',
   AuditSearch: 'audit.search',
   AuditGetWorkflow: 'audit.getWorkflow',
