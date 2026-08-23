@@ -34,7 +34,7 @@
     "start": "electron .",
     "preview": "npm run build && npm run start",
     "icons": "tsx scripts/generate-icons.ts",
-    "package:win": "electron-builder --win nsis --x64",
+    "package:win": "electron-builder --win nsis --x64 --publish never",
     "package:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/win-install-verify.ps1",
     "release:manifest": "tsx scripts/generate-release-manifest.ts",
     "license:scan": "license-checker --json --out dist/compliance/licenses.json",
