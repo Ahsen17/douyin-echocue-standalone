@@ -11,7 +11,16 @@ const NODE_BUILTINS = new Set([
 
 function isExternal(id: string): boolean {
   if (id.startsWith('node:')) return NODE_BUILTINS.has(id.slice('node:'.length))
-  return NODE_BUILTINS.has(id) || id === 'electron' || id === 'jieba-wasm' || id === '@qdrant/js-client-rest'
+  return (
+    NODE_BUILTINS.has(id) ||
+    id === 'electron' ||
+    id === 'jieba-wasm' ||
+    id === '@qdrant/js-client-rest' ||
+    // ws has a "browser" field; bundling it for the Node main process resolves
+    // to ws/browser.js whose WebSocket is not a constructor in Electron main.
+    // Keep it external so runtime require('ws') uses the Node build.
+    id === 'ws'
+  )
 }
 
 export default defineConfig({

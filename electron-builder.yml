@@ -12,16 +12,17 @@ directories:
   output: release
   buildResources: build
 
-# Vite bundles everything except node builtins, electron, jieba-wasm and
-# @qdrant/js-client-rest (vite.config.main.ts). electron-builder also packs all
-# other production node_modules automatically, so these three globs just pin the
-# must-ship externalized runtime modules; `files` keeps Linux sidecars, docs and
-# sources out of the installer.
+# Vite bundles everything except node builtins, electron, jieba-wasm,
+# @qdrant/js-client-rest and ws (vite.config.main.ts). electron-builder also
+# packs all other production node_modules automatically, so these globs just pin
+# the must-ship externalized runtime modules; `files` keeps Linux sidecars,
+# docs and sources out of the installer.
 files:
   - dist/**
   - node_modules/jieba-wasm/**
   - node_modules/@qdrant/**
   - node_modules/undici/**
+  - node_modules/ws/**
 
 # jieba-wasm instantiates its .wasm from disk; unpack it so the real file path
 # is available outside app.asar.

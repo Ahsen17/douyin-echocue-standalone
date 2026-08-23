@@ -29,6 +29,10 @@ function roomIdOf(value: unknown): string | undefined {
   return undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function dataToText(raw: RawData): string {
   if (typeof raw === 'string') return raw;
   if (Buffer.isBuffer(raw)) return raw.toString('utf8');
@@ -37,14 +41,20 @@ function dataToText(raw: RawData): string {
 }
 
 // Raw upstream frame → domain event; gift/like return null (diagnostics only).
+// Field policy: non-critical fields are omitted when unreadable; critical fields
+// (live_status `code`, chat `content`) drop the event entirely when unreadable.
 export function mapUpstreamFrame(frame: unknown, ctx: MapFrameContext): LiveSourceEvent | null {
-  if (typeof frame !== 'object' || frame === null) return null;
-  const record = frame as Record<string, unknown>;
+  if (!isRecord(frame)) return null;
 
-  if (record.type === 'system' && record.event === 'live_status') {
-    if (record.code === 'ROOM_ONLINE') {
-      const data = (record.data ?? {}) as Record<string, unknown>;
-      const platformRoomId = roomIdOf(data.room_id ?? data.roomId);
+  if (frame.type === 'system' && frame.event === 'live_status') {
+    // code decides the event kind; an unreadable code cannot be classified.
+    const code = frame.code;
+    if (typeof code !== 'string' || code.length === 0) return null;
+    if (code === 'ROOM_ONLINE') {
+      const data = isRecord(frame.data) ? frame.data : {};
+      // platformRoomId is optional; fall back from the nested data object to the
+      // frame root (the douyinLive sidecar emits room_id at the top level).
+      const platformRoomId = roomIdOf(data.room_id ?? data.roomId ?? frame.room_id);
       return {
         type: 'LIVE_ONLINE',
         roomReference: ctx.roomReference,
@@ -52,22 +62,26 @@ export function mapUpstreamFrame(frame: unknown, ctx: MapFrameContext): LiveSour
         receivedAt: ctx.receivedAt,
       };
     }
-    if (record.code === 'ROOM_ENDED') {
+    if (code === 'ROOM_ENDED') {
       return { type: 'LIVE_ENDED', roomReference: ctx.roomReference, receivedAt: ctx.receivedAt };
     }
-    if (record.code === 'ROOM_OFFLINE') {
+    if (code === 'ROOM_OFFLINE') {
       return { type: 'LIVE_OFFLINE', roomReference: ctx.roomReference, receivedAt: ctx.receivedAt };
     }
     return {
       type: 'SOURCE_ERROR',
       code: DomainErrorV1Schema.enum.E_SOURCE_UNAVAILABLE,
-      message: `unknown live_status code: ${String(record.code)}`,
+      message: `unknown live_status code: ${code}`,
       receivedAt: ctx.receivedAt,
     };
   }
 
-  if (record.method === 'WebcastChatMessage') {
-    return { type: 'COMMENT', comment: buildSourceComment(record, ctx) };
+  if (frame.method === 'WebcastChatMessage') {
+    // content is critical: a comment without readable text cannot feed the
+    // generation pipeline, so filter the frame out instead of forwarding it.
+    const rawText = typeof frame.content === 'string' ? frame.content : '';
+    if (rawText.trim().length === 0) return null;
+    return { type: 'COMMENT', comment: buildSourceComment(frame, ctx) };
   }
 
   // WebcastGiftMessage / WebcastLikeMessage / unknown: not a generation input
@@ -75,7 +89,8 @@ export function mapUpstreamFrame(frame: unknown, ctx: MapFrameContext): LiveSour
 }
 
 function buildSourceComment(frame: Record<string, unknown>, ctx: MapFrameContext): SourceComment {
-  const common = (frame.common ?? {}) as Record<string, unknown>;
+  const common = isRecord(frame.common) ? frame.common : {};
+  const user = isRecord(frame.user) ? frame.user : {};
   const msgId = common.msgId;
   const sourceMessageId =
     typeof msgId === 'string' && msgId.length > 0
@@ -84,7 +99,6 @@ function buildSourceComment(frame: Record<string, unknown>, ctx: MapFrameContext
         ? String(msgId)
         : `local-${uuidv7()}`;
   const rawText = typeof frame.content === 'string' ? frame.content : '';
-  const user = (frame.user ?? {}) as Record<string, unknown>;
   const nickname =
     typeof user.nickName === 'string' && user.nickName.length > 0
       ? user.nickName
