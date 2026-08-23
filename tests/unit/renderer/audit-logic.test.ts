@@ -3,6 +3,7 @@ import type { AuditWorkflowV1 } from '@echocue/contracts'
 import {
   buildTimeline,
   defaultRevisionCount,
+  extractSuggestionFromWorkflow,
   localizeFinalState,
   localizeLabelStatus,
   pageCount,
@@ -65,6 +66,63 @@ describe('audit-logic', () => {
       const timeline = buildTimeline(workflow)
       expect(timeline.map((t) => t.sequenceNo)).toEqual([1, 2])
       expect(timeline[1].snapshots[0].role).toBe('NORMALIZED_COMMENT')
+    })
+  })
+
+  describe('extractSuggestionFromWorkflow', () => {
+    const base = (snapshots: AuditWorkflowV1['transitions'][number]['snapshots']): AuditWorkflowV1 => ({
+      traceId: '01932a3b-4c5d-7000-8000-000000000001',
+      transitions: [
+        {
+          sequenceNo: 1,
+          fromState: null,
+          toState: 'DISPLAY_READY',
+          reasonCode: 'OVERLAY_RENDERED',
+          occurredAt: '2026-08-22T00:00:00.000Z',
+          snapshots,
+        },
+      ],
+    })
+
+    it('reads the direct payload (snake_case quick_reply)', () => {
+      const wf = base([{
+        snapshotId: 's1',
+        role: 'DIRECT_PAYLOAD',
+        contentType: 'SUGGESTION_JSON',
+        plaintext: JSON.stringify({ quick_reply: '谢谢夸奖', cues: ['接住夸奖', '继续互动'] }),
+      }])
+      expect(extractSuggestionFromWorkflow(wf)).toEqual({
+        quickReply: '谢谢夸奖',
+        cues: ['接住夸奖', '继续互动'],
+      })
+    })
+
+    it('reads the LLM parsed output (camelCase quickReply)', () => {
+      const wf = base([{
+        snapshotId: 's2',
+        role: 'LLM_PARSED_OUTPUT',
+        contentType: 'SUGGESTION_JSON',
+        plaintext: JSON.stringify({ quickReply: '欢迎来玩', cues: ['问候', '引导关注'] }),
+      }])
+      expect(extractSuggestionFromWorkflow(wf)).toEqual({
+        quickReply: '欢迎来玩',
+        cues: ['问候', '引导关注'],
+      })
+    })
+
+    it('returns null when the workflow has no suggestion snapshot', () => {
+      expect(extractSuggestionFromWorkflow(base([]))).toBeNull()
+      expect(extractSuggestionFromWorkflow(null)).toBeNull()
+    })
+
+    it('returns null on malformed or empty suggestion JSON', () => {
+      const wf = base([{
+        snapshotId: 's3',
+        role: 'LLM_PARSED_OUTPUT',
+        contentType: 'SUGGESTION_JSON',
+        plaintext: 'not json',
+      }])
+      expect(extractSuggestionFromWorkflow(wf)).toBeNull()
     })
   })
 

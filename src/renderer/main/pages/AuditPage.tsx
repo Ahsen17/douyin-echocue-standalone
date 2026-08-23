@@ -11,6 +11,7 @@ import { ErrorState, LoadingState } from '../components/StateViews'
 import {
   buildTimeline,
   defaultRevisionCount,
+  extractSuggestionFromWorkflow,
   localizeFinalState,
   localizeLabelStatus,
   pageCount,
@@ -245,7 +246,7 @@ function DetailTabs({ row, workflow, workflowLoading, workflowError, onLabelSave
       {tab === 'workflow' ? (
         <WorkflowPanel workflow={workflow} loading={workflowLoading} error={workflowError} />
       ) : (
-        <LabelForm row={row} onSaved={onLabelSaved} />
+        <LabelForm row={row} workflow={workflow} onSaved={onLabelSaved} />
       )}
     </>
   )
@@ -284,7 +285,11 @@ function WorkflowPanel({ workflow, loading, error }: {
   )
 }
 
-function LabelForm({ row, onSaved }: { row: AuditTraceSummaryV1; onSaved: (status: LabelStatus) => void }) {
+function LabelForm({ row, workflow, onSaved }: {
+  row: AuditTraceSummaryV1
+  workflow: AuditWorkflowV1 | null
+  onSaved: (status: LabelStatus) => void
+}) {
   const [approve, setApprove] = useState(true)
   const [corrected, setCorrected] = useState(false)
   const [score, setScore] = useState('85')
@@ -331,8 +336,17 @@ function LabelForm({ row, onSaved }: { row: AuditTraceSummaryV1; onSaved: (statu
     )
   }
 
+  const suggestion = extractSuggestionFromWorkflow(workflow)
+
   return (
     <div className="label-form">
+      {suggestion !== null ? (
+        <div className="ai-suggestion">
+          <b>AI 建议回复</b>
+          <p>{suggestion.quickReply}</p>
+          <small>提词：{suggestion.cues.join(' · ')}</small>
+        </div>
+      ) : null}
       <p><b>为本条最终建议打标</b></p>
       <label className="choice">
         <input type="radio" checked={approve} onChange={() => setApprove(true)} /> 认可建议

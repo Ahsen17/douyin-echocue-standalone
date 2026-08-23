@@ -139,6 +139,10 @@ textarea{height:115px}
 .workflow pre{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;margin:0;padding:10px;border-top:1px solid var(--line);background:#f3f6fb;font-size:12px;line-height:1.6}
 .privacy-notice{max-width:680px}
 .label-form{max-width:620px}
+.ai-suggestion{padding:14px;margin-bottom:16px;border:1px solid var(--line);border-radius:8px;background:#f4f7fb}
+.ai-suggestion b{color:var(--ink)}
+.ai-suggestion p{margin:6px 0;color:var(--ink);line-height:1.6}
+.ai-suggestion small{color:var(--muted);font-size:12px}
 .label-summary,.empty-state{padding:18px;background:#f4f7fb;border-radius:8px}
 .label-summary b,.empty-state b{color:var(--ink)}
 
