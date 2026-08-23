@@ -31,4 +31,26 @@
 
 ## 已知限制 / 后续依赖
 - 回流链路闭环（M7-01 outbox → M7-02 UPSERT → M7-03 bad-case）在批次级集成验证（M7-04 全量 Contract/Integration tests 之外）已由本批次集成测试覆盖。
-- 批次级验证与 Subagent 审查待执行。
+
+## 批次审查（第一轮，非 fork Subagent，e0121d2→d61df5a）
+审查结论：**无阻断级问题**；10 个维度（事务完整性、幂等、回流触发矩阵、job 状态机、payload 契约、profile 读取路径、bad-case 作用域、并发/崩溃恢复、安全红线、兼容性）全部通过。
+
+**已修复**：
+- IMP-2：区分 Qdrant 瞬时不可达（PENDING 不烧 attempts）与 golden_set 元数据配置错误（改为永久失败可观察，不再静默空转）；补 config-error 单测。
+- IMP-1：`failSyncJob` 注释如实说明永久失败无自动恢复路径（MVP 无诊断 IPC，需人工 SQLite/Qdrant 干预）。
+- IMP-3：`backoffMs` 注释说明退避受 sweep 周期主导（<60s 的退避等效于下个 sweep 重试）。
+- IMP-4：补全闭环集成测试（fail→re-arm→retry→synced）。
+- SUG-4：`decryptCorrection` 区分空 envelope 与解密/解析失败（抛 RefluxPayloadError，不再掩盖为「无 correction」）。
+
+**留档（已知限制，未在本批次实施）**：
+- 永久 FAILED job 无用户可见恢复入口（诊断 IPC 留待后续诊断页增强）。
+- 重试会刷新 golden point 的 `created_at`（`buildGoldenSetPayload` 用同步时刻；确定性 point_id 保证幂等，时间戳反映最后成功同步）。
+- 基础设施错误 `last_error` 仅存错误类名（安全红线：不回显 Qdrant 请求体），排查价值有限，后续可补匿名非回显错误码（如 HTTP status）。
+- `onLabelSubmitted` 与 sweep 重叠时新 job 最多延迟一个 sweep 周期（60s）。
+- 生产接线缺口（既有依赖，非本批次引入）：`bootstrapPreSet` 尚未接线到生产运行时，`golden_set` 在 bootstrap 落地前不存在，回流 worker 将保持 PENDING（前向兼容不烧 attempts），需在 retrieval bootstrap 接线后联动验证端到端回流。
+
+## 批次级验证结果（修复后）
+- `npm run typecheck`：零错误
+- `npm run test:contracts`：149 passed
+- `npm run test`：945 passed / 15 todo（2 个 skip 为既有 Windows/E2E）
+- `npm run build`：成功
