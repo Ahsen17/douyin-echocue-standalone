@@ -42,9 +42,15 @@
 - `npm run test:contracts`：169 通过
 - `npm run test`：1082 通过、5 跳过（覆盖语义新增用例全绿）
 - `npm run build`：通过
-- 新增用例：T-AUD-001 覆盖（同 feedback_id / rev=2 / 清陈旧 job）、覆盖仍回流（同 feedback_id / rev=2 / `:2:UPSERT`）；payload-builder case_id 稳定
+- 新增用例：T-AUD-001 覆盖（同 feedback_id / rev=2 / 清陈旧 job）、覆盖仍回流（同 feedback_id / rev=2 / `:2:UPSERT`）；audit-sync-jobs 覆盖删除已 claim RUNNING job 的竞态路径；payload-builder case_id 稳定
+
+## 两轮 Subagent 审查
+
+- 第一轮（隔离只读）：无阻断项；1 项「重要」——覆盖删除已 claim RUNNING job 的竞态路径无测试覆盖。已补 `audit-sync-jobs` 用例并复跑全量验证。
+- 第二轮（全新隔离只读）：无阻断项，**可创建 PR**；独立复跑全部验证通过，逐断言核验新增用例无假阳性。非阻断建议：乐观锁 UPDATE 可加 `AND revision_no = observed` + `changes===1` 作 CAS 防御性硬化（当前单线程同步架构不可达，低危），登记为后续加固项。
 
 ## 未关闭风险
 
 - 极窄竞态：覆盖发生在 worker 已 claim（RUNNING）且 Qdrant upsert 已执行的瞬间，被取代 job 可能留下孤立 point；正常路径下覆盖已删除该 job，下一 sweep 的 job 若存在会以新内容覆盖。预发布 beta 阶段可接受。
 - 旧数据兼容：升级前已按 `feedback:{feedback_id}:{revision_no}` 生成的 golden point 在首次覆盖后会与新格式 point 并存（旧 point 成孤立）。预发布阶段无真实业务数据，可接受；如需清理需 Qdrant 侧人工处理。
+- 后续加固：`submitLabel` 覆盖分支 UPDATE 未附 `AND revision_no = observed`（当前单线程同步架构不可达；如需多实例并发再补 CAS 守卫）。
