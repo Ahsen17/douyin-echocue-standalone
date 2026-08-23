@@ -11,7 +11,7 @@ import { ServiceStateMachine } from '../../../src/main/service/index.js';
 import { SuggestionAttemptOrchestrator } from '../../../src/main/suggestion/index.js';
 import type { SuggestionOrchestratorDeps } from '../../../src/main/suggestion/index.js';
 import { SuggestionOutputValidator } from '../../../src/main/validation/index.js';
-import { AuditUnavailableError } from '../../../src/main/storage/index.js';
+import { AuditDuplicateTraceError, AuditUnavailableError } from '../../../src/main/storage/index.js';
 import type { RetrievalRawHit } from '../../../src/main/retrieval/index.js';
 
 /** In-memory audit recorder that enforces TRACE_TRANSITIONS_V1 like the worker. */
@@ -20,9 +20,11 @@ class FakeAudit {
   transitions: Array<{ traceId: string; from: string | null; to: string; reason: string }> = [];
   snapshots: Array<{ traceId: string; to: string; role: string; payload: unknown }> = [];
   failWrites = false;
+  duplicateTrace = false;
 
   createTrace(p: { traceId: string; sessionId: string }): void {
     this.assertWritable();
+    if (this.duplicateTrace) throw new AuditDuplicateTraceError();
     this.traces.push(p);
   }
   createSession(): void {}
@@ -312,10 +314,50 @@ describe('SuggestionAttemptOrchestrator', () => {
   it('dedups repeated source_message_id within a session', async () => {
     const { audit, orchestrator } = harness();
     await orchestrator.startSession({ sessionId: 's1' });
+    // A filtered first comment keeps activity LISTENING so the duplicate lands
+    // on the dedup path (the DISPLAYING guard runs first by design).
+    orchestrator.handleComment(makeComment({ normalizedText: '主播加微信多少' }));
+    await flush();
+    const traceCount = audit.traces.length;
+    const transitionCount = audit.transitions.length;
+    orchestrator.handleComment(makeComment({ normalizedText: '主播加微信多少' }));
+    await flush();
+    // audit_trace's UNIQUE(session_id, source_message_id) forbids a second row
+    // for the same message; the duplicate is dropped without writing anything.
+    expect(audit.traces).toHaveLength(traceCount);
+    expect(audit.transitions).toHaveLength(transitionCount);
+  });
+
+  it('drops a duplicate frame during DISPLAYING without writing or stopping', async () => {
+    const { audit, machine, orchestrator } = harness();
+    await orchestrator.startSession({ sessionId: 's1' });
+    // Valid path to DISPLAYING: LISTENING → RETRIEVING → GENERATING → DISPLAYING.
+    machine.setActivity('RETRIEVING');
+    machine.setActivity('GENERATING');
+    machine.setActivity('DISPLAYING');
     orchestrator.handleComment(makeComment());
+    await flush();
+    const traceCount = audit.traces.length;
     orchestrator.handleComment(makeComment());
-    const lowValue = audit.transitions.filter((t) => t.reason === 'LOW_VALUE');
-    expect(lowValue.length).toBe(1);
+    await flush();
+    // The dedup check runs before the DISPLAYING guard, so a duplicate of a
+    // displayed message is dropped rather than colliding with the unique key.
+    expect(audit.traces).toHaveLength(traceCount);
+    expect(machine.getViewState().lifecycle).toBe('RUNNING');
+  });
+
+  it('drops a comment whose createTrace reports a duplicate without stopping', async () => {
+    const { audit, machine, orchestrator } = harness();
+    await orchestrator.startSession({ sessionId: 's1' });
+    // A duplicate that slips past the bounded seen set (SEEN_SET_MAX eviction)
+    // surfaces as AuditDuplicateTraceError, which is a silent drop, not an
+    // audit outage.
+    audit.duplicateTrace = true;
+    orchestrator.handleComment(makeComment());
+    await flush();
+    expect(audit.traces).toHaveLength(0);
+    expect(audit.transitions).toHaveLength(0);
+    expect(machine.getViewState().lifecycle).toBe('RUNNING');
   });
 
   it('takes the golden direct path with zero provider calls', async () => {

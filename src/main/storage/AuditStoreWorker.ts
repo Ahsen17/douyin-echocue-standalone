@@ -132,6 +132,19 @@ export class AuditUnavailableError extends Error {
   }
 }
 
+/** A duplicate (session_id, source_message_id) row was attempted (already audited). */
+export class AuditDuplicateTraceError extends Error {
+  readonly code = 'E_AUDIT_DUPLICATE_TRACE';
+  constructor() {
+    super('duplicate audit trace');
+    this.name = 'AuditDuplicateTraceError';
+  }
+}
+
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes('UNIQUE constraint failed');
+}
+
 const FINAL_STATES = new Set(TraceFinalStateSchema.options);
 
 export class AuditStoreWorker {
@@ -194,6 +207,11 @@ export class AuditStoreWorker {
          VALUES (?,?,?,?,null,'UNLABELED',null,?,null)`,
       ).run(p.traceId, p.sessionId, p.sourceMessageId, p.receivedAt, p.receivedAt);
     } catch (err) {
+      // A duplicate frame is already audited; surface it distinctly so the
+      // orchestrator can drop it instead of treating it as an audit outage.
+      if (isUniqueConstraintError(err)) {
+        throw new AuditDuplicateTraceError();
+      }
       throw new AuditUnavailableError(`createTrace failed: ${String(err)}`);
     }
   }

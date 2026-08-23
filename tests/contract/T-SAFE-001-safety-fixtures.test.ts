@@ -7,6 +7,12 @@ import {
   evaluateInputSafety,
   type CompiledSafetyRuleV1,
 } from '../../src/main/safety/index.js';
+import { SuggestionOutputValidator } from '../../src/main/validation/index.js';
+import type {
+  CandidateSuggestion,
+  OutputValidationContext,
+  TeamMemberNameV1,
+} from '../../src/main/validation/index.js';
 
 interface CompileCaseFixture {
   id: string;
@@ -98,5 +104,80 @@ describe('T-SAFE-001: Safety Policy Fixtures', () => {
         expect(decision.reason).toBe(c.expected.reason as never);
       }
     }
+  });
+
+  // DELIVERY §4.2/§4.4: input AND output re-verification. The OUTPUT-stage case
+  // (`unsafe-output-discarded`) is driven through the shared output validator
+  // (SuggestionOutputValidator step 5 re-checks reply+cues against the same
+  // compiled rules), which is the production path that maps an unsafe output to
+  // a DISCARDED trace. Only tests are added here; the fixture text was corrected
+  // so the case actually triggers the PII detector (M7-04).
+  describe('OUTPUT stage re-verification', () => {
+    const outputCase = fixture.runtimeCases.find((r) => r.stage === 'OUTPUT');
+    const validator = new SuggestionOutputValidator();
+    const members: readonly TeamMemberNameV1[] = [
+      { personaId: 'p-1', displayName: '主播A', enabledAliases: [] },
+    ];
+
+    function outputContext(compiledRules: CompiledSafetyRuleV1[] | null): OutputValidationContext {
+      return {
+        source: 'llm',
+        personaSnapshot: {
+          personaId: 'p-1',
+          personaVersion: '01932a3b-4c5d-7000-8000-000000000001',
+          content: '你是一个温柔的主播。',
+          contentHmac: 'hmac-v1',
+        },
+        safetySnapshot: { version: 'pol-v1', policyText: '', keywords: [] },
+        compiledRules,
+        memberNames: members,
+        currentPersonaId: 'p-1',
+        forbiddenPromiseTerms: [],
+        expected: { sessionId: 's1', traceId: 't1', windowVersion: 1 },
+        actual: { sessionId: 's1', traceId: 't1', windowVersion: 1 },
+        nowMonotonicMs: 1000,
+        freshnessDeadlineMonotonicMs: 10000,
+      };
+    }
+
+    it('rejects the unsafe-output fixture through the shared output validator', () => {
+      expect(outputCase).toBeDefined();
+      if (outputCase === undefined || outputCase.text === undefined) return;
+      const candidate: CandidateSuggestion = {
+        quick_reply: normalizeComment(outputCase.text),
+        cues: ['接住夸奖', '继续互动'],
+      };
+      // The OUTPUT case carries no compiledRules; the built-in PII detector runs.
+      const result = validator.validate(candidate, outputContext(outputCase.compiledRules ?? []));
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.kind).toBe('REJECTED');
+        if (result.kind === 'REJECTED') {
+          expect(result.reasonCodes).toContain('PERSONAL_INFO_HIT');
+        }
+      }
+    });
+
+    it('does not false-positive a benign output through the same path', () => {
+      const result = validator.validate(
+        { quick_reply: '谢谢你一直在呀', cues: ['接住陪伴', '自然带动互动'] },
+        outputContext([]),
+      );
+      expect(result.ok).toBe(true);
+    });
+
+    it('fails closed when the safety engine is unavailable (compiledRules null)', () => {
+      const result = validator.validate(
+        { quick_reply: '谢谢你一直在呀', cues: ['接住陪伴', '自然带动互动'] },
+        outputContext(null),
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.kind).toBe('REJECTED');
+        if (result.kind === 'REJECTED') {
+          expect(result.reasonCodes).toContain('RISK_RULE_HIT');
+        }
+      }
+    });
   });
 });

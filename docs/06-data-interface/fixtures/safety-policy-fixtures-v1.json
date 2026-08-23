@@ -44,7 +44,7 @@
     {
       "id": "unsafe-output-discarded",
       "stage": "OUTPUT",
-      "text": "输出中包含已配置的个人地址占位内容",
+      "text": "输出中包含已配置的家庭住址占位内容",
       "expected": { "allow": false, "reason": "PII", "traceFinalState": "DISCARDED" }
     },
     {

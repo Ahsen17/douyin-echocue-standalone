@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'node:crypto';
 import {
+  AuditDuplicateTraceError,
   AuditStoreWorker,
   AuditStateInvalidError,
   AuditUnavailableError,
@@ -100,6 +101,18 @@ describe('AuditStoreWorker', () => {
     expect(transitions[0].entry_hmac).toMatch(/^[0-9a-f]{64}$/);
     expect(transitions[1].previous_hmac).toBe(transitions[0].entry_hmac);
     expect(transitions[2].previous_hmac).toBe(transitions[1].entry_hmac);
+  });
+
+  it('throws AuditDuplicateTraceError for a duplicate (session, source_message_id)', () => {
+    const sessionId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    worker.createTrace({ traceId: randomUUID(), sessionId, sourceMessageId: 'msg-same', receivedAt: now });
+    // A re-sent frame of the same message is a distinct conflict, not an audit
+    // outage — the orchestrator drops it instead of stopping the service.
+    expect(() =>
+      worker.createTrace({ traceId: randomUUID(), sessionId, sourceMessageId: 'msg-same', receivedAt: now }),
+    ).toThrow(AuditDuplicateTraceError);
   });
 
   it('throws AuditStateInvalidError on invalid transition', () => {

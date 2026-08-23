@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
+import { AuditWorkflowV1Schema } from '@echocue/contracts';
 import {
   AuditStoreWorker,
   type AppendSnapshotInput,
@@ -73,11 +74,6 @@ describe('T-AUD-001: Audit Storage', () => {
       personaStore.close();
     }
   }
-
-  it.todo('should write and read audit traces');
-  it.todo('should enforce hash chain integrity');
-  it.todo('should reject invalid state transitions');
-  it.todo('should stop service on write failure');
 
   it('writes and replays the four LLM-path snapshot roles (M5-09)', () => {
     const sessionId = randomUUID();
@@ -576,5 +572,53 @@ describe('T-AUD-001: Audit Storage', () => {
     }
   });
 
-  it.todo('should decrypt fields for authorized reader');
+  it('decrypts snapshot fields for an authorized reader while storage stays encrypted (M7-04)', () => {
+    const sessionId = randomUUID();
+    const traceId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    worker.createTrace({ traceId, sessionId, sourceMessageId: 'msg-1', receivedAt: now });
+    const commentPlaintext = '主播晚上好，欢迎光临';
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED', [
+      snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', {
+        sourceMessageId: 'msg-1',
+        rawText: commentPlaintext,
+        normalizedText: commentPlaintext,
+        receivedAt: now,
+        receivedMonotonicMs: 1,
+      }),
+    ]);
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'FILTERED', 'INPUT_SAFETY_FILTERED');
+
+    // Storage is encrypted: the persisted envelope never equals the plaintext.
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    let snapshotId: string;
+    try {
+      const row = reader.prepare(
+        `SELECT s.snapshot_id, s.envelope FROM audit_snapshot s
+         JOIN audit_reference r ON r.snapshot_id = s.snapshot_id
+         WHERE r.trace_id = ? AND r.role = 'NORMALIZED_COMMENT'`,
+      ).get(traceId) as { snapshot_id: string; envelope: Uint8Array };
+      snapshotId = row.snapshot_id;
+      expect(Buffer.from(row.envelope).toString('utf-8')).not.toContain(commentPlaintext);
+    } finally {
+      reader.close();
+    }
+
+    // The authorized reader path (getTraceWorkflowV1 — what audit.getWorkflow IPC
+    // serves to the main window) decrypts the snapshot for replay.
+    const workflow = worker.getTraceWorkflowV1(traceId);
+    expect(workflow).not.toBeNull();
+    const snapshot = workflow!.transitions[0].snapshots.find((s) => s.snapshotId === snapshotId);
+    expect(snapshot).toBeDefined();
+    expect(JSON.parse(snapshot!.plaintext)).toMatchObject({ normalizedText: commentPlaintext });
+    // The IPC contract shape carries decrypted plaintext, never envelope bytes.
+    expect(AuditWorkflowV1Schema.parse(workflow)).toBeDefined();
+    const allPlaintext = workflow!.transitions
+      .flatMap((t) => t.snapshots)
+      .map((s) => s.plaintext)
+      .join('\n');
+    expect(allPlaintext).not.toContain('envelope');
+  });
 });

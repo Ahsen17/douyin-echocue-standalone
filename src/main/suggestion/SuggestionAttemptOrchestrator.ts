@@ -15,7 +15,7 @@ import { DEFAULT_CALIBRATION_ARTIFACT_V1 } from '../retrieval/calibration.js';
 import { evaluateDirectPush } from '../retrieval/direct-push.js';
 import { renderPrompt } from '../prompt/index.js';
 import { CredentialStore } from '../credentials/index.js';
-import { AuditUnavailableError } from '../storage/index.js';
+import { AuditDuplicateTraceError, AuditUnavailableError } from '../storage/index.js';
 import { uuidv7 } from '../util/index.js';
 import { SuggestionWindow } from './SuggestionWindow.js';
 import type { SuggestionOrchestratorDeps } from './types.js';
@@ -166,9 +166,23 @@ export class SuggestionAttemptOrchestrator {
         Math.min(T0_FRESHNESS_BUDGET_MS, this.deps.windowMaxAgeMs ?? WINDOW_MAX_AGE_MS),
     };
 
+    // Session dedup runs before every write (ARCH §4.1): a duplicate frame is
+    // dropped silently — its first occurrence already owns a trace, and
+    // audit_trace's UNIQUE(session_id, source_message_id) forbids a second row.
+    // Checked before the DISPLAYING guard so duplicates that arrive while the
+    // source message is still displayed (or was display-suppressed) are dropped
+    // too, instead of colliding with the unique constraint.
+    if (this.session.seen.has(comment.sourceMessageId)) {
+      return;
+    }
+    this.session.seen.add(comment.sourceMessageId);
+    if (this.session.seen.size > SEEN_SET_MAX) {
+      this.evictSeenHalf();
+    }
+
     // DISPLAYING guard: no retrieval, no generation, no queueing (ARCH §4.1).
     if (this.deps.stateMachine.getViewState().activity === 'DISPLAYING') {
-      this.createTrace(processingComment);
+      if (!this.beginTrace(processingComment)) return;
       this.transition(processingComment, null, 'RECEIVED', 'EVENT_RECEIVED', [
         this.snap('RAW_EVENT_JSON', 'RAW_WS_EVENT', comment.rawEvent),
       ]);
@@ -181,26 +195,7 @@ export class SuggestionAttemptOrchestrator {
       return;
     }
 
-    // Session dedup by source_message_id (ARCH §4.1); bounded to bound memory.
-    if (this.session.seen.has(comment.sourceMessageId)) {
-      this.createTrace(processingComment);
-      this.transition(processingComment, null, 'RECEIVED', 'EVENT_RECEIVED', [
-        this.snap('RAW_EVENT_JSON', 'RAW_WS_EVENT', comment.rawEvent),
-      ]);
-      this.transition(processingComment, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK', [
-        this.snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', comment),
-      ]);
-      this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'LOW_VALUE', [
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'session duplicate' }),
-      ]);
-      return;
-    }
-    this.session.seen.add(comment.sourceMessageId);
-    if (this.session.seen.size > SEEN_SET_MAX) {
-      this.session.seen.clear();
-    }
-
-    this.createTrace(processingComment);
+    if (!this.beginTrace(processingComment)) return;
     this.transition(processingComment, null, 'RECEIVED', 'EVENT_RECEIVED', [
       this.snap('RAW_EVENT_JSON', 'RAW_WS_EVENT', comment.rawEvent),
     ]);
@@ -865,15 +860,46 @@ export class SuggestionAttemptOrchestrator {
       : { version: 'unknown', policyText: '', keywords: [] };
   }
 
-  private createTrace(comment: ProcessingComment): void {
-    this.tryAudit(() => {
+  /**
+   * Insert the audit trace for a comment. Returns false when the message was
+   * already audited (a duplicate slipped past the bounded seen set) or the
+   * audit store is down; the caller drops the comment without further writes
+   * so no dangling FK transitions are attempted.
+   */
+  private beginTrace(comment: ProcessingComment): boolean {
+    if (this.auditDown) return false;
+    try {
       this.deps.audit.createTrace({
         traceId: comment.traceId,
         sessionId: comment.sessionId,
         sourceMessageId: comment.sourceMessageId,
         receivedAt: comment.receivedAt,
       });
-    });
+      return true;
+    } catch (err) {
+      if (err instanceof AuditDuplicateTraceError) return false;
+      if (err instanceof AuditUnavailableError) {
+        this.auditDown = true;
+        this.abortRequested = true;
+        this.abortAll('AUDIT_FAILURE');
+        this.deps.onAuditFailure();
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /** Bound the seen-set by evicting the oldest half; recent ids stay deduped. */
+  private evictSeenHalf(): void {
+    const seen = this.session?.seen;
+    if (seen === undefined) return;
+    const target = Math.floor(SEEN_SET_MAX / 2);
+    let removed = seen.size - target;
+    for (const id of seen) {
+      if (removed <= 0) break;
+      seen.delete(id);
+      removed -= 1;
+    }
   }
 
   private transition(
