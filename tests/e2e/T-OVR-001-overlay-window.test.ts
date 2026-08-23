@@ -25,9 +25,16 @@ const mocks = vi.hoisted(() => {
     isDestroyed: vi.fn(() => false),
     destroy: vi.fn(),
   };
+  let lastOptions: Record<string, unknown> | null = null;
   return {
+    get lastOptions() {
+      return lastOptions;
+    },
     windowObj,
-    BrowserWindowMock: vi.fn(() => windowObj),
+    BrowserWindowMock: vi.fn((opts?: Record<string, unknown>) => {
+      lastOptions = opts ?? null;
+      return windowObj;
+    }),
     getAllDisplays: vi.fn(() => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }]),
     getPrimaryDisplay: vi.fn(() => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })),
   };
@@ -92,6 +99,38 @@ describe('T-OVR-001: Overlay Window Behavior', () => {
     expect(mocks.windowObj.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver');
   });
 
+  it('seeds the default position horizontal-center, vertical middle-lower (UI §5)', () => {
+    // Primary 1920x1080, default 800x200 → x centered at 560, y at 60% of
+    // usable height (528) so the overlay sits in the lower-middle, not centered.
+    new OverlayWindow({ getSettings: async () => null });
+    expect(mocks.lastOptions).toMatchObject({
+      x: 560,
+      y: 528,
+      width: 800,
+      height: 200,
+    });
+  });
+
+  it('re-seeds the position from the prefs-applied size on first show (M3)', async () => {
+    // The construction seed uses DEFAULT size (settings not loaded yet); once
+    // prefs are known, the first show re-centers using the real size.
+    // Primary 1920x1080 with 600x300 prefs → x=(1920-600)/2=660, y=(1080-300)*0.6=468.
+    mocks.windowObj.getBounds.mockReturnValue({ x: 0, y: 0, width: 600, height: 300 });
+    const win = new OverlayWindow({
+      getSettings: async () => ({ ...PREFS, width: 600, height: 300 }),
+    });
+    const pending = win.showSuggestion(PAYLOAD, 'req-m3');
+    await flush();
+    expect(mocks.windowObj.setBounds).toHaveBeenCalledWith({
+      x: 660,
+      y: 468,
+      width: 600,
+      height: 300,
+    });
+    win.ack('req-m3');
+    await pending;
+  });
+
   it('hides the overlay when the display window ends', async () => {
     const win = new OverlayWindow({ getSettings: async () => null });
     await win.hideSuggestion();
@@ -124,11 +163,18 @@ describe('T-OVR-001: Overlay Window Behavior', () => {
   });
 
   it('restores to a safe position when the last position is off-screen', async () => {
-    mocks.windowObj.getBounds.mockReturnValue({ x: 5000, y: 5000, width: 800, height: 200 });
     const win = new OverlayWindow({ getSettings: async () => null });
+    // First show seeds the default position and sets the seed flag.
+    const first = win.showSuggestion(PAYLOAD, 'req-2a');
+    await flush();
+    win.ack('req-2a');
+    await first;
+    // Simulate the user dragging the overlay off-screen, then a fresh show.
+    mocks.windowObj.getBounds.mockReturnValue({ x: 5000, y: 5000, width: 800, height: 200 });
     const pending = win.showSuggestion(PAYLOAD, 'req-2');
     await flush();
     // Primary 1920x1080, window 800x200 → bottom-right corner with 16px margin.
+    // The seed flag is set, so ensureOnScreen clamps without re-centering.
     expect(mocks.windowObj.setBounds).toHaveBeenCalledWith({
       x: 1920 - 800 - 16,
       y: 1080 - 200 - 16,
