@@ -1,6 +1,5 @@
 export { SuggestionAttemptOrchestrator } from './SuggestionAttemptOrchestrator.js';
 export { SuggestionWindow } from './SuggestionWindow.js';
-export { formatOverlaySentTime } from './format-overlay-sent-time.js';
 export type {
   PendingCandidate,
   ProcessingComment,

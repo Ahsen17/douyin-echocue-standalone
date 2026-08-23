@@ -24,7 +24,7 @@ describe('formatOverlaySentTime', () => {
     expect(viaCreateTime).not.toBe(viaReceipt);
   });
 
-  it('returns undefined when createTime is empty but receipt is present', () => {
+  it('falls back to the receipt time when createTime is empty', () => {
     expect(formatOverlaySentTime('', '2026-08-22T00:00:00.000Z')).toMatch(/^\d{2}:\d{2}:\d{2}$/);
   });
 

@@ -231,7 +231,7 @@ export async function buildMockStreamHarness(
       },
     },
     nowMonotonic: () => performance.now(),
-    windowMaxAgeMs: options.windowMaxAgeMs ?? 1500,
+    windowMaxAgeMs: options.windowMaxAgeMs ?? 5000,
     candidateMaxCount: 50,
     directPushThreshold: 0.85,
     displayDurationMs: options.displayDurationMs ?? 5000,

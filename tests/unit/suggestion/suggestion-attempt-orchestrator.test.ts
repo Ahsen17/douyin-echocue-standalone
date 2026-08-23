@@ -219,7 +219,7 @@ function harness(overrides: Partial<SuggestionOrchestratorDeps> = {}) {
     createProvider: () => makeProvider() as never,
     validator: new SuggestionOutputValidator(),
     displaySink: sink,
-    // Comment deadline = receivedMonotonicMs(1000) + 3000 = 4000; keep the clock
+    // Comment deadline = receivedMonotonicMs(1000) + 5000 = 6000; keep the clock
     // below it so candidates stay fresh through retrieval and generation.
     nowMonotonic: () => 2000,
     windowMaxAgeMs: 100000,
@@ -660,7 +660,7 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(1000+3000, 1200+2500, 1000+100000) = 3700 (selection budget binds).
+      // min(1000+5000, 1200+2500, 1000+100000) = 3700 (selection budget binds).
       expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(3700);
     });
 
@@ -676,7 +676,7 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(4000, 4500, 2500) = 2500: the window residency binds.
+      // min(6000, 4500, 2500) = 2500: the window residency binds.
       expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(2500);
       now = 2600; // past 2500 while the provider call is in flight
       release();
