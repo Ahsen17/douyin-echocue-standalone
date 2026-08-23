@@ -52,10 +52,21 @@ export class StorageMonitor {
   }
 
   check(): void {
-    // A read failure (e.g. statfs) omits the check, mirroring the diagnostics
-    // summary; an unknown volume must not trigger a stop.
-    const storage = this.readStorage();
+    let storage: StorageCapacity | null;
+    try {
+      storage = this.readStorage();
+    } catch {
+      // A read failure (e.g. statfs) omits the check, mirroring the diagnostics
+      // summary; an unknown volume must not trigger a stop.
+      return;
+    }
     if (storage === null) return;
-    if (storage.availableBytes < this.criticalBytes) this.onCritical();
+    if (storage.availableBytes < this.criticalBytes) {
+      try {
+        this.onCritical();
+      } catch {
+        // A failed stop callback must not crash the periodic interval.
+      }
+    }
   }
 }

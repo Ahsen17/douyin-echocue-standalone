@@ -34,14 +34,17 @@
 - **`src/main/service/create-controller.ts`**：提取 `readStorage`（`statfsSync` 闭包）供 DiagnosticsSource、gate、StorageMonitor 三处复用；构造 `StorageMonitor`（`onCritical` → `controller.stop('AUDIT_UNAVAILABLE')`）传入 `ServiceController`；gate 注入 `readStorage`。
 
 ## 测试
-- **填实 `tests/integration/T-STO-001-sqlite-wal.test.ts`（7 用例，替换 5 条 todo）**：
+- **填实 `tests/integration/T-STO-001-sqlite-wal.test.ts`（10 用例，替换 5 条 todo）**：
   - WAL checkpoint：写入 trace 后 `-wal` > 0 → `checkpoint()` → `-wal` = 0 → workflow 仍可读；
   - 完整性检查：正常库 `ok`；篡改 `entry_hmac` → `verifyIntegrity` 抛 `AuditUnavailableError`；
   - 受控恢复演练：写入 → checkpoint → close → `backupTo` → 破坏原库 → 从备份重建 → `verifyIntegrity` ok + trace 可读 + migration 版本 1；
   - 每千条增长量：1000 条合成 trace，实测 **≈ 1,044,480 bytes / 千条**（约 0.996 MiB/千条，留档用于剩余容量估算）；
   - 2 GiB 门槛：`createServiceGateChecks` 注入 `readStorage` < `STARTUP_MIN_BYTES` → `isStorageReady()` false；= 阈值 → true；
   - 256 MiB 停服：`StorageMonitor`（mock `readStorage` < `CRITICAL_MIN_BYTES`）接线 `ServiceController` → RUNNING 后立即触发 `onCritical` → `stop('AUDIT_UNAVAILABLE)` → `STOPPED`；
+  - 空库（首次安装）`verifyIntegrity` ok（`transitionsChecked: 0`）；
+  - 多 trace 交错链独立校验 + 删除其中一条 trace 的中部行正确报错；
   - 无自动删除：阈值检查 + checkpoint + backup 后 trace 数与备份内容均不减少。
+- **`tests/unit/storage/storage-monitor.test.ts`（新，5 用例）**：低于阈值触发 `onCritical`；高于阈值不触发；`readStorage` null 跳过；start/stop 幂等；同步 `onCritical` 重入 stop 清 timer（I1 回归）。
 - **`tests/unit/service/service-controller.test.ts`**：`makeChecks` 补 `isStorageReady: async () => true`；新增「`isStorageReady=false` → gate 拒绝 → `STOPPED(SOURCE_ERROR, E_STORAGE_LOW)`」。
 - **波及默认值**：`T-CON-002` 的 `allPassChecks`、`mock-stream-harness` inline `checks` 补 `isStorageReady: async () => true`（接口加方法后所有构造点同步）。
 - 说明：迁移三件套（空库初始化/重复迁移/失败回滚）已在 `migration-runner.test.ts` 覆盖，T-STO-001 不再重复，聚焦容量/WAL/完整性/恢复。
@@ -49,13 +52,22 @@
 ## 验证结果
 - `npm run typecheck`：零错误
 - `npm run test:contracts`：149 passed
-- `npm run test`：**990 passed / 5 todo / 0 failed**（含本批次 +7 用例；剩余 5 todo 全部为 T-PKG-001，归 M7-08）
-- 首次全量运行有 1 例偶发（`getDisplayDurationMs` 真实时钟显示定时器在并发下超时）；单独运行通过，重跑全量通过 → 既有时序抖动，非本批次引入
+- `npm run test`：**998 passed / 5 todo / 0 failed**（含本批次 +10 T-STO-001 +5 storage-monitor 用例；剩余 5 todo 全部为 T-PKG-001，归 M7-08）
+- 全量并发下增长量测试曾超时（1000 条 + 逐条 HMAC，CPU 争用 > 30s）；降为 500 条按千条折算后稳定（全量 31s 内全绿）
 
 ## 已知限制 / 后续依赖
 - **真实磁盘耗尽演练未做**：测试注入 mock `readStorage`，验证的是阈值决策与停服接线，不依赖真实磁盘空间；真实磁盘 2 GiB/256 MiB 行为需在真实 Windows 环境验证（M7-08 发布验收）。
 - **预警阈值复用**：1 GiB 或卷 10% 预警沿用 `DiagnosticsSource` 既有实现；`StorageMonitor` 只承担 256 MiB 停服决策，未统一两者。若未来要扩展预警周期化，可在 StorageMonitor 侧再加低空间回调。
-- **增长量基准**：每千条 ≈ 0.996 MiB 为「session + trace + 2 transition + 索引」的合成基准（无加密快照正文）。真实房间含快照（RAW/NORMALIZED/决策等）会更高；后续可用 M7-06 真实样本校准。
+- **增长量基准**：每千条 ≈ 1.0 MiB（session + trace + 2 transition + 索引，无加密快照正文）。真实房间含快照（RAW/NORMALIZED/决策等）会更高；后续可用 M7-06 真实样本校准。
+- **HMAC 链无法检出「删除整条 trace」或「删除链末条 transition」**：存活的链内部仍自洽；末条删除会使 `audit_trace.final_state` 与末条 to_state 不一致，但 `verifyIntegrity` 不校验该一致性。属 HMAC 链无外部锚点的固有限制。
+- **`isStorageReady` 对 statfs 失败 fail-open**：`readStorage` 缺省/null 返回 true；磁盘耗尽风险由运行期 audit 写失败停服兜底，属软降级。
+- **启动全量 HMAC 重算无进度/超时**：每次应用启动 `verifyIntegrity()` 全表重算，大库时启动耗时线性增长；RUNBOOK 强制该检查，性能留档。
+- **verifyIntegrity 接线（I3）无 createServiceController 集成测试**：构造依赖真实 binary 路径等重依赖，未在测试层覆盖；生产路径由 `main/index.ts` try/catch 覆盖，fail-closed 已生效。
+- **verifyIntegrity 失败时用户无可见诊断**：`main/index.ts` 仅 `console.error`，主窗口看似正常但所有 IPC 未接线；符合「保持停服」意图，运维定位需查日志（M7-08 部署文档明确）。
 
 ## 审查轮留档
-（批次级验证 + 两轮 Subagent 审查后补充）
+**第一轮**（1 阻断 + 3 重要，全部修复）：B1 `verifyIntegrity` 错误消息内嵌真实 `trace_id`（安全红线）→ 移除仅留 sequence；I1 `StorageMonitor.start()` 先 check 后赋 timer → 重入场景定时器泄漏 → 对调先赋 timer 再 check，+重入清 timer 用例；I2 链校验缺连接性 → 加 previous_hmac 连接 + sequence 连续校验，+删除中部 transition 检出用例；I3 `verifyIntegrity` 无生产调用点 → `createServiceController` 构造后接线 + 失败 fail-closed。
+
+**第二轮**（0 阻断；2 重要 + 建议项）：N1 I3 接线无集成测试 + reject 路径不释放 audit 句柄 → 失败路径 `catch` 中 `audit.close()`；N2 `shutdown()` 顺序 audit 先于 persona/safety 关闭 → 调整为 persona/safety 先关、audit 最后（使 checkpoint 无竞争连接）；N3/N4 空库与多 trace 链校验 → +2 用例；N5 `backupTo` 目标已存在约束 → docstring 明确；N7 `StorageMonitor.check()` 未防御 readStorage/onCritical 抛异常 → try/catch 兜底。建议项 N6（checkpoint busy 忽略）、N8（启动失败无用户诊断）、N9（进度数字统一）分别以注释/文档留档处理。
+
+**剩余风险**：删除整 trace 无法检出（HMAC 链无外部锚点）、`isStorageReady` fail-open、启动 HMAC 全量重算性能、I3 无集成测试（见已知限制）。

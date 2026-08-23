@@ -69,7 +69,14 @@ export async function createServiceController(
   // RUNBOOK §5.3 crash recovery: a process restart must verify integrity
   // before the service may run. A mismatch fails the whole app init (the
   // caller keeps the service stopped instead of trusting corrupt audit data).
-  audit.verifyIntegrity();
+  // Close the audit handle on the failure path so the DB file is not left
+  // locked while the user repairs it.
+  try {
+    audit.verifyIntegrity();
+  } catch (err) {
+    audit.close();
+    throw err;
+  }
   const persona = new PersonaStore({ dbPath, migrations, keyManager, keyVersion: options.keyVersion });
   const safety = new SafetyPolicyStore({
     dbPath,
@@ -194,9 +201,12 @@ export async function createServiceController(
 
   const shutdown = () => {
     goldenSync.stop();
-    audit.close();
+    // Close the other connections to the same audit.sqlite first so audit's
+    // checkpoint (wal_checkpoint TRUNCATE) runs with no competing connection
+    // holding the WAL (N2).
     persona.close();
     safety.close();
+    audit.close();
   };
 
   return {

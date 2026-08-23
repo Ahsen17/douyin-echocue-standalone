@@ -282,7 +282,8 @@ export class AuditStoreWorker {
    * Consistent on-disk snapshot for a controlled local recovery drill
    * (RUNBOOK §8.3). Must only run after the service is fully stopped and this
    * worker is closed; opens a separate read-only handle so the running worker
-   * never participates in the copy.
+   * never participates in the copy. VACUUM INTO fails if targetPath already
+   * exists — callers must use a fresh path per drill.
    */
   backupTo(targetPath: string): void {
     let backup: DatabaseSync | null = null;

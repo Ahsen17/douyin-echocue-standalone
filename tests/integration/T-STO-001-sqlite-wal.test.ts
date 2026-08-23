@@ -117,6 +117,39 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
     worker.close();
   });
 
+  it('reports integrity ok on a fresh DB with no transitions (first install path)', async () => {
+    const dbPath = join(testDir, 'audit.sqlite');
+    const credStore = new CredentialStore(testDir, mockStorage);
+    const keyManager = new CryptoKeyManager(credStore);
+    await keyManager.ensureKeys('v1');
+    const worker = new AuditStoreWorker({
+      dbPath,
+      migrations: [{ version: 1, path: MIGRATION_PATH }],
+      keyManager,
+      keyVersion: 'v1',
+    });
+    const report = worker.verifyIntegrity();
+    expect(report.integrityCheck).toBe('ok');
+    expect(report.migrationVersion).toBe(1);
+    expect(report.transitionsChecked).toBe(0);
+    worker.close();
+  });
+
+  it('verifies interleaved HMAC chains of multiple traces independently', async () => {
+    const { worker } = await makeWorker(testDir);
+    const secondTraceId = writeTrace(worker, 'msg-2');
+    // One more transition on the second trace so a mid-chain delete is possible.
+    worker.appendTransition(secondTraceId, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED');
+    expect(worker.verifyIntegrity().transitionsChecked).toBeGreaterThan(0);
+
+    // Deleting a middle row of the second trace must break only its chain, and
+    // the checker must still report a failure.
+    const db = (worker as unknown as { db: DatabaseSync }).db;
+    db.prepare('DELETE FROM audit_transition WHERE trace_id=? AND sequence_no=2').run(secondTraceId);
+    expect(() => worker.verifyIntegrity()).toThrow(/sequence gap|disconnected/);
+    worker.close();
+  });
+
   it('detects a deleted intermediate transition as a broken HMAC chain', async () => {
     const { worker, traceId } = await makeWorker(testDir);
     // makeWorker already wrote RECEIVED→NORMALIZED; add one more transition so
@@ -177,7 +210,9 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
       worker.checkpoint();
       const base = (await stat(dbPath)).size;
 
-      const N = 1000;
+      // 500 traces is enough to measure a stable per-thousand figure while
+      // staying within the budget under full-suite CPU contention.
+      const N = 500;
       for (let i = 0; i < N; i += 1) writeTrace(worker, `msg-${i}`);
       worker.checkpoint();
       const after = (await stat(dbPath)).size;
@@ -192,7 +227,7 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
       expect(bytesPerThousand).toBeLessThan(4 * 1024 * 1024);
       worker.close();
     },
-    30_000,
+    20_000,
   );
 
   it('rejects the startup gate when the data volume has < 2 GiB free', async () => {
