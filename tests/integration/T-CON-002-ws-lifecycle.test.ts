@@ -100,7 +100,10 @@ describe('T-CON-002: WebSocket Lifecycle Integration', () => {
     await rm(testDir, { recursive: true, force: true });
   });
 
-  function makeController(createLiveSession?: (params: { roomReference: string; platformRoomId?: string }) => Promise<void>) {
+  function makeController(
+    createLiveSession?: (params: { roomReference: string; platformRoomId?: string }) => Promise<void>,
+    gateTimeoutMs = 5000,
+  ) {
     const machine = new ServiceStateMachine();
     const sidecar = new NoopSidecar();
     const controller = new ServiceController({
@@ -120,7 +123,7 @@ describe('T-CON-002: WebSocket Lifecycle Integration', () => {
           });
         }),
       cleanupOnStop: () => undefined,
-      gateTimeoutMs: 5000,
+      gateTimeoutMs,
     });
     return { controller, machine, sidecar };
   }
@@ -162,6 +165,37 @@ describe('T-CON-002: WebSocket Lifecycle Integration', () => {
     const state = await startPromise;
     expect(state.lifecycle).toBe('STOPPED');
     expect(state.stopReason).toBe('ROOM_OFFLINE');
+    expect(sidecar.started).toBe(false);
+  });
+
+  it('stays gated and fails closed when ROOM_ONLINE never arrives (M7-04)', async () => {
+    const { controller, machine } = makeController(undefined, 200);
+    const clientPromise = waitForClient(server);
+    const startPromise = controller.start();
+    await clientPromise;
+    await waitForLifecycle(machine, 'GATE_CONNECTING');
+    // No status frame is sent: the gate must time out rather than enter RUNNING.
+    const state = await startPromise;
+    expect(state.lifecycle).toBe('STOPPED');
+    expect(state.stopReason).toBe('SOURCE_ERROR');
+    expect(state.recoverableError?.code).toBe('E_SOURCE_UNAVAILABLE');
+  });
+
+  it('should transition to STOPPED on ROOM_ENDED (M7-04)', async () => {
+    const { controller, machine, sidecar } = makeController();
+    const clientPromise = waitForClient(server);
+    const startPromise = controller.start();
+    const client = await clientPromise;
+    await waitForLifecycle(machine, 'GATE_CONNECTING');
+    client.send(
+      JSON.stringify({ type: 'system', event: 'live_status', code: 'ROOM_ONLINE', data: { room_id: '123456' } }),
+    );
+    await startPromise;
+    expect(machine.getViewState().lifecycle).toBe('RUNNING');
+    client.send(JSON.stringify({ type: 'system', event: 'live_status', code: 'ROOM_ENDED' }));
+    await waitForLifecycle(machine, 'STOPPED');
+    const state = machine.getViewState();
+    expect(state.stopReason).toBe('ROOM_ENDED');
     expect(sidecar.started).toBe(false);
   });
 
