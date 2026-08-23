@@ -219,7 +219,7 @@ function harness(overrides: Partial<SuggestionOrchestratorDeps> = {}) {
     createProvider: () => makeProvider() as never,
     validator: new SuggestionOutputValidator(),
     displaySink: sink,
-    // Comment deadline = receivedMonotonicMs(1000) + 3000 = 4000; keep the clock
+    // Comment deadline = receivedMonotonicMs(1000) + 5000 = 6000; keep the clock
     // below it so candidates stay fresh through retrieval and generation.
     nowMonotonic: () => 2000,
     windowMaxAgeMs: 100000,
@@ -632,9 +632,9 @@ describe('SuggestionAttemptOrchestrator', () => {
       return { provider, release: () => releaseGeneration() };
     }
 
-    it('applies the t0 cap when windowMaxAge is large and selection is immediate', async () => {
+    it('applies the t0 cap when selection is delayed past the selection budget', async () => {
       const { release } = gatedProvider();
-      let now = 2000;
+      let now = 4000;
       const { orchestrator } = harness({
         retriever: makeRetriever([preHit(0.9)]) as never,
         windowMaxAgeMs: 100000,
@@ -644,8 +644,8 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(t0+3000, selectedAt+2500, t0+windowMaxAge) = min(4000, 4500, 101000) = 4000.
-      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(4000);
+      // min(t0+5000, selectedAt+2500, t0+windowMaxAge) = min(6000, 6500, 101000) = 6000.
+      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(6000);
       release();
     });
 
@@ -660,7 +660,7 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(1000+3000, 1200+2500, 1000+100000) = 3700 (selection budget binds).
+      // min(1000+5000, 1200+2500, 1000+100000) = 3700 (selection budget binds).
       expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(3700);
     });
 
@@ -676,7 +676,7 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(4000, 4500, 2500) = 2500: the window residency binds.
+      // min(6000, 4500, 2500) = 2500: the window residency binds.
       expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(2500);
       now = 2600; // past 2500 while the provider call is in flight
       release();
@@ -734,7 +734,11 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ userNickname: '观众B', normalizedText: '主播真棒' }));
       await waitFor(() => sink.shown.length === 1);
-      expect(sink.shown[0].comment).toEqual({ nickname: '观众B', text: '主播真棒' });
+      // sentAt is the local rendering of receivedAt (timezone-dependent), so
+      // assert the two fixed fields plus the HH:mm:ss shape, not a value.
+      expect(sink.shown[0].comment.nickname).toBe('观众B');
+      expect(sink.shown[0].comment.text).toBe('主播真棒');
+      expect(sink.shown[0].comment.sentAt).toMatch(/^\d{2}:\d{2}:\d{2}$/);
       expect(sink.shown[0].suggestion.quickReply.length).toBeGreaterThan(0);
     });
 

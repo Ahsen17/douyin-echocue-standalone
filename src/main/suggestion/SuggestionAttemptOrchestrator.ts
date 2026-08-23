@@ -18,21 +18,30 @@ import { CredentialStore } from '../credentials/index.js';
 import { AuditDuplicateTraceError, AuditUnavailableError } from '../storage/index.js';
 import { uuidv7 } from '../util/index.js';
 import { SuggestionWindow } from './SuggestionWindow.js';
+import { formatOverlaySentTime } from './format-overlay-sent-time.js';
 import type { SuggestionOrchestratorDeps } from './types.js';
 import type { PendingCandidate, ProcessingComment, SuggestionAttempt } from './types.js';
 import type { CancelTraceReason, OutputValidationContext, TeamMemberNameV1 } from '../validation/types.js';
 
-// Full freshness deadline (CONTRACT §6): min(t0+3000, selectedAt+2500,
+// Full freshness deadline (CONTRACT §6): min(t0+5000, selectedAt+2500,
 // t0+windowMaxAgeMs). The windowOpenedAt term is the candidate's own entry time
 // (receivedMonotonicMs), so its budget is t0 + windowMaxAgeMs.
-const T0_FRESHNESS_BUDGET_MS = 3000;
+//
+// 2026-08 校准：DeepSeek 一次 JSON 生成真实延迟 1~3s；原 T0=3000 且
+// windowMaxAgeMs=1500 使 min 恒取 t0+1500，LLM 实际预算仅约 1s，导致几乎
+// 每条 LLM 建议 DEADLINE_EXCEEDED 被丢弃。临时将 t0 上限与窗口驻留放宽到
+// 5s（整个过期时间上限 5s；LLM 选中后预算仍由 selectedAt+2500 决定，约
+// 2.5s，从原 ~1.5s 提升）。
+// TODO(优化): 应将窗口驻留与 attempt 寿命预算解耦——窗口驻留只作淘汰线，
+// attempt 截止改用 min(t0+5s, selectedAt+2.5s)，避免 5s 窗口候选驻留过久。
+const T0_FRESHNESS_BUDGET_MS = 5000;
 const SELECTED_BUDGET_MS = 2500;
 // Overlay display-window duration (PRD: default 10s, user-configurable).
 const DISPLAY_DURATION_MS = 10_000;
 // Provider hard timeout (CONTRACT §6): 5s, superseded by an earlier freshness deadline.
 const PROVIDER_TIMEOUT_MS = 5000;
 // Latest-window defaults (ARCH §4.1); overridden by settings.internalRetrieval.
-const WINDOW_MAX_AGE_MS = 1500;
+const WINDOW_MAX_AGE_MS = 5000;
 const WINDOW_CANDIDATE_MAX_COUNT = 50;
 // Bounded session dedup (ARCH §4.1): cap the seen-set to bound memory in a long
 // stream; a fresh window resets it via startSession.
@@ -158,9 +167,9 @@ export class SuggestionAttemptOrchestrator {
       sessionId,
       traceId,
       windowVersion,
-      // Pre-attempt bound: the tightest t0-anchored term (window residency wins
-      // when windowMaxAgeMs < 3000). The full min formula is applied when the
-      // attempt is created (M5-08, CONTRACT §6).
+      // Pre-attempt bound: the tightest t0-anchored term before selection
+      // (窗口驻留, 与 5s 窗口淘汰一致；2026-08 校准)。The full min formula is
+      // applied when the attempt is created (M5-08, CONTRACT §6).
       freshnessDeadlineMonotonicMs:
         comment.receivedMonotonicMs +
         Math.min(T0_FRESHNESS_BUDGET_MS, this.deps.windowMaxAgeMs ?? WINDOW_MAX_AGE_MS),
@@ -598,11 +607,14 @@ export class SuggestionAttemptOrchestrator {
     if (!pre.ok) return this.cancelAttempt(attempt, pre.reason);
     this.enterDisplaying();
     // UI §5: the overlay shows @nickname + comment text beside the suggestion.
-    // An empty nickname is the same as absent (no "@" placeholder line).
+    // An empty nickname is the same as absent (no "@" placeholder line). The
+    // comment sent time is pre-formatted here (createTime, receivedAt fallback).
+    const sentAt = formatOverlaySentTime(attempt.comment.upstreamCreatedAt, attempt.comment.receivedAt);
     const payload: OverlayDisplayPayloadV1 = {
       comment: {
         nickname: attempt.comment.userNickname || undefined,
         text: attempt.comment.normalizedText,
+        ...(sentAt !== undefined ? { sentAt } : {}),
       },
       suggestion: output,
     };
