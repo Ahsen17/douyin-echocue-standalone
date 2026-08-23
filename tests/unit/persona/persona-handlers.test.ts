@@ -165,6 +165,16 @@ describe('Persona IPC handlers (M6-04)', () => {
     ).rejects.toThrow(/版本不存在/);
   });
 
+  it('getVersionContent rejects a nonexistent version id (TD-07)', async () => {
+    const a = await handlers.create({ displayName: '小A' });
+    await expect(
+      handlers.getVersionContent({
+        personaId: a.personaId,
+        personaVersion: '01932a3b-4c5d-7000-8000-0000000000ff',
+      }),
+    ).rejects.toThrow(/版本不存在/);
+  });
+
   it('non-content responses never include persona text', async () => {
     const a = await handlers.create({ displayName: '小A' });
     const b = await handlers.create({ displayName: '阿哲' });

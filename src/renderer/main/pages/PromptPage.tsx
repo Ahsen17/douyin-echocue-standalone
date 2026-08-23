@@ -85,6 +85,7 @@ export default function PromptPage() {
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            maxLength={20000}
             placeholder="留空并使用代码默认提示词；填写后保存将替换指令部分。"
             style={{ minHeight: 240 }}
           />

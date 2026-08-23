@@ -352,7 +352,7 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
   roomReference: z.string().min(1).max(128).optional(),
   provider: ProviderConfigInputV1Schema.optional(),
   // TD-08: empty string clears the custom template back to the code default.
-  systemPrompt: z.string().max(20000).optional(),
+  systemPrompt: z.string().trim().max(20000).optional(),
 }).superRefine((value, ctx) => {
   if (
     value.roomReference === undefined &&

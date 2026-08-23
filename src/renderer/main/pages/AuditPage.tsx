@@ -74,13 +74,25 @@ export default function AuditPage() {
   }
 
   if (search.error !== null) {
-    return <ErrorState code="E_AUDIT_QUERY" message={search.error} onRetry={() => void search.run(page, finalState, labelStatus)} />
+    return (
+      <div className="audit-page">
+        <ErrorState code="E_AUDIT_QUERY" message={search.error} onRetry={() => void search.run(page, finalState, labelStatus)} />
+      </div>
+    )
   }
   if (search.running && result === null) {
-    return <LoadingState label="正在查询并按需解密详情…" />
+    return (
+      <div className="audit-page">
+        <LoadingState label="正在查询并按需解密详情…" />
+      </div>
+    )
   }
   if (result === null) {
-    return <LoadingState label="正在查询并按需解密详情…" />
+    return (
+      <div className="audit-page">
+        <LoadingState label="正在查询并按需解密详情…" />
+      </div>
+    )
   }
 
   const items = result.items
