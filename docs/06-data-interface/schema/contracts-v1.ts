@@ -656,8 +656,8 @@ export const AuditTraceSummaryV1Schema = z.strictObject({
   labelStatus: LabelStatusSchema,
   hasSuggestion: z.boolean(),
   commentText: z.string().max(2000),
-  // Existing feedback revision count; the label form uses it as the optimistic
-  // lock baseline (expectedRevisionNo) so edits keep succeeding after re-save.
+  // Current label version (one feedback row per trace, 覆盖式重打标 bumps it);
+  // the label form uses it as the optimistic lock baseline (expectedRevisionNo).
   revisionCount: z.number().int().nonnegative(),
 });
 
@@ -692,7 +692,7 @@ export const AuditWorkflowV1Schema = z.strictObject({
 
 export const AuditSubmitLabelRequestV1Schema = z.strictObject({
   traceId: uuidV7,
-  // Optimistic lock (DATA §4.3 修订而非覆盖): the revision count the caller
+  // Optimistic lock (DATA §4.3 覆盖式重打标): the label version the caller
   // observed; a concurrent edit bumps it and the write is rejected.
   expectedRevisionNo: z.number().int().min(0),
   score: z.number().int().min(0).max(100),

@@ -357,9 +357,9 @@ interface ProviderConfigV1 {
 
 自然语言禁忌与关键词写入 `safety_policy_version`：保存草稿时由 `SafetyRuleCompilerV1` 生成确定性规则；只有编译成功的 `PUBLISHED` 版本可写入 `activeSafetyPolicyVersion`。运行会话固定该版本，不热切换。编译器支持受控“不要/禁止/不讨论 + 明确话题”句式、关键词/短语和受控 regex；任何不可解释内容都必须在 UI 标为需修改并阻止发布。
 
-golden 回流采用 transactional outbox：`audit.submitLabel` 在同一 SQLite 事务内写入 feedback 修订、更新 trace 的用户可见 `label_status`，并在需要回流时写入唯一 `qdrant_sync_job`。job 是同步的唯一事实来源；`suggestion_feedback.sync_status` 只由 job 状态派生，禁止独立写入。worker 只允许 `PENDING→RUNNING→SUCCEEDED/FAILED`，到达重试时间后才允许 `FAILED→PENDING`；Qdrant 成功后在同一 SQLite 事务标记 `SUCCEEDED/SYNCED`，失败保留错误并指数退避。重复提交同一修订不可产生重复 job。仅 `GOLDEN_SYNC_FAILED` 的内部诊断可触发人工修复重试，用户打标页面不可见。
+打标采用**覆盖式单反馈模型**：每个 trace 至多一条 `suggestion_feedback` 当前反馈，首次打标 `INSERT`，再次打标按原 `feedback_id` 在原行上 `UPDATE` 覆盖（`revision_no` 仅作为乐观锁版本号递增，不保留修订历史）。`audit.submitLabel` 在同一 SQLite 事务内写入/覆盖反馈、更新 trace 的用户可见 `label_status`，并在新打标仍需要回流时写入唯一 `qdrant_sync_job`；被取代标签遗留的 `PENDING/FAILED/RUNNING` outbox job 在该事务内清除，避免陈旧 job 按新标签误回流。`suggestion_feedback.sync_status` 由 `submitLabel` 按当前打标的回流意图写入（`PENDING`/`NOT_REQUIRED`），再随 job 完成/失败更新为 `SYNCED`/`FAILED`。worker 只允许 `PENDING→RUNNING→SUCCEEDED/FAILED`，到达重试时间后才允许 `FAILED→PENDING`；Qdrant 成功后在同一 SQLite 事务标记 `SUCCEEDED/SYNCED`，失败保留错误并指数退避。同版本打标不可产生重复 job。仅 `GOLDEN_SYNC_FAILED` 的内部诊断可触发人工修复重试，用户打标页面不可见。
 
-修正答案回流时，`case_id = feedback:{feedback_id}:{revision_no}`，`target_point_id = UUIDv5('echocue:golden_set:' + case_id)`，明文为 canonical JSON `CorrectionPayloadV1`，写入前复用输出长度/安全校验器。未修正且评分 `>=85` 时使用同样规则，但 reply/cues 来自该 trace 已审计的最终输出。拒绝且未修正时，只有 `source_collection='golden_set' AND source_point_id IS NOT NULL` 才创建 `SET_BAD_CASE` job；否则 `sync_status=NOT_REQUIRED`。
+修正答案回流时，`case_id = feedback:{feedback_id}`（锚定稳定的 `feedback_id`，覆盖式重打标复用同一 golden point），`target_point_id = UUIDv5('echocue:golden_set:' + case_id)`，明文为 canonical JSON `CorrectionPayloadV1`，写入前复用输出长度/安全校验器。未修正且评分 `>=85` 时使用同样规则，但 reply/cues 来自该 trace 已审计的最终输出。拒绝且未修正时，只有 `source_collection='golden_set' AND source_point_id IS NOT NULL` 才创建 `SET_BAD_CASE` job；否则 `sync_status=NOT_REQUIRED`。
 
 ## 4. Qdrant collection 契约
 

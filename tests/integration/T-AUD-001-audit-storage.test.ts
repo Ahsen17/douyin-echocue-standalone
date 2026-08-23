@@ -271,7 +271,7 @@ describe('T-AUD-001: Audit Storage', () => {
     expect(worker.getTraceWorkflowV1(randomUUID())).toBeNull();
   });
 
-  it('submitLabel writes a revision, updates trace status, and creates an UPSERT outbox job (M7-01)', () => {
+  it('submitLabel writes a first label, updates trace status, and creates an UPSERT outbox job (M7-01)', () => {
     const { personaVersion } = setupPersonaAndVersion();
     const sessionId = randomUUID();
     const now = new Date().toISOString();
@@ -356,7 +356,7 @@ describe('T-AUD-001: Audit Storage', () => {
     }
   });
 
-  it('submitLabel increments revisions on edits and rejects a stale optimistic lock (M6-10)', () => {
+  it('re-labeling overwrites the original feedback in place and drops the stale reflux job (M6-10 覆盖)', () => {
     const { personaVersion } = setupPersonaAndVersion();
     const sessionId = randomUUID();
     const now = new Date().toISOString();
@@ -391,25 +391,120 @@ describe('T-AUD-001: Audit Storage', () => {
     worker.appendTransition(traceId, 'DISPLAYED', 'HIDDEN', 'DISPLAY_DURATION_ELAPSED');
 
     worker.submitLabel({ traceId, expectedRevisionNo: 0, score: 85 });
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    let originalFeedbackId: string;
+    try {
+      originalFeedbackId = (reader.prepare(
+        `SELECT feedback_id FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(traceId) as { feedback_id: string }).feedback_id;
+    } finally {
+      reader.close();
+    }
+
+    // A re-label under 85 overwrites the SAME feedback row; its PENDING reflux
+    // job is stale and must be dropped, and the label stays SQLite-only.
     worker.submitLabel({ traceId, expectedRevisionNo: 1, score: 70 });
-    // A concurrent editor who still sees revision 1 must be rejected.
+    // A concurrent editor who still sees version 1 must be rejected.
     expect(() => worker.submitLabel({ traceId, expectedRevisionNo: 1, score: 60 })).toThrow(
       /label already changed/,
     );
 
-    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    const reader2 = new DatabaseSync(join(testDir, 'audit.sqlite'));
     try {
-      const rows = reader.prepare(
-        `SELECT revision_no, quality_score, sync_status FROM suggestion_feedback WHERE trace_id = ? ORDER BY revision_no`,
-      ).all(traceId) as Array<{ revision_no: number; quality_score: number; sync_status: string }>;
-      expect(rows.map((r) => r.revision_no)).toEqual([1, 2]);
-      expect(rows.map((r) => r.quality_score)).toEqual([85, 70]);
-      // Only the >=85 revision refluxes; the later 70 edit stays SQLite-only.
-      expect(rows.map((r) => r.sync_status)).toEqual(['PENDING', 'NOT_REQUIRED']);
-      const jobs = reader.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
-      expect(jobs.n).toBe(1);
+      const rows = reader2.prepare(
+        `SELECT feedback_id, revision_no, quality_score, sync_status FROM suggestion_feedback WHERE trace_id = ?`,
+      ).all(traceId) as Array<{
+        feedback_id: string;
+        revision_no: number;
+        quality_score: number;
+        sync_status: string;
+      }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].feedback_id).toBe(originalFeedbackId);
+      expect(rows[0].revision_no).toBe(2);
+      expect(rows[0].quality_score).toBe(70);
+      expect(rows[0].sync_status).toBe('NOT_REQUIRED');
+      const jobs = reader2.prepare('SELECT COUNT(*) as n FROM qdrant_sync_job').get() as { n: number };
+      expect(jobs.n).toBe(0);
+    } finally {
+      reader2.close();
+    }
+  });
+
+  it('re-labeling that still qualifies refluxes via a fresh job on the same feedback (M6-10 覆盖)', () => {
+    const { personaVersion } = setupPersonaAndVersion();
+    const sessionId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    const traceId = randomUUID();
+    worker.createTrace({ traceId, sessionId, sourceMessageId: 'msg-1', receivedAt: now });
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED', [
+      snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', {
+        sourceMessageId: 'msg-1',
+        rawText: '主播晚上好',
+        normalizedText: '主播晚上好',
+        receivedAt: now,
+        receivedMonotonicMs: 1,
+      }),
+    ]);
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED', [
+      snap('DECISION_JSON', 'PERSONA_ROUTE', { personaId: 'p-1' }),
+      snap('PERSONA_TEXT', 'PERSONA_VERSION_SNAPSHOT', {
+        personaId: 'p-1',
+        personaVersion,
+        content: '你是主播。',
+        contentHmac: 'hmac-v1',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'ROUTED', 'RETRIEVING', 'RETRIEVAL_STARTED');
+    worker.appendTransition(traceId, 'RETRIEVING', 'PROMPT_RENDERED', 'LLM_REQUIRED');
+    worker.appendTransition(traceId, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED');
+    worker.appendTransition(traceId, 'LLM_PENDING', 'GENERATED', 'PROVIDER_SUCCEEDED');
+    worker.appendTransition(traceId, 'GENERATED', 'DISPLAY_READY', 'OUTPUT_VALIDATED');
+    worker.appendTransition(traceId, 'DISPLAY_READY', 'DISPLAYED', 'OVERLAY_RENDERED');
+    worker.appendTransition(traceId, 'DISPLAYED', 'HIDDEN', 'DISPLAY_DURATION_ELAPSED');
+
+    worker.submitLabel({ traceId, expectedRevisionNo: 0, score: 85 });
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    let originalFeedbackId: string;
+    try {
+      originalFeedbackId = (reader.prepare(
+        `SELECT feedback_id FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(traceId) as { feedback_id: string }).feedback_id;
     } finally {
       reader.close();
+    }
+
+    // A re-label that still qualifies (>=85) keeps ONE feedback row but writes a
+    // fresh reflux job on the bumped version; the old PENDING job is dropped.
+    worker.submitLabel({ traceId, expectedRevisionNo: 1, score: 90 });
+
+    const reader2 = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    try {
+      const rows = reader2.prepare(
+        `SELECT feedback_id, revision_no, quality_score, sync_status FROM suggestion_feedback WHERE trace_id = ?`,
+      ).all(traceId) as Array<{
+        feedback_id: string;
+        revision_no: number;
+        quality_score: number;
+        sync_status: string;
+      }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].feedback_id).toBe(originalFeedbackId);
+      expect(rows[0].revision_no).toBe(2);
+      expect(rows[0].quality_score).toBe(90);
+      expect(rows[0].sync_status).toBe('PENDING');
+      const jobs = reader2.prepare(
+        `SELECT feedback_id, action, state, idempotency_key FROM qdrant_sync_job`,
+      ).all() as Array<{ feedback_id: string; action: string; state: string; idempotency_key: string }>;
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].feedback_id).toBe(originalFeedbackId);
+      expect(jobs[0].action).toBe('UPSERT');
+      expect(jobs[0].state).toBe('PENDING');
+      expect(jobs[0].idempotency_key).toMatch(/^[0-9a-f-]{36}:2:UPSERT$/);
+    } finally {
+      reader2.close();
     }
   });
 
