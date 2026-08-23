@@ -8,7 +8,7 @@
 |------|------|
 | 类型 | 插入实现（缺陷修复 + 功能接线），非路图原子任务 |
 | 分支 | feat/retrieval-preset-import |
-| 状态 | ✅ 已完成（两轮隔离 Subagent 审查通过，待 PR + CI） |
+| 状态 | ✅ 已完成（PR #36 合并、master CI 通过） |
 | 完成时间 | 2026-08-23 |
 | 追溯 | RUNBOOK §2.2/§3.1/§3.2/§5.1/§8.2；PRESET §1/§6/§7；A-05；T-RET-001；T-SCOPE-001 |
 
@@ -84,6 +84,10 @@ npm run build
 - **`getStatus` 只读**：不触发 sidecar 启动重试；sidecar 启动失败由 `index.ts` 一次性尝试 + 导入时 `ensureQdrant()` 重试。
 - **T-PKG smoke-quit 时序风险**：eager 启动 Qdrant 后，4s smoke-quit 可能早于 Qdrant 就绪；`start()` 中断被 `.catch` 吸收、`stop()` 等待 pending start 后清理，不阻塞退出码 0；最坏等待受 startup timeout（15s）约束。若 Windows CI 出现孤儿进程断言失败按 `fix/` 处理。
 - **T-SCOPE-001 变更说明**：新增通道为合法用户面初始化能力（RUNBOOK §3.1 强制的导入流程），测试改为显式允许 `retrieval.getStatus`/`retrieval.importPreSet` 两个受控通道、其余 `retrieval.*` 仍禁止。
+
+## 结论
+
+PR #36 已合并到 master（merge commit `40ce6b8`），master CI 通过（Test on Windows ✅ 3m35s、Package on Windows ✅ 4m46s，后者真实执行安装→`--smoke-quit` 启动→退出无孤儿→升级→卸载）。缺口关闭：安装后 Qdrant 侧车随应用启动、运行页可导入 pre_set、导入后门禁 `isRetrievalReady` 放行。
 
 ## 追溯
 
