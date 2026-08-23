@@ -10,6 +10,7 @@ import {
   type DouyinLiveWsAdapter,
 } from '../douyin/index.js';
 import type { ServiceStateMachine } from './ServiceStateMachine.js';
+import type { Logger } from '../telemetry/index.js';
 
 const DEFAULT_GATE_TIMEOUT_MS = 15_000;
 
@@ -50,6 +51,8 @@ export interface ServiceControllerOptions {
   /** Invoked with the concrete stop reason so in-flight work can be cancelled. */
   cleanupOnStop: (reason: StopReason) => void;
   gateTimeoutMs?: number;
+  /** Optional file logger; start-flow failures are recorded here for diagnosis. */
+  logger?: Logger;
   /**
    * Periodic data-volume monitor (RUNBOOK §5.3). Started once the service is
    * RUNNING and stopped on every stop path; the monitor's onCritical is the
@@ -80,6 +83,7 @@ export class ServiceController {
   private readonly cleanupOnStop: (reason: StopReason) => void;
   private readonly gateTimeoutMs: number;
   private readonly storageMonitor: { start(): void; stop(): void } | undefined;
+  private readonly logger: Logger | undefined;
 
   private adapter: DouyinLiveWsAdapter | null = null;
   private phase: Phase = 'idle';
@@ -98,6 +102,7 @@ export class ServiceController {
     this.cleanupOnStop = options.cleanupOnStop;
     this.gateTimeoutMs = options.gateTimeoutMs ?? DEFAULT_GATE_TIMEOUT_MS;
     this.storageMonitor = options.storageMonitor;
+    this.logger = options.logger;
   }
 
   getViewState(): ServiceViewState {
@@ -131,6 +136,7 @@ export class ServiceController {
     }
     if (this.abortRequested) return this.afterAbort();
     if ('error' in gate) {
+      this.logger?.error('lifecycle', 'service start blocked by gate', gate.error.code);
       this.enterStopped('SOURCE_ERROR', gate.error);
       return this.stateMachine.getViewState();
     }
@@ -140,6 +146,11 @@ export class ServiceController {
     } catch (err) {
       const code =
         err instanceof SidecarStartFailedError ? 'E_SIDECAR_START_FAILED' : 'E_SOURCE_UNAVAILABLE';
+      this.logger?.error(
+        'lifecycle',
+        `douyinLive sidecar start failed: ${err instanceof Error ? err.message : String(err)}`,
+        code,
+      );
       this.enterStopped('SOURCE_ERROR', gateError(code));
       return this.stateMachine.getViewState();
     }
@@ -151,6 +162,7 @@ export class ServiceController {
     try {
       await adapter.connect();
     } catch {
+      this.logger?.error('lifecycle', 'douyinLive WebSocket connect failed', 'E_SOURCE_UNAVAILABLE');
       await this.shutdownSource();
       this.enterStopped('SOURCE_ERROR', gateError('E_SOURCE_UNAVAILABLE'));
       return this.stateMachine.getViewState();
@@ -161,6 +173,7 @@ export class ServiceController {
     const first = await this.waitForFirstStatus();
     if (this.abortRequested) return this.afterAbort();
     if (first === 'TIMEOUT') {
+      this.logger?.warn('lifecycle', 'waiting for live room status timed out', 'E_SOURCE_UNAVAILABLE');
       await this.shutdownSource();
       this.enterStopped('SOURCE_ERROR', gateError('E_SOURCE_UNAVAILABLE'));
       return this.stateMachine.getViewState();
@@ -192,8 +205,10 @@ export class ServiceController {
       this.phase = 'running';
       this.stateMachine.transitionToLifecycle('RUNNING');
       this.storageMonitor?.start();
+      this.logger?.info('lifecycle', 'service RUNNING');
     } else {
       const stopReason = first.type === 'LIVE_OFFLINE' ? 'ROOM_OFFLINE' : 'ROOM_ENDED';
+      this.logger?.warn('lifecycle', `live room not online: ${first.type}`, stopReason);
       await this.shutdownSource();
       this.enterStopped(stopReason);
     }

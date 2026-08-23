@@ -17,7 +17,7 @@ import { SuggestionOutputValidator } from '../validation/index.js';
 import { SuggestionAttemptOrchestrator } from '../suggestion/index.js';
 import type { SuggestionDisplaySink } from '../suggestion/index.js';
 import type { CancelTraceReason } from '../validation/index.js';
-import { DiagnosticsSource } from '../telemetry/index.js';
+import { DiagnosticsSource, type Logger } from '../telemetry/index.js';
 import { ServiceController } from './ServiceController.js';
 import type { ServiceControllerOptions } from './ServiceController.js';
 import { createLiveSessionWriter, createServiceGateChecks } from './service-gate.js';
@@ -37,6 +37,8 @@ export interface CreateServiceControllerOptions {
   migrationPath: string;
   keyVersion: string;
   cleanupOnStop: () => void;
+  /** Optional file logger (wired by the app boot for daily logs under the data dir). */
+  logger?: Logger;
   /** Overlay port; M6-07 replaces the default stub with the real window. */
   displaySink?: SuggestionDisplaySink;
 }
@@ -211,6 +213,7 @@ export async function createServiceController(
       options.cleanupOnStop();
     },
     storageMonitor,
+    logger: options.logger,
   });
 
   const shutdown = () => {
