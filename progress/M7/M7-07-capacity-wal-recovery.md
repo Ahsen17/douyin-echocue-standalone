@@ -1,7 +1,10 @@
 # M7-07 容量、WAL、完整性与恢复演练
 
 ## 状态
-⏳ 待审查（2026-08-23），批次分支 `feat/M7-07`，M7 集成验证批次第三个原子任务（单独一批）
+✅ 已完成（2026-08-23），批次分支 `feat/M7-07`，PR #32（CR APPROVE，test-windows CI 通过），M7 集成验证批次第三个原子任务（单独一批）
+
+## 结论
+本批次完成 M7-07 全部判据：补生产能力（2 GiB 启动门槛 gate `E_STORAGE_LOW`、256 MiB 周期停服 `AUDIT_UNAVAILABLE`、WAL checkpoint、HMAC 链完整性检查、受控备份/恢复、崩溃重启接线 verifyIntegrity fail-closed）+ T-STO-001 填实 10 用例演练，覆盖 A-12 全部验收点，任何阈值路径无自动删除。两轮完全隔离 Subagent 审查通过（第一轮 1 阻断 + 3 重要已修复；第二轮 0 阻断，2 重要已修复）。契约/migration/IPC 零改动。
 
 ## 目标与范围
 完成判据（路图 M7-07）：**每千条增长量、2 GiB 启动门槛、低空间预警、256 MiB 停服、WAL checkpoint、释放空间后完整性检查与受控本机恢复演练通过**（T-STO-001、A-12；RUNBOOK §5.3/§8.3；DATA §8.2）。
