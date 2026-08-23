@@ -66,6 +66,10 @@ export async function createServiceController(
     keyManager,
     keyVersion: options.keyVersion,
   });
+  // RUNBOOK §5.3 crash recovery: a process restart must verify integrity
+  // before the service may run. A mismatch fails the whole app init (the
+  // caller keeps the service stopped instead of trusting corrupt audit data).
+  audit.verifyIntegrity();
   const persona = new PersonaStore({ dbPath, migrations, keyManager, keyVersion: options.keyVersion });
   const safety = new SafetyPolicyStore({
     dbPath,

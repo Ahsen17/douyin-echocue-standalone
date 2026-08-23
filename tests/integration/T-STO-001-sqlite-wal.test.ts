@@ -103,19 +103,31 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
     expect(report.migrationVersion).toBe(1);
     expect(report.transitionsChecked).toBeGreaterThan(0);
 
-    // Tamper with the chain: flip one entry_hmac to a different hex value.
+    // Tamper: flip the first entry_hmac to a different hex value.
     const db = (worker as unknown as { db: DatabaseSync }).db;
-    const row = db.prepare(
-      'SELECT trace_id, sequence_no FROM audit_transition ORDER BY sequence_no LIMIT 1',
-    ).get() as { trace_id: string; sequence_no: number };
+    const first = db.prepare(
+      'SELECT sequence_no FROM audit_transition WHERE trace_id=? ORDER BY sequence_no LIMIT 1',
+    ).get(traceId) as { sequence_no: number };
     db.prepare('UPDATE audit_transition SET entry_hmac = ? WHERE trace_id=? AND sequence_no=?').run(
       '0'.repeat(64),
-      row.trace_id,
-      row.sequence_no,
+      traceId,
+      first.sequence_no,
     );
-
     expect(() => worker.verifyIntegrity()).toThrow(AuditUnavailableError);
-    void traceId;
+    worker.close();
+  });
+
+  it('detects a deleted intermediate transition as a broken HMAC chain', async () => {
+    const { worker, traceId } = await makeWorker(testDir);
+    // makeWorker already wrote RECEIVED→NORMALIZED; add one more transition so
+    // a middle row (sequence 2) can be deleted. Deleting it must break the
+    // chain even though every surviving entry_hmac recomputes cleanly.
+    worker.appendTransition(traceId, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED');
+
+    const db = (worker as unknown as { db: DatabaseSync }).db;
+    db.prepare('DELETE FROM audit_transition WHERE trace_id=? AND sequence_no=2').run(traceId);
+
+    expect(() => worker.verifyIntegrity()).toThrow(/sequence gap|disconnected/);
     worker.close();
   });
 
@@ -244,7 +256,7 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
   });
 
   it('never auto-deletes audit rows on capacity or recovery paths', async () => {
-    const { worker, traceId } = await makeWorker(testDir);
+    const { worker } = await makeWorker(testDir);
     const db = (worker as unknown as { db: DatabaseSync }).db;
     const traceCount = () =>
       (db.prepare('SELECT COUNT(*) as c FROM audit_trace').get() as { c: number }).c;
@@ -269,7 +281,6 @@ describe('T-STO-001: SQLite WAL, capacity and recovery', () => {
     expect((after.prepare('SELECT COUNT(*) as c FROM audit_trace').get() as { c: number }).c).toBe(1);
     after.close();
     expect((await stat(backupPath)).size).toBeGreaterThan(0);
-    void traceId;
   });
 });
 

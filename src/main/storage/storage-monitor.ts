@@ -38,8 +38,11 @@ export class StorageMonitor {
 
   start(): void {
     if (this.timer !== null) return;
-    this.check();
+    // Arm the interval before the first check: a synchronous onCritical inside
+    // check() may stop() this monitor re-entrantly, and stop() must see the
+    // timer to clear it. (Order matters.)
     this.timer = setInterval(() => this.check(), this.checkIntervalMs);
+    this.check();
   }
 
   stop(): void {

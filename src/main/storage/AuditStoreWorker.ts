@@ -224,7 +224,29 @@ export class AuditStoreWorker {
       }>;
       const hmacKey = this.options.keyManager.getHmacKey(this.options.keyVersion);
       let transitionsChecked = 0;
+      // Transitions are ordered by (trace_id, sequence_no); track the previous
+      // row so the chain connection (previous_hmac links to the prior entry_hmac)
+      // and gap-free sequence numbers are verified too — a deleted row otherwise
+      // stays undetectable because each surviving entry_hmac recomputes cleanly.
+      let prevTraceId: string | null = null;
+      let prevEntryHmac: string | null = null;
+      let prevSeq = 0;
       for (const row of rows) {
+        if (row.trace_id !== prevTraceId) {
+          // A new trace restarts the chain; its first transition must have a
+          // null previous_hmac and sequence 1.
+          if (row.previous_hmac !== null || row.sequence_no !== 1) {
+            throw new AuditUnavailableError('hmac chain root is invalid');
+          }
+          prevTraceId = row.trace_id;
+          prevEntryHmac = null;
+          prevSeq = 0;
+        } else if (row.sequence_no !== prevSeq + 1) {
+          // A deleted intermediate transition breaks the sequence first.
+          throw new AuditUnavailableError('hmac chain has a sequence gap');
+        } else if (row.previous_hmac !== prevEntryHmac) {
+          throw new AuditUnavailableError('hmac chain is disconnected');
+        }
         const expected = computeTransitionHmac(
           hmacKey,
           row.trace_id,
@@ -236,10 +258,13 @@ export class AuditStoreWorker {
           row.previous_hmac,
         );
         if (expected !== row.entry_hmac) {
+          // Never surface a real trace_id in the error (security red line).
           throw new AuditUnavailableError(
-            `entry_hmac mismatch at trace ${row.trace_id} seq ${row.sequence_no}`,
+            `entry_hmac mismatch at sequence ${row.sequence_no}`,
           );
         }
+        prevEntryHmac = row.entry_hmac;
+        prevSeq = row.sequence_no;
         transitionsChecked += 1;
       }
       return {
