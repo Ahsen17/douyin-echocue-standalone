@@ -339,6 +339,7 @@ interface SettingsV1 {
   provider?: ProviderConfigV1;
   activeSafetyPolicyVersion?: string;
   overlay: { durationMs: number; width: number; height: number; opacity: number; fontScale: number; theme: 'light'|'dark'; clickThrough: boolean };
+  prompt?: { systemPromptTemplate: string; templateVersion: string; updatedAt: string };
   internalRetrieval: { calibrationVersion: string; directPushThreshold: number; windowMaxAgeMs: number; candidateMaxCount: number };
 }
 
@@ -583,7 +584,7 @@ Provider 到领域错误映射固定为：`AUTH→E_PROVIDER_AUTH`、`BILLING→
 | `config.get` / `config.update` | 白名单非密钥配置字段 | 脱敏配置视图 |
 | `provider.credential.set/clear/test` | `providerId` + 一次性 API Key（set）/无 Key（clear/test） | 仅 `apiKeyConfigured` 或脱敏连接测试结果 |
 | `diagnostics.getSummary` | 无 | 匿名运行摘要（无弹幕/人设/Key/trace_id） |
-| `persona.list/get/create/delete/setPrincipal/saveDraft/publish/listVersions/compare/updateAliases` | 人设与版本操作 | 人设摘要/版本摘要 |
+| `persona.list/get/create/delete/setPrincipal/saveDraft/publish/listVersions/compare/getVersionContent/updateAliases` | 人设与版本操作 | 人设摘要/版本摘要；`getVersionContent` 按成员+版本返回解密全文（归属校验，仅主窗口） |
 | `safety.get/saveDraft/publish` | 自然语言、关键词/短语与草稿版本 | 编译校验结果/版本摘要 |
 | `audit.search` | 时间、结果（final_state）、label 状态、分页 | `AuditTraceSummary[]` |
 | `audit.getWorkflow` | `traceId` | 完整 workflow 上下文 |

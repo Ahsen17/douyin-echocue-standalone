@@ -299,12 +299,22 @@ export const OverlayPreferenceV1Schema = z.strictObject({
   clickThrough: z.boolean(),
 });
 
+// TD-08: user-configured system prompt override for the LLM reply generation.
+// Absent means the runtime uses the code-default template; the immutable hard
+// rules are always appended by the PromptAssembler regardless of the template.
+export const SystemPromptV1Schema = z.strictObject({
+  systemPromptTemplate: z.string().trim().min(1).max(20000),
+  templateVersion: z.string().trim().min(1).max(64),
+  updatedAt: z.string().datetime({ offset: true }),
+});
+
 export const SettingsV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
   roomReference: z.string().min(1).max(128).optional(),
   provider: ProviderConfigV1Schema.optional(),
   activeSafetyPolicyVersion: uuidV7.optional(),
   overlay: OverlayPreferenceV1Schema,
+  prompt: SystemPromptV1Schema.optional(),
   internalRetrieval: z.strictObject({
     calibrationVersion: z.string().min(1).max(64),
     directPushThreshold: z.number().min(0).max(1),
@@ -320,6 +330,7 @@ export const ConfigViewV1Schema = z.strictObject({
   provider: ProviderConfigV1Schema.optional(),
   activeSafetyPolicyVersion: uuidV7.optional(),
   overlay: OverlayPreferenceV1Schema,
+  prompt: SystemPromptV1Schema.optional(),
   apiKeyConfigured: z.boolean(),
 });
 
@@ -340,9 +351,15 @@ export const ProviderConfigInputV1Schema = z.strictObject({
 export const ConfigUpdateRequestV1Schema = z.strictObject({
   roomReference: z.string().min(1).max(128).optional(),
   provider: ProviderConfigInputV1Schema.optional(),
+  // TD-08: empty string clears the custom template back to the code default.
+  systemPrompt: z.string().trim().max(20000).optional(),
 }).superRefine((value, ctx) => {
-  if (value.roomReference === undefined && value.provider === undefined) {
-    ctx.addIssue({ code: 'custom', message: 'at least one of roomReference or provider is required' });
+  if (
+    value.roomReference === undefined &&
+    value.provider === undefined &&
+    value.systemPrompt === undefined
+  ) {
+    ctx.addIssue({ code: 'custom', message: 'at least one of roomReference, provider, or systemPrompt is required' });
   }
 });
 
@@ -424,6 +441,18 @@ export const PersonaListVersionsRequestV1Schema = z.strictObject({ personaId: z.
 export const PersonaCompareRequestV1Schema = z.strictObject({
   a: z.string().min(1).max(128),
   b: z.string().min(1).max(128),
+});
+
+// TD-07: fetch one version's decrypted full content for the view mode.
+// personaId is required so a version id alone cannot read another member.
+export const PersonaGetVersionContentRequestV1Schema = z.strictObject({
+  personaId: z.string().min(1).max(64),
+  personaVersion: z.string().min(1).max(128),
+});
+
+export const PersonaVersionContentV1Schema = z.strictObject({
+  personaVersion: z.string().min(1).max(128),
+  content: z.string().max(50000),
 });
 
 export const PersonaUpdateAliasesRequestV1Schema = z.strictObject({
@@ -681,6 +710,8 @@ export type AliasKindV1 = z.infer<typeof AliasKindV1Schema>;
 export type AliasInputV1 = z.infer<typeof AliasInputV1Schema>;
 export type AliasRowV1 = z.infer<typeof AliasRowV1Schema>;
 export type PersonaVersionMetaV1 = z.infer<typeof PersonaVersionMetaV1Schema>;
+export type PersonaGetVersionContentRequestV1 = z.infer<typeof PersonaGetVersionContentRequestV1Schema>;
+export type PersonaVersionContentV1 = z.infer<typeof PersonaVersionContentV1Schema>;
 export type VersionComparisonV1 = z.infer<typeof VersionComparisonV1Schema>;
 export type PersonaDetailV1 = z.infer<typeof PersonaDetailV1Schema>;
 export type PersonaCreateRequestV1 = z.infer<typeof PersonaCreateRequestV1Schema>;
@@ -700,6 +731,7 @@ export type ProviderFixtureResponseV1 = z.infer<typeof ProviderFixtureResponseV1
 export type ProviderFixtureExpectedV1 = z.infer<typeof ProviderFixtureExpectedV1Schema>;
 export type ProviderFixtureCaseV1 = z.infer<typeof ProviderFixtureCaseV1Schema>;
 export type OverlayPreferenceV1 = z.infer<typeof OverlayPreferenceV1Schema>;
+export type SystemPromptV1 = z.infer<typeof SystemPromptV1Schema>;
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 export type ServiceViewState = z.infer<typeof ServiceViewStateSchema>;
 export type SuggestionOutputV1 = z.infer<typeof SuggestionOutputV1Schema>;

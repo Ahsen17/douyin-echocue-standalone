@@ -48,7 +48,7 @@ describe('preload surfaces (M6-11 / CONTRACT §7)', () => {
     expect(Object.keys(api.persona).sort()).toEqual(
       [
         'list', 'get', 'create', 'delete', 'setPrincipal', 'saveDraft', 'publish',
-        'listVersions', 'compare', 'updateAliases',
+        'listVersions', 'compare', 'getVersionContent', 'updateAliases',
       ].sort(),
     );
     expect(Object.keys(api.safety).sort()).toEqual(['get', 'saveDraft', 'publish'].sort());

@@ -76,6 +76,7 @@ const HANDLE_CHANNELS = [
   IpcChannel.PersonaPublish,
   IpcChannel.PersonaListVersions,
   IpcChannel.PersonaCompare,
+  IpcChannel.PersonaGetVersionContent,
   IpcChannel.PersonaUpdateAliases,
   IpcChannel.SafetyGet,
   IpcChannel.SafetySaveDraft,
@@ -103,7 +104,7 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     vi.clearAllMocks();
   });
 
-  it('registers exactly the 29 request channels and no broadcast/send-only channel', () => {
+  it('registers exactly the 30 request channels and no broadcast/send-only channel', () => {
     registerMainWires(() => true);
     registerOverlayWire(() => true);
     const registered = [...mocks.registered.keys()].sort();
@@ -151,6 +152,7 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
         IpcChannel.PersonaPublish,
         IpcChannel.PersonaListVersions,
         IpcChannel.PersonaCompare,
+        IpcChannel.PersonaGetVersionContent,
         IpcChannel.PersonaUpdateAliases,
       ].sort(),
     );

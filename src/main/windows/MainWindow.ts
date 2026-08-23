@@ -21,6 +21,9 @@ export class MainWindow {
     this.window = new BrowserWindow({
       width: 1200,
       height: 800,
+      // 固定布局下限与 body{min-width/min-height} 一致，防止内容被裁剪。
+      minWidth: 960,
+      minHeight: 640,
       frame: false,
       icon: resolveResourcePath(join('build', 'icon.png')),
       webPreferences: {

@@ -24,5 +24,6 @@ export function wirePersonaControl(options: PersonaControlIpcOptions): void {
   ipcMain.handle(IpcChannel.PersonaPublish, createGuardedHandler(isTrustedSender, (raw) => handlers.publish(raw)));
   ipcMain.handle(IpcChannel.PersonaListVersions, createGuardedHandler(isTrustedSender, (raw) => handlers.listVersions(raw)));
   ipcMain.handle(IpcChannel.PersonaCompare, createGuardedHandler(isTrustedSender, (raw) => handlers.compare(raw)));
+  ipcMain.handle(IpcChannel.PersonaGetVersionContent, createGuardedHandler(isTrustedSender, (raw) => handlers.getVersionContent(raw)));
   ipcMain.handle(IpcChannel.PersonaUpdateAliases, createGuardedHandler(isTrustedSender, (raw) => handlers.updateAliases(raw)));
 }

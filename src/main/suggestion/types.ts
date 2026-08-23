@@ -12,7 +12,7 @@ import type { SuggestionRetriever, CalibratedRetrieval, CalibrationArtifactV1 } 
 import type { ProviderConfigService, ProviderAuditRecord, TextGenerationProvider } from '../provider/index.js';
 import type { CredentialStore } from '../credentials/index.js';
 import type { SuggestionOutputValidator } from '../validation/index.js';
-import type { PersonaSnapshot, SafetySnapshot } from '../prompt/types.js';
+import type { PersonaSnapshot, SafetySnapshot, SystemPromptConfig } from '../prompt/types.js';
 import type { CancelTraceReason } from '../validation/types.js';
 
 export type { ValidatedSuggestionV1 };
@@ -103,6 +103,8 @@ export interface SuggestionOrchestratorDeps {
   directPushThreshold: number;
   calibrationArtifact?: CalibrationArtifactV1;
   maxContextBudget?: number;
+  /** TD-08: live read of the user-configured system prompt (null → code default). */
+  getSystemPrompt?: () => Promise<SystemPromptConfig | null>;
   onAuditFailure: () => void;
   /** Diagnostics hooks (M6-02): feed the anonymous run summary. */
   onCommentReceived?: () => void;

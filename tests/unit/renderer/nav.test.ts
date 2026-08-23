@@ -2,12 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { NAV_ITEMS, isNavItem } from '../../../src/renderer/main/nav.js'
 
 describe('main-window navigation', () => {
-  it('exposes exactly the seven official entries', () => {
+  it('exposes exactly the eight official entries', () => {
     expect(NAV_ITEMS).toEqual([
       '运行',
       '直播间',
       '团队与人设',
       '安全与禁忌',
+      '提示词设置',
       '浮窗偏好',
       '诊断',
       '审计追溯',

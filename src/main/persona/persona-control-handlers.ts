@@ -10,11 +10,13 @@ import {
   PersonaCreateRequestV1Schema,
   PersonaDeleteRequestV1Schema,
   PersonaGetRequestV1Schema,
+  PersonaGetVersionContentRequestV1Schema,
   PersonaListVersionsRequestV1Schema,
   PersonaPublishRequestV1Schema,
   PersonaSaveDraftRequestV1Schema,
   PersonaSetPrincipalRequestV1Schema,
   PersonaUpdateAliasesRequestV1Schema,
+  type PersonaVersionContentV1,
 } from '@echocue/contracts';
 import {
   AliasDuplicateError,
@@ -43,6 +45,7 @@ export interface PersonaControlHandlers {
   publish: (raw: unknown) => Promise<PersonaVersionMetaV1>;
   listVersions: (raw: unknown) => Promise<PersonaVersionMetaV1[]>;
   compare: (raw: unknown) => Promise<VersionComparisonV1>;
+  getVersionContent: (raw: unknown) => Promise<PersonaVersionContentV1>;
   updateAliases: (raw: unknown) => Promise<AliasRowV1[]>;
 }
 
@@ -143,6 +146,21 @@ export function createPersonaControlHandlers(deps: PersonaControlDeps): PersonaC
     async compare(raw) {
       const req = requireValid(PersonaCompareRequestV1Schema.safeParse(raw), '版本标识不合法');
       return persona.compareVersions(req.a, req.b);
+    },
+
+    async getVersionContent(raw) {
+      const req = requireValid(PersonaGetVersionContentRequestV1Schema.safeParse(raw), '版本标识不合法');
+      try {
+        // Ownership cross-check (TD-07): a version id alone must not read
+        // another member's decrypted content; mismatch is reported as missing.
+        const meta = persona.getVersionMeta(req.personaVersion);
+        if (meta.personaId !== req.personaId) {
+          throw new PersonaVersionNotFoundError(req.personaVersion);
+        }
+        return { personaVersion: req.personaVersion, content: persona.readVersionContent(req.personaVersion) };
+      } catch (err) {
+        throw translatePersonaError(err);
+      }
     },
 
     async updateAliases(raw) {

@@ -77,6 +77,9 @@ export class OverlayWindow {
     } else {
       void this.window.loadFile(join(__dirname, '../renderer/overlay/index.html'));
     }
+    // TD-06 浮窗默认置顶：提升到 screen-saver 层级，压过全屏直播/采集软件；
+    // 若过度可降级为 setAlwaysOnTop(true)（默认 floating 层级）。
+    this.window.setAlwaysOnTop(true, 'screen-saver');
   }
 
   public getWindow(): BrowserWindow | null {

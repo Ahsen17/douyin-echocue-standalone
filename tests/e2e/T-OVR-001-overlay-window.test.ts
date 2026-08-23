@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     setBounds: vi.fn(),
     setOpacity: vi.fn(),
     setIgnoreMouseEvents: vi.fn(),
+    setAlwaysOnTop: vi.fn(),
     getSize: vi.fn(() => [800, 200]),
     getOpacity: vi.fn(() => 1),
     getBounds: vi.fn(() => ({ x: 0, y: 0, width: 800, height: 200 })),
@@ -83,6 +84,12 @@ describe('T-OVR-001: Overlay Window Behavior', () => {
     const result = await pending;
     expect(result).toMatchObject({ ok: true });
     expect(typeof (result as { ok: true }).firstFrameAtMonotonicMs).toBe('number');
+  });
+
+  it('raises the overlay to the screen-saver always-on-top level by default (TD-06)', () => {
+    // TD-06 浮窗默认置顶：构造即把层级提升到 screen-saver，压过全屏直播/采集软件。
+    const win = new OverlayWindow({ getSettings: async () => null });
+    expect(mocks.windowObj.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver');
   });
 
   it('hides the overlay when the display window ends', async () => {
