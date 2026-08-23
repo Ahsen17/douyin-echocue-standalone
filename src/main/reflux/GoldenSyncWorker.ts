@@ -79,13 +79,32 @@ export class GoldenSyncWorker {
     try {
       result.rearmed = this.rearmEligible(this.batchSize);
 
+      let info: Parameters<typeof readGoldenProfile>[0];
+      try {
+        info = await this.qdrantClient.getCollection('golden_set');
+      } catch {
+        // Qdrant down or golden_set not bootstrapped: a transient outage. Leave
+        // PENDING jobs alone so no attempts are burned; a later sweep retries.
+        return result;
+      }
+
       let profile: GoldenProfileParams;
       try {
-        const info = await this.qdrantClient.getCollection('golden_set');
         profile = readGoldenProfile(info);
-      } catch {
-        // Qdrant down or golden_set not bootstrapped: leave PENDING jobs alone so
-        // no attempts are burned; a later sweep retries when Qdrant is reachable.
+      } catch (err) {
+        // golden_set exists but its BM25 metadata is missing/invalid — a
+        // persistent config error, not a transient outage. Permanently fail the
+        // pending batch so it is observable (FAILED + last_error) instead of
+        // silently idling every sweep; the operator must repair the collection.
+        const message = err instanceof RefluxPayloadError
+          ? err.message
+          : 'golden_set profile unavailable';
+        for (let i = 0; i < this.batchSize; i++) {
+          const job = this.audit.claimNextSyncJob();
+          if (job === null) break;
+          this.audit.failSyncJob(job.jobId, job.feedbackId, message, true);
+          result.failed += 1;
+        }
         return result;
       }
 
@@ -157,6 +176,9 @@ export class GoldenSyncWorker {
     return this.audit.rearmEligibleSyncJobs(eligible.map((job) => job.jobId));
   }
 
+  // Exponential backoff is only expressive above the sweep interval: a delay
+  // shorter than one sweep simply retries on the next sweep (effective cadence
+  // ≈ sweepIntervalMs). Delays above the interval are honored.
   private backoffMs(attempts: number): number {
     const delay = this.retryBaseMs * 2 ** Math.max(0, attempts - 1);
     return Math.min(delay, this.retryMaxMs);

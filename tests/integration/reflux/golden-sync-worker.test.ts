@@ -1,5 +1,5 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -331,5 +331,67 @@ afterEach(async () => {
       topK: 5,
     });
     expect(raw.goldenHits).toEqual([]);
+  }, 30_000);
+
+  it('recovers through the full outbox loop: fail → re-arm → retry → synced (IMP-4)', async () => {
+    const { personaVersion } = setupPersonaAndVersion();
+    const traceId = setupDisplayedTrace(personaVersion);
+    worker.submitLabel({ traceId, expectedRevisionNo: 0, score: 90 });
+
+    // Controlled mock Qdrant: reachable with a valid profile, but the first
+    // upsert fails (transient) and the second succeeds.
+    let currentMs = Date.now();
+    const clientMock = {
+      getCollection: vi.fn(async () => ({
+        config: { metadata: { bm25_k1: 1.2, bm25_b: 0.75, avg_doc_len_baseline: 4 } },
+      })),
+      upsert: vi.fn()
+        .mockRejectedValueOnce(new Error('temporary failure'))
+        .mockResolvedValueOnce({ status: 'ok' }),
+      setPayload: vi.fn(),
+    };
+    const sync = new GoldenSyncWorker({
+      audit: worker,
+      qdrantClient: clientMock as never,
+      retryBaseMs: 100,
+      now: () => new Date(currentMs),
+    });
+
+    const first = await sync.processPending();
+    expect(first.failed).toBe(1);
+
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    let jobId: string;
+    try {
+      const row = reader.prepare(
+        `SELECT job_id, state, attempts FROM qdrant_sync_job`,
+      ).get() as { job_id: string; state: string; attempts: number };
+      expect(row.state).toBe('FAILED');
+      expect(row.attempts).toBe(1);
+      jobId = row.job_id;
+    } finally {
+      reader.close();
+    }
+
+    // Advance past the backoff so the next sweep re-arms and retries.
+    currentMs += 500;
+    const second = await sync.processPending();
+    expect(second.rearmed).toBe(1);
+    expect(second.succeeded).toBe(1);
+
+    const reader2 = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    try {
+      const job = reader2.prepare(
+        `SELECT state FROM qdrant_sync_job WHERE job_id = ?`,
+      ).get(jobId) as { state: string };
+      expect(job.state).toBe('SUCCEEDED');
+      const fb = reader2.prepare(
+        `SELECT sync_status, target_point_id FROM suggestion_feedback WHERE trace_id = ?`,
+      ).get(traceId) as { sync_status: string; target_point_id: string };
+      expect(fb.sync_status).toBe('SYNCED');
+      expect(fb.target_point_id).toBeTruthy();
+    } finally {
+      reader2.close();
+    }
   }, 30_000);
 });

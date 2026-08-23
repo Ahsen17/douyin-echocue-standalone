@@ -205,6 +205,24 @@ describe('GoldenSyncWorker.processPending (M7-02/03)', () => {
     );
   });
 
+  it('permanently fails pending jobs when golden_set metadata is invalid, not idles (IMP-2)', async () => {
+    const { worker, audit, qdrantClient } = makeWorker();
+    audit.claimNextSyncJob
+      .mockReturnValueOnce({ jobId: 'job-1', feedbackId: 'fb-1', action: 'UPSERT' })
+      .mockReturnValueOnce({ jobId: 'job-2', feedbackId: 'fb-2', action: 'SET_BAD_CASE' })
+      .mockReturnValueOnce(null);
+    // Qdrant is reachable but the collection metadata is broken — a config error.
+    qdrantClient.getCollection.mockResolvedValue({ config: { metadata: {} } });
+
+    const result = await worker.processPending();
+    expect(result.claimed).toBe(0);
+    expect(result.failed).toBe(2);
+    expect(audit.failSyncJob).toHaveBeenCalledTimes(2);
+    expect(audit.failSyncJob.mock.calls[0][3]).toBe(true); // permanent
+    expect(qdrantClient.upsert).not.toHaveBeenCalled();
+    expect(qdrantClient.setPayload).not.toHaveBeenCalled();
+  });
+
   it('guards against overlapping sweeps', async () => {
     const { worker, audit, qdrantClient } = makeWorker();
     let resolveProfile: (value: unknown) => void;

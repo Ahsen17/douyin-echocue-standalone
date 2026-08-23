@@ -23,7 +23,7 @@ import { CryptoKeyManager } from '../crypto/key-manager.js';
 import { uuidv7 } from '../util/uuidv7.js';
 import type { MigrationFile } from './MigrationRunner.js';
 import { MigrationRunner } from './MigrationRunner.js';
-import { deriveRefluxAction } from '../reflux/payload-builder.js';
+import { RefluxPayloadError, deriveRefluxAction } from '../reflux/payload-builder.js';
 
 export interface AuditStoreWorkerOptions {
   dbPath: string;
@@ -617,6 +617,9 @@ export class AuditStoreWorker {
         workflow,
       };
     } catch (err) {
+      // A corrupt correction envelope is a data-integrity problem the reflux
+      // worker must see as permanent, not a generic audit failure.
+      if (err instanceof RefluxPayloadError) throw err;
       throw new AuditUnavailableError(`readFeedbackSyncContext failed: ${String(err)}`);
     }
   }
@@ -651,8 +654,9 @@ export class AuditStoreWorker {
   /**
    * Mark a claimed job as failed (RUNNING→FAILED, attempts+1, last_error) and
    * the feedback PENDING→FAILED. A permanent data error caps attempts so the
-   * rearm sweep never retries it (M7-03); the operator can repair and re-arm
-   * manually via the diagnostic path.
+   * rearm sweep never retries it (M7-03). Permanent failures are terminal for
+   * automated retry; recovering them requires manual SQLite/Qdrant intervention
+   * (no diagnostic IPC exists in MVP).
    */
   failSyncJob(jobId: string, feedbackId: string, error: string, permanent = false): void {
     try {
@@ -738,30 +742,33 @@ export class AuditStoreWorker {
   private decryptCorrection(
     feedbackId: string,
     envelope: Buffer,
-  ): { correctedQuickReply: string; correctedCues: string[] } | null {
+  ): { correctedQuickReply: string; correctedCues: string[] } {
+    // A present envelope that fails to decrypt is a data-integrity problem (e.g.
+    // key rotation), not an absent correction — surface it as a permanent error
+    // rather than masking it as "no correction".
+    let plaintext: Buffer;
     try {
-      const plaintext = this.encryptor.decrypt(
+      plaintext = this.encryptor.decrypt(
         envelope,
         buildAad('suggestion_feedback', feedbackId, 'CORRECTION_JSON'),
       );
-      const parsed = JSON.parse(plaintext.toString('utf-8')) as {
-        correctedQuickReply?: unknown;
-        correctedCues?: unknown;
-      };
-      if (
-        typeof parsed.correctedQuickReply !== 'string' ||
-        !Array.isArray(parsed.correctedCues) ||
-        !parsed.correctedCues.every((cue) => typeof cue === 'string')
-      ) {
-        return null;
-      }
-      return {
-        correctedQuickReply: parsed.correctedQuickReply,
-        correctedCues: parsed.correctedCues,
-      };
     } catch {
-      return null;
+      throw new RefluxPayloadError('correction envelope failed to decrypt');
     }
+    let parsed: { correctedQuickReply?: unknown; correctedCues?: unknown };
+    try {
+      parsed = JSON.parse(plaintext.toString('utf-8')) as { correctedQuickReply?: unknown; correctedCues?: unknown };
+    } catch {
+      throw new RefluxPayloadError('correction envelope is not valid JSON');
+    }
+    if (
+      typeof parsed.correctedQuickReply !== 'string' ||
+      !Array.isArray(parsed.correctedCues) ||
+      !parsed.correctedCues.every((cue) => typeof cue === 'string')
+    ) {
+      throw new RefluxPayloadError('correction envelope has an unexpected shape');
+    }
+    return { correctedQuickReply: parsed.correctedQuickReply, correctedCues: parsed.correctedCues };
   }
 
   private readPersonaBinding(workflow: AuditWorkflowV1): { personaId: string; personaVersion: string } {
