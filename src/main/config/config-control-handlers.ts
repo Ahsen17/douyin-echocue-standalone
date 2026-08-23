@@ -1,6 +1,7 @@
-import { ConfigUpdateRequestV1Schema, OverlayPreferenceV1Schema, type ConfigViewV1, type OverlayPreferenceV1, type ProviderConfigV1, type SettingsV1 } from '@echocue/contracts';
+import { ConfigUpdateRequestV1Schema, OverlayPreferenceV1Schema, type ConfigViewV1, type OverlayPreferenceV1, type ProviderConfigV1, type SettingsV1, type SystemPromptV1 } from '@echocue/contracts';
 import type { ProviderConfigService } from '../provider/provider-config.js';
 import { CredentialStore } from '../credentials/index.js';
+import { uuidv7 } from '../util/index.js';
 import { ConfigCorruptError, SettingsStore } from './SettingsStore.js';
 
 export interface ConfigControlDeps {
@@ -30,6 +31,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         provider: provider ?? undefined,
         activeSafetyPolicyVersion: settings.activeSafetyPolicyVersion,
         overlay: settings.overlay,
+        prompt: settings.prompt,
         apiKeyConfigured,
       };
     },
@@ -39,7 +41,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
       if (!parsed.success) {
         throw new Error('配置内容不合法，请检查输入后再保存');
       }
-      const { roomReference, provider } = parsed.data;
+      const { roomReference, provider, systemPrompt } = parsed.data;
       try {
         if (provider !== undefined) {
           const currentProvider = await deps.providerConfig.getProviderConfig();
@@ -62,6 +64,20 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         }
         if (roomReference !== undefined) {
           await deps.settings.update({ roomReference });
+        }
+        if (systemPrompt !== undefined) {
+          // TD-08: empty submission clears the custom template back to the code
+          // default; otherwise stamp a fresh template version for audit replay.
+          const trimmed = systemPrompt.trim();
+          const prompt: SystemPromptV1 | undefined =
+            trimmed === ''
+              ? undefined
+              : {
+                  systemPromptTemplate: trimmed,
+                  templateVersion: `custom-${uuidv7()}`,
+                  updatedAt: new Date().toISOString(),
+                };
+          await deps.settings.update({ prompt });
         }
       } catch (err) {
         if (err instanceof ConfigCorruptError) {

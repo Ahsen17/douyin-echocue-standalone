@@ -4,6 +4,7 @@ import RunPage from './pages/RunPage'
 import RoomAiPage from './pages/RoomAiPage'
 import PersonaPage from './pages/PersonaPage'
 import SafetyPage from './pages/SafetyPage'
+import PromptPage from './pages/PromptPage'
 import PreferencesPage from './pages/PreferencesPage'
 import DiagnosticsPage from './pages/DiagnosticsPage'
 import AuditPage from './pages/AuditPage'
@@ -13,6 +14,7 @@ const pages: Record<PageName, ComponentType<PageProps>> = {
   直播间: RoomAiPage,
   团队与人设: PersonaPage,
   安全与禁忌: SafetyPage,
+  提示词设置: PromptPage,
   浮窗偏好: PreferencesPage,
   诊断: DiagnosticsPage,
   审计追溯: AuditPage,

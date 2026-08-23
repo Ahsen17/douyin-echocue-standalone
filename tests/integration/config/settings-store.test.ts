@@ -55,6 +55,23 @@ describe('SettingsStore', () => {
     expect(settings!.overlay.opacity).toBe(0.8);
   });
 
+  it('update persists a custom system prompt and clears it via undefined', async () => {
+    await store.update({
+      prompt: {
+        systemPromptTemplate: '自定义模板',
+        templateVersion: 'custom-abc',
+        updatedAt: '2026-08-23T00:00:00.000Z',
+      },
+    });
+    const withPrompt = await store.get();
+    expect(withPrompt!.prompt?.systemPromptTemplate).toBe('自定义模板');
+    expect(withPrompt!.prompt?.templateVersion).toBe('custom-abc');
+    // Clearing writes `prompt: undefined`, which JSON.stringify drops entirely.
+    await store.update({ prompt: undefined });
+    const cleared = await store.get();
+    expect('prompt' in (cleared ?? {})).toBe(false);
+  });
+
   // --- Corrupt / invalid file handling ---
 
   it('throws ConfigCorruptError on malformed JSON', async () => {

@@ -5,6 +5,7 @@
 import { strict as assert } from 'assert';
 import {
   SettingsV1Schema,
+  SystemPromptV1Schema,
   ServiceViewStateSchema,
   ProviderConfigV1Schema,
   ConfigViewV1Schema,
@@ -120,10 +121,23 @@ const VALID_PROVIDER: object = {
   credentialRef: 'deepseek-01-key',
 };
 
+const VALID_PROMPT: object = {
+  systemPromptTemplate: '你是直播出镜人员的口播辅助。',
+  templateVersion: 'custom-01932a3b-4c5d-7000-8000-0000000000aa',
+  updatedAt: '2026-08-23T00:00:00.000Z',
+};
+
+// SystemPromptV1 (TD-08)
+console.log('\nSystemPromptV1Schema');
+test('valid system prompt override', () => expectValid(SystemPromptV1Schema, VALID_PROMPT, 'valid'));
+test('rejects empty template', () => expectInvalid(SystemPromptV1Schema, { ...VALID_PROMPT, systemPromptTemplate: '' }, 'empty template'));
+test('rejects unknown field', () => expectInvalid(SystemPromptV1Schema, { ...VALID_PROMPT, enabled: true }, 'unknown field'));
+
 // SettingsV1
 console.log('\nSettingsV1Schema');
 test('valid minimal settings', () => expectValid(SettingsV1Schema, VALID_SETTINGS, 'minimal'));
 test('valid settings with provider', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, provider: VALID_PROVIDER }, 'with provider'));
+test('valid settings with prompt override', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, prompt: VALID_PROMPT }, 'with prompt'));
 test('rejects wrong schemaVersion', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, schemaVersion: 2 }, 'schemaVersion 2'));
 test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, extra: true }, 'extra field'));
 
@@ -139,6 +153,11 @@ test('valid config view with provider', () => expectValid(ConfigViewV1Schema, {
   overlay: VALID_OVERLAY,
   apiKeyConfigured: true,
 }, 'with provider'));
+test('valid config view with prompt override', () => expectValid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+  prompt: VALID_PROMPT,
+  apiKeyConfigured: false,
+}, 'with prompt'));
 test('rejects internalRetrieval in config view', () => expectInvalid(ConfigViewV1Schema, {
   overlay: VALID_OVERLAY,
   apiKeyConfigured: false,
@@ -188,6 +207,8 @@ test('valid provider-only update', () => expectValid(ConfigUpdateRequestV1Schema
   },
 }, 'provider only'));
 test('rejects empty update', () => expectInvalid(ConfigUpdateRequestV1Schema, {}, 'empty'));
+test('valid systemPrompt-only update', () => expectValid(ConfigUpdateRequestV1Schema, { systemPrompt: '新的指令模板' }, 'systemPrompt only'));
+test('valid systemPrompt clear via empty string', () => expectValid(ConfigUpdateRequestV1Schema, { systemPrompt: '' }, 'clear systemPrompt'));
 test('rejects unknown field', () => expectInvalid(ConfigUpdateRequestV1Schema, { roomReference: 'room-1', foo: 1 }, 'unknown field'));
 
 // PersonaSummaryV1 (M6-02 run page, M6-04 persona page)

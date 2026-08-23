@@ -850,6 +850,24 @@ describe('SuggestionAttemptOrchestrator', () => {
       expect(meta?.payload).toMatchObject({ providerId: 'compat-backup', modelId: 'm' });
     });
 
+    it('freezes and injects a configured system prompt into the RENDERED_PROMPT snapshot (TD-08)', async () => {
+      const { audit, orchestrator } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        getSystemPrompt: async () => ({
+          systemPromptTemplate: '你是一位温和的直播出镜辅助。',
+          templateVersion: 'custom-td08',
+        }),
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await waitFor(() => audit.snapshots.some((s) => s.role === 'RENDERED_PROMPT'));
+      const rendered = audit.snapshots.find((s) => s.role === 'RENDERED_PROMPT')?.payload as Record<string, unknown>;
+      // Custom template is used verbatim, with the immutable hard rules appended.
+      expect(rendered.system).toContain('你是一位温和的直播出镜辅助。');
+      expect(rendered.system).toContain('只输出一个 JSON 对象');
+      expect(rendered.templateVersion).toBe('custom-td08');
+    });
+
     it('does not write LLM_RAW_RESPONSE/LLM_PARSED_OUTPUT on provider failure', async () => {
       const { audit, orchestrator } = harness({
         retriever: makeRetriever([preHit(0.9)]) as never,

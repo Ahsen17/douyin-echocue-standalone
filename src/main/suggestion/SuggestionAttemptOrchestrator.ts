@@ -13,7 +13,7 @@ import { evaluateInputSafety } from '../safety/index.js';
 import { evaluateRetrieval } from '../retrieval/index.js';
 import { DEFAULT_CALIBRATION_ARTIFACT_V1 } from '../retrieval/calibration.js';
 import { evaluateDirectPush } from '../retrieval/direct-push.js';
-import { renderPrompt } from '../prompt/index.js';
+import { renderPrompt, type SystemPromptConfig } from '../prompt/index.js';
 import { CredentialStore } from '../credentials/index.js';
 import { AuditDuplicateTraceError, AuditUnavailableError } from '../storage/index.js';
 import { uuidv7 } from '../util/index.js';
@@ -82,6 +82,7 @@ export class SuggestionAttemptOrchestrator {
   private displayTimer: ReturnType<typeof setTimeout> | null = null;
   private frozenSafety: FrozenSafety | null = null;
   private frozenMembers: readonly TeamMemberNameV1[] = [];
+  private frozenSystemPrompt: SystemPromptConfig | null = null;
   /** Last written trace state per traceId, so async error paths close the chain. */
   private readonly traceState = new Map<string, TraceState>();
   /** Window candidates keyed by traceId, so eviction can close their chain. */
@@ -125,6 +126,9 @@ export class SuggestionAttemptOrchestrator {
         .filter((alias) => alias.enabled)
         .map((alias) => alias.aliasText),
     }));
+    // TD-08: freeze the configured system prompt for the whole session, the same
+    // way safety/members are frozen — no hot-swap mid-run.
+    this.frozenSystemPrompt = (await this.deps.getSystemPrompt?.()) ?? null;
     this.session = { sessionId: input.sessionId, seen: new Set() };
     this.attempt = null;
     this.abortRequested = false;
@@ -466,6 +470,12 @@ export class SuggestionAttemptOrchestrator {
       safetySnapshot: candidate.safetySnapshot,
       mergedTopK: candidate.calibrated.mergedTopK,
       ...(this.deps.maxContextBudget !== undefined ? { maxContextBudget: this.deps.maxContextBudget } : {}),
+      ...(this.frozenSystemPrompt !== null
+        ? {
+            systemPromptTemplate: this.frozenSystemPrompt.systemPromptTemplate,
+            systemPromptTemplateVersion: this.frozenSystemPrompt.templateVersion,
+          }
+        : {}),
     });
     this.transition(candidate.processingComment, 'RETRIEVING', 'PROMPT_RENDERED', 'LLM_REQUIRED', [
       ...candidate.querySnapshots,

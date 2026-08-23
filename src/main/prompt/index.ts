@@ -13,4 +13,5 @@ export type {
   ReferenceCase,
   TruncationLog,
   RenderedPrompt,
+  SystemPromptConfig,
 } from './types.js';

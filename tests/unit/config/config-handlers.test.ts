@@ -176,6 +176,20 @@ describe('Config IPC handlers', () => {
     await expect(handlers.update({ roomReference: 'room', foo: 1 })).rejects.toThrow();
   });
 
+  it('update persists a custom system prompt with a fresh template version', async () => {
+    const view = await handlers.update({ systemPrompt: '  新指令模板  ' });
+    expect(view.prompt?.systemPromptTemplate).toBe('新指令模板');
+    expect(view.prompt?.templateVersion).toMatch(/^custom-/);
+    expect(view.prompt?.updatedAt).toBeTruthy();
+  });
+
+  it('update clears a custom system prompt back to the code default via empty string', async () => {
+    await handlers.update({ systemPrompt: '临时模板' });
+    expect((await handlers.get()).prompt?.systemPromptTemplate).toBe('临时模板');
+    const view = await handlers.update({ systemPrompt: '' });
+    expect(view.prompt).toBeUndefined();
+  });
+
   it('corrupt settings file produces a user-readable error without internals', async () => {
     await mkdir(join(testDir, 'config'), { recursive: true });
     await writeFile(join(testDir, 'config', 'settings.json'), '{ not json', 'utf-8');

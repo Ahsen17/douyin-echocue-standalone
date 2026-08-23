@@ -28,6 +28,16 @@ export interface PromptInput {
   mergedTopK: readonly RetrievalHitV1[];
   /** Total context budget in estimated tokens (LLM §3.3 POC item). */
   maxContextBudget?: number;
+  /** TD-08: user-configured system template; absent → code default. */
+  systemPromptTemplate?: string;
+  /** TD-08: version stamp of the custom template (audit reproducibility). */
+  systemPromptTemplateVersion?: string;
+}
+
+/** TD-08: user-configured system prompt overrides (SettingsV1.prompt). */
+export interface SystemPromptConfig {
+  systemPromptTemplate: string;
+  templateVersion: string;
 }
 
 /** Reference case as serialized into the user message (no case/point IDs). */

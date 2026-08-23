@@ -177,6 +177,17 @@ export async function createServiceController(
         return 10_000;
       }
     },
+    // TD-08: the orchestrator freezes this once per session (null → code default).
+    getSystemPrompt: async () => {
+      try {
+        const prompt = (await settings.get())?.prompt;
+        return prompt === undefined
+          ? null
+          : { systemPromptTemplate: prompt.systemPromptTemplate, templateVersion: prompt.templateVersion };
+      } catch {
+        return null;
+      }
+    },
     onAuditFailure: () => {
       // Audit down ⇒ stop producing suggestions; service must not continue.
       void controller.stop('AUDIT_UNAVAILABLE');
