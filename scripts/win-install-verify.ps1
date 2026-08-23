@@ -98,21 +98,34 @@ try {
   $results.upgradeDataPreserved = $true
 
   # 6. uninstall removes the app but never the permanent audit data. NSIS
-  # uninstallers self-spawn (the launched process returns before files are
-  # gone) and a lingering app instance can block deletion, so: kill the app,
-  # run the uninstaller, then poll for the install dir to disappear.
+  # uninstallers self-copy to temp: the launched process returns early and the
+  # copy's working directory holds the install dir open, so NSIS can leave an
+  # empty dir behind. Kill any app instance, run the uninstaller, wait for the
+  # copy to exit, then remove a leftover empty dir explicitly.
   Get-Process -Name 'Echocue' -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
   Run-Silent $uninstaller @('/S')
+  $copyDeadline = (Get-Date).AddSeconds(30)
+  while ((Get-Process -Name 'Uninstall Echocue' -ErrorAction SilentlyContinue) -and
+      (Get-Date) -lt $copyDeadline) {
+    Start-Sleep -Milliseconds 500
+  }
   $uninstallDeadline = (Get-Date).AddSeconds(60)
   while ((Test-Path $installRoot) -and (Get-Date) -lt $uninstallDeadline) {
     Start-Sleep -Milliseconds 500
   }
   if (Test-Path $installRoot) {
-    $leftovers = (Get-ChildItem -Path $installRoot -Recurse -ErrorAction SilentlyContinue |
-        Select-Object -First 10 -ExpandProperty FullName) -join '; '
-    throw "install dir still present after uninstall: $installRoot; leftovers: $leftovers"
+    $leftovers = @(Get-ChildItem -Path $installRoot -Recurse -Force -ErrorAction SilentlyContinue)
+    if ($leftovers.Count -eq 0) {
+      Remove-Item -Path $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+      Start-Sleep -Milliseconds 500
+    }
+  }
+  if (Test-Path $installRoot) {
+    $left = @(Get-ChildItem -Path $installRoot -Recurse -Force -ErrorAction SilentlyContinue)
+    $leftoverList = ($left | Select-Object -First 10 -ExpandProperty FullName) -join '; '
+    throw "install dir still present after uninstall: $installRoot; leftovers: $leftoverList"
   }
   $orphansAfter = Get-SidecarProcesses
   if ($orphansAfter) {
