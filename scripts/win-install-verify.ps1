@@ -98,14 +98,22 @@ try {
   $results.upgradeDataPreserved = $true
 
   # 6. uninstall removes the app but never the permanent audit data. NSIS
-  # uninstallers self-spawn and the launched process exits before files are
-  # gone, so poll for the install dir to disappear rather than checking at once.
+  # uninstallers self-spawn (the launched process returns before files are
+  # gone) and a lingering app instance can block deletion, so: kill the app,
+  # run the uninstaller, then poll for the install dir to disappear.
+  Get-Process -Name 'Echocue' -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 2
   Run-Silent $uninstaller @('/S')
   $uninstallDeadline = (Get-Date).AddSeconds(60)
   while ((Test-Path $installRoot) -and (Get-Date) -lt $uninstallDeadline) {
     Start-Sleep -Milliseconds 500
   }
-  if (Test-Path $installRoot) { throw "install dir still present after uninstall: $installRoot" }
+  if (Test-Path $installRoot) {
+    $leftovers = (Get-ChildItem -Path $installRoot -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 10 -ExpandProperty FullName) -join '; '
+    throw "install dir still present after uninstall: $installRoot; leftovers: $leftovers"
+  }
   $orphansAfter = Get-SidecarProcesses
   if ($orphansAfter) {
     throw "orphan sidecar processes after uninstall: $($orphansAfter.Name -join ', ')"
