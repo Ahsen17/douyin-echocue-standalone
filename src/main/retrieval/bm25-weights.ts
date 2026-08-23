@@ -5,6 +5,11 @@ import type { Bm25Analysis } from './types.js';
 export const BM25_K1_INITIAL = 1.2;
 export const BM25_B_INITIAL = 0.75;
 
+// Vector weights only need the three frozen BM25 parameters, so a reflux worker
+// that reads them back from collection metadata can build golden vectors without
+// reconstructing a full profile (CONTRACT §4.5).
+export type GoldenProfileParams = Pick<Bm25ZhJiebaProfileV1, 'avgDocLenBaseline' | 'k1' | 'b'>;
+
 export interface TokenCollision {
   readonly tokenA: string;
   readonly tokenB: string;
@@ -23,7 +28,7 @@ export interface DocumentVector {
 export function docTermWeight(
   tf: number,
   docLen: number,
-  profile: Bm25ZhJiebaProfileV1,
+  profile: GoldenProfileParams,
 ): number {
   const { k1, b, avgDocLenBaseline } = profile;
   const denom = tf + k1 * (1 - b + (b * docLen) / avgDocLenBaseline);
@@ -37,7 +42,7 @@ export function computeAvgDocLenBaseline(docLengths: readonly number[]): number 
 
 export function buildDocumentVector(
   analyzed: Bm25Analysis,
-  profile: Bm25ZhJiebaProfileV1,
+  profile: GoldenProfileParams,
   tokenIdFn: (token: string) => number = tokenId,
 ): DocumentVector {
   const weights = new Map<number, number>();

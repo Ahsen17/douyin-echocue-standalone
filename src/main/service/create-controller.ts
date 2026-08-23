@@ -12,6 +12,7 @@ import { QDRANT_HTTP_PORT, QDRANT_LOOPBACK_HOST, QdrantSidecarManager } from '..
 import { DouyinLiveSidecarManager, DouyinLiveWsAdapter } from '../douyin/index.js';
 import { DeepSeekProvider, OpenAiCompatibleProvider, ProviderConfigService } from '../provider/index.js';
 import { SuggestionRetriever } from '../retrieval/index.js';
+import { GoldenSyncWorker } from '../reflux/index.js';
 import { SuggestionOutputValidator } from '../validation/index.js';
 import { SuggestionAttemptOrchestrator } from '../suggestion/index.js';
 import type { SuggestionDisplaySink } from '../suggestion/index.js';
@@ -43,6 +44,8 @@ export interface CreatedServiceController {
   readonly safety: SafetyPolicyStore;
   readonly audit: AuditStoreWorker;
   readonly diagnostics: DiagnosticsSource;
+  /** Transactional outbox consumer (M7-02); started by main/index.ts. */
+  readonly goldenSync: GoldenSyncWorker;
   readonly shutdown: () => void;
 }
 
@@ -83,6 +86,8 @@ export async function createServiceController(
   const qdrantClient = new QdrantClient({
     url: `http://${QDRANT_LOOPBACK_HOST}:${QDRANT_HTTP_PORT}`,
   });
+  // M7-02: drains label revisions into golden_set via the transactional outbox.
+  const goldenSync = new GoldenSyncWorker({ audit, qdrantClient });
 
   // M6-08: report the audit volume's free space in the diagnostics summary.
   // statfsSync is available on Windows and Linux; a read failure just omits it.
@@ -171,12 +176,24 @@ export async function createServiceController(
   });
 
   const shutdown = () => {
+    goldenSync.stop();
     audit.close();
     persona.close();
     safety.close();
   };
 
-  return { controller, stateMachine, providerConfig, settings, persona, safety, audit, diagnostics, shutdown };
+  return {
+    controller,
+    stateMachine,
+    providerConfig,
+    settings,
+    persona,
+    safety,
+    audit,
+    diagnostics,
+    goldenSync,
+    shutdown,
+  };
 }
 
 /** M5-07 stub: acknowledges first frame immediately; M6-07 replaces it. */
