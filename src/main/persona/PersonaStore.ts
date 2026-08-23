@@ -443,6 +443,19 @@ export class PersonaStore {
     }
   }
 
+  /** Discard an unpublished working draft; published versions are immutable. */
+  deleteDraft(personaVersion: string): void {
+    const existing = this.getVersionRow(personaVersion);
+    if (existing.status !== 'DRAFT') {
+      throw new PersonaVersionImmutableError(`Only DRAFT versions can be deleted: ${personaVersion}`);
+    }
+    try {
+      this.db.prepare('DELETE FROM persona_version WHERE persona_version = ?').run(personaVersion);
+    } catch (err) {
+      throw new PersonaStoreUnavailableError(`deleteDraft failed: ${String(err)}`);
+    }
+  }
+
   publishDraft(personaVersion: string): void {
     const version = this.getVersionRow(personaVersion);
     if (version.status !== 'DRAFT') {
