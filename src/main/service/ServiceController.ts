@@ -120,7 +120,15 @@ export class ServiceController {
     // mark the whole start flow as active so stop() can interrupt it at any await
     this.phase = 'gate';
 
-    const gate = await this.runGate();
+    let gate: Awaited<ReturnType<ServiceController['runGate']>>;
+    try {
+      gate = await this.runGate();
+    } catch (err) {
+      // An unexpected gate throw must not strand the controller in the start
+      // phase: isStarting() would then block retrieval imports forever.
+      this.phase = 'idle';
+      throw err;
+    }
     if (this.abortRequested) return this.afterAbort();
     if ('error' in gate) {
       this.enterStopped('SOURCE_ERROR', gate.error);

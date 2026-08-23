@@ -190,6 +190,21 @@ describe('ServiceController gate', () => {
     expect(state.recoverableError?.code).toBe('E_STORAGE_LOW');
     expect(h.sidecar.started).toBe(false);
   });
+
+  it('resets the start phase when a gate check throws unexpectedly (isStarting stays false)', async () => {
+    const h = makeHarness(
+      makeChecks({
+        getSettings: async () => {
+          throw new Error('corrupt settings');
+        },
+      }),
+    );
+    await expect(h.controller.start()).rejects.toThrow('corrupt settings');
+    // The controller must not be stranded mid-start, or the retrieval-import
+    // guard (STOPPED && !isStarting) would reject every import forever.
+    expect(h.controller.isStarting()).toBe(false);
+    expect(h.controller.getViewState().lifecycle).toBe('STOPPED');
+  });
 });
 
 describe('ServiceController lifecycle', () => {
