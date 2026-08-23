@@ -7,6 +7,7 @@ import type {
   AuditSubmitLabelRequestV1,
   AuditSubmitLabelResponseV1,
   AuditWorkflowV1,
+  CollectionCountsV1,
   ConfigUpdateRequestV1,
   ConfigViewV1,
   ConnectionTestResultV1,
@@ -106,6 +107,8 @@ const echocueApi = {
     getStatus: () => ipcRenderer.invoke(IpcChannel.RetrievalGetStatus) as Promise<RetrievalInitStatusV1>,
     importPreSet: (content: string) =>
       ipcRenderer.invoke(IpcChannel.RetrievalImportPreSet, { content }) as Promise<PreSetImportResultV1>,
+    getCollectionCounts: () =>
+      ipcRenderer.invoke(IpcChannel.RetrievalGetCollectionCounts) as Promise<CollectionCountsV1>,
   },
   diagnostics: {
     getSummary: () =>

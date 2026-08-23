@@ -66,6 +66,50 @@ export function defaultRevisionCount(summary: AuditTraceSummaryV1 | null): numbe
   return summary?.revisionCount ?? 0
 }
 
+export interface WorkflowSuggestion {
+  quickReply: string
+  cues: string[]
+}
+
+// Pull the displayed suggestion out of the workflow (UI §8.2 打标旁直接可见)。
+// The direct path records snake_case (DIRECT_PAYLOAD.quick_reply), the LLM path
+// camelCase (LLM_PARSED_OUTPUT.quickReply); mirrors payload-builder.ts.
+export function extractSuggestionFromWorkflow(
+  workflow: AuditWorkflowV1 | null,
+): WorkflowSuggestion | null {
+  if (workflow === null) return null
+  for (const transition of workflow.transitions) {
+    for (const snapshot of transition.snapshots) {
+      if (snapshot.contentType !== 'SUGGESTION_JSON') continue
+      if (snapshot.role !== 'DIRECT_PAYLOAD' && snapshot.role !== 'LLM_PARSED_OUTPUT') continue
+      const parsed = parseSuggestionJson(snapshot.plaintext)
+      if (parsed !== null) return parsed
+    }
+  }
+  return null
+}
+
+function parseSuggestionJson(plaintext: string): WorkflowSuggestion | null {
+  try {
+    const data = JSON.parse(plaintext) as {
+      quick_reply?: unknown
+      quickReply?: unknown
+      cues?: unknown
+    }
+    const reply = typeof data.quick_reply === 'string' ? data.quick_reply : data.quickReply
+    if (typeof reply !== 'string' || reply.length === 0) return null
+    // Cues are optional: the label form must still show the AI reply when a
+    // suggestion carries no cues (review M4). Empty-string entries are dropped
+    // rather than dropping the whole block (review n-3).
+    const cues = data.cues === undefined ? [] : data.cues
+    if (!Array.isArray(cues)) return null
+    const validCues = cues.filter((c): c is string => typeof c === 'string' && c.length > 0)
+    return { quickReply: reply, cues: validCues }
+  } catch {
+    return null
+  }
+}
+
 // The detail panel must never silently jump to another row: when the selected
 // trace is not on the current page (e.g. after a label save moves it out of a
 // filter), return null so the panel shows an empty state instead of mismatched

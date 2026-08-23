@@ -53,7 +53,7 @@ describe('preload surfaces (M6-11 / CONTRACT §7)', () => {
     );
     expect(Object.keys(api.safety).sort()).toEqual(['get', 'saveDraft', 'publish'].sort());
     expect(Object.keys(api.diagnostics).sort()).toEqual(['getSummary'].sort());
-    expect(Object.keys(api.retrieval).sort()).toEqual(['getStatus', 'importPreSet'].sort());
+    expect(Object.keys(api.retrieval).sort()).toEqual(['getStatus', 'importPreSet', 'getCollectionCounts'].sort());
     expect(Object.keys(api.audit).sort()).toEqual(['search', 'getWorkflow', 'submitLabel'].sort());
     expect(Object.keys(api.overlay).sort()).toEqual(['updatePreferences'].sort());
     // Overlay-only capabilities must never surface on the main window.

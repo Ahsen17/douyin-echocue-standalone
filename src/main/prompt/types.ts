@@ -4,6 +4,8 @@ import type { RetrievalHitV1, SemanticTypeV1, SourceCollectionV1 } from '@echocu
 export interface PersonaSnapshot {
   personaId: string;
   personaVersion: string;
+  /** Member display name; the only persona identity the model needs (LLM §3.2). */
+  nickname: string;
   content: string;
   contentHmac: string;
 }

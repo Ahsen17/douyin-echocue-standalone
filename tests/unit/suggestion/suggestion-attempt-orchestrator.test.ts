@@ -585,7 +585,7 @@ describe('SuggestionAttemptOrchestrator', () => {
     const orchestrator = new SuggestionAttemptOrchestrator({
       audit: audit as never,
       stateMachine: machine,
-      router: { route: () => ({ personaId: 'p-1', personaVersion: 'v-1', personaMarkdown: 'x', decision: 'principal_fallback', candidates: [] }) } as never,
+      router: { route: () => ({ personaId: 'p-1', personaVersion: 'v-1', displayName: '主播A', personaMarkdown: 'x', decision: 'principal_fallback', candidates: [] }) } as never,
       personas: {
         listPersonas: () => [],
         listAliases: () => [],

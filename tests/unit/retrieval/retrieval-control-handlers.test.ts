@@ -24,7 +24,11 @@ const VALID_CONTENT = [
 
 interface Fakes {
   qdrant: { isHealthy: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn> };
-  client: { collectionExists: ReturnType<typeof vi.fn>; getCollection: ReturnType<typeof vi.fn> };
+  client: {
+    collectionExists: ReturnType<typeof vi.fn>;
+    getCollection: ReturnType<typeof vi.fn>;
+    count: ReturnType<typeof vi.fn>;
+  };
 }
 
 function makeFakes(): Fakes {
@@ -33,6 +37,7 @@ function makeFakes(): Fakes {
     client: {
       collectionExists: vi.fn(async () => ({ exists: false })),
       getCollection: vi.fn(async () => ({ config: { metadata: {} } })),
+      count: vi.fn(async () => ({ count: 0 })),
     },
   };
 }
@@ -92,6 +97,31 @@ describe('retrieval.getStatus', () => {
       qdrantHealthy: true,
       ready: false,
       error: 'E_QDRANT_UNAVAILABLE',
+    });
+  });
+});
+
+describe('retrieval.getCollectionCounts', () => {
+  it('returns the point count of both collections', async () => {
+    const fakes = makeFakes();
+    fakes.client.count
+      .mockResolvedValueOnce({ count: 128 })
+      .mockResolvedValueOnce({ count: 4 });
+    const handlers = makeHandlers(fakes);
+    await expect(handlers.getCollectionCounts()).resolves.toEqual({
+      preSetPointCount: 128,
+      goldenSetPointCount: 4,
+    });
+    expect(fakes.client.count).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports 0 for an absent or failing collection instead of throwing', async () => {
+    const fakes = makeFakes();
+    fakes.client.count.mockRejectedValue(new Error('collection not found'));
+    const handlers = makeHandlers(fakes);
+    await expect(handlers.getCollectionCounts()).resolves.toEqual({
+      preSetPointCount: 0,
+      goldenSetPointCount: 0,
     });
   });
 });
