@@ -8,7 +8,7 @@
 |------|------|
 | 类型 | 插入校准（性能妥协，非设计调整），非路图原子任务 |
 | 分支 | fix/freshness-5s-overlay-time |
-| 状态 | 待审查 |
+| 状态 | ✅ 已完成（PR #47 合并、master CI 通过） |
 | 完成时间 | 2026-08-23 |
 | 追溯 | CONTRACT §6（freshness deadline）；M5-08（deadline 公式/展示计时）|
 

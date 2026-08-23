@@ -8,7 +8,7 @@
 |------|------|
 | 类型 | 插入功能（非路图原子任务） |
 | 分支 | fix/freshness-5s-overlay-time |
-| 状态 | 待审查 |
+| 状态 | ✅ 已完成（PR #47 合并、master CI 通过） |
 | 完成时间 | 2026-08-23 |
 | 追溯 | UI §5（浮窗信息层级）；M6-07（OverlayDisplayPayload/独立浮窗）|
 

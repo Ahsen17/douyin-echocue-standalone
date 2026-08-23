@@ -29,8 +29,8 @@ Echocue 是一款面向抖音直播主播与运营团队的 Windows 独立桌面
 - [x] M2 人设、安全与路由 — 成员/别名 CRUD、人设草稿/发布/回滚、安全规则编译器、弹幕规范化与成员路由。*（POC 签核待甲方样本）*
 - [x] M3 Qdrant 与 BM25 — 随包 Qdrant sidecar、jieba-BM25 流水线、`pre_set`/`golden_set` 双库检索及 calibration 与跨库 rerank。*（POC 阻塞：依赖真实中文检索样本）*
 - [x] M4 douyinLive 接入与状态机 — 随包 douyinLive sidecar、本地 WebSocket adapter、lifecycle/activity 状态机。*（POC 阻塞：依赖真实开播房间）*
-- [x] M5 Provider 与实时编排 — Provider 配置/连接测试、稳定的 `TextGenerationProvider`、DeepSeek 与 OpenAI-compatible 双 adapter、确定性 PromptAssembler、实时 `SuggestionAttempt` 编排。*（9/9 任务完成）*
-- [x] M6 正式 Renderer 与独立浮窗 — 七个正式功能入口与独立置顶浮窗。*（11/11 任务完成）*
+- [x] M5 Provider 与实时编排 — Provider 配置/连接测试、稳定的 `TextGenerationProvider`、DeepSeek 与 OpenAI-compatible 双 adapter、确定性 PromptAssembler、实时 `SuggestionAttempt` 编排。*（9/9 任务完成；2026-08 freshness 预算校准至 5s，待实测）*
+- [x] M6 正式 Renderer 与独立浮窗 — 七个正式功能入口与独立置顶浮窗。*（11/11 任务完成；浮窗新增弹幕发出时间展示）*
 - [ ] M7 回流、集成、验收与发布 — `golden_set` 回流闭环、集成/E2E 验收、Windows 打包与签核。
 
 ### 总体架构
