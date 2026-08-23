@@ -32,6 +32,8 @@ export interface ServiceGateChecks {
   hasPublishedPersona(): Promise<boolean>;
   hasPublishedSafetyPolicy(): Promise<boolean>;
   isRetrievalReady(): Promise<boolean>;
+  /** Data volume has enough free space to start (DATA §8.2: ≥ 2 GiB). */
+  isStorageReady(): Promise<boolean>;
 }
 
 export interface ServiceControllerOptions {
@@ -48,6 +50,12 @@ export interface ServiceControllerOptions {
   /** Invoked with the concrete stop reason so in-flight work can be cancelled. */
   cleanupOnStop: (reason: StopReason) => void;
   gateTimeoutMs?: number;
+  /**
+   * Periodic data-volume monitor (RUNBOOK §5.3). Started once the service is
+   * RUNNING and stopped on every stop path; the monitor's onCritical is the
+   * caller's responsibility (it stops the service, M7-07).
+   */
+  storageMonitor?: { start(): void; stop(): void };
 }
 
 type Phase = 'idle' | 'gate' | 'running';
@@ -71,6 +79,7 @@ export class ServiceController {
   private readonly onComment: ((comment: SourceComment) => void) | undefined;
   private readonly cleanupOnStop: (reason: StopReason) => void;
   private readonly gateTimeoutMs: number;
+  private readonly storageMonitor: { start(): void; stop(): void } | undefined;
 
   private adapter: DouyinLiveWsAdapter | null = null;
   private phase: Phase = 'idle';
@@ -88,6 +97,7 @@ export class ServiceController {
     this.onComment = options.onComment;
     this.cleanupOnStop = options.cleanupOnStop;
     this.gateTimeoutMs = options.gateTimeoutMs ?? DEFAULT_GATE_TIMEOUT_MS;
+    this.storageMonitor = options.storageMonitor;
   }
 
   getViewState(): ServiceViewState {
@@ -166,6 +176,7 @@ export class ServiceController {
       }
       this.phase = 'running';
       this.stateMachine.transitionToLifecycle('RUNNING');
+      this.storageMonitor?.start();
     } else {
       const stopReason = first.type === 'LIVE_OFFLINE' ? 'ROOM_OFFLINE' : 'ROOM_ENDED';
       await this.shutdownSource();
@@ -193,6 +204,7 @@ export class ServiceController {
 
   private performStop(stopReason: StopReason): Promise<void> {
     return (async () => {
+      this.storageMonitor?.stop();
       this.cleanupOnStop(stopReason);
       const abort = this.gateResolve;
       this.gateResolve = null;
@@ -222,6 +234,7 @@ export class ServiceController {
       return { error: gateError('E_SAFETY_POLICY_INVALID') };
     }
     if (!(await this.checks.isRetrievalReady())) return { error: gateError('E_QDRANT_UNAVAILABLE') };
+    if (!(await this.checks.isStorageReady())) return { error: gateError('E_STORAGE_LOW') };
     return { roomReference: settings.roomReference };
   }
 

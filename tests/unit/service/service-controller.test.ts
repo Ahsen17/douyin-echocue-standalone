@@ -61,6 +61,7 @@ function makeChecks(overrides: Partial<ServiceGateChecks> = {}): ServiceGateChec
     hasPublishedPersona: async () => true,
     hasPublishedSafetyPolicy: async () => true,
     isRetrievalReady: async () => true,
+    isStorageReady: async () => true,
     ...overrides,
   };
 }
@@ -179,6 +180,14 @@ describe('ServiceController gate', () => {
     const state = await h.controller.start();
     expect(state.lifecycle).toBe('STOPPED');
     expect(state.recoverableError?.code).toBe('E_QDRANT_UNAVAILABLE');
+    expect(h.sidecar.started).toBe(false);
+  });
+
+  it('rejects start with E_STORAGE_LOW when the data volume has < 2 GiB free (M7-07)', async () => {
+    const h = makeHarness(makeChecks({ isStorageReady: async () => false }));
+    const state = await h.controller.start();
+    expect(state.lifecycle).toBe('STOPPED');
+    expect(state.recoverableError?.code).toBe('E_STORAGE_LOW');
     expect(h.sidecar.started).toBe(false);
   });
 });

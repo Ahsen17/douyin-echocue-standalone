@@ -53,6 +53,7 @@ function allPassChecks(): ServiceGateChecks {
     hasPublishedPersona: async () => true,
     hasPublishedSafetyPolicy: async () => true,
     isRetrievalReady: async () => true,
+    isStorageReady: async () => true,
   };
 }
 

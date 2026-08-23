@@ -257,6 +257,7 @@ export async function buildMockStreamHarness(
       hasPublishedPersona: async () => true,
       hasPublishedSafetyPolicy: async () => true,
       isRetrievalReady: async () => true,
+      isStorageReady: async () => true,
     },
     createLiveSession: async (params) => {
       sessionId = uuidv7();

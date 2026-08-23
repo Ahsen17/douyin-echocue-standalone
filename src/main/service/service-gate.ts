@@ -4,6 +4,7 @@ import { uuidv7 } from '../util/index.js';
 import { CredentialStore } from '../credentials/index.js';
 import type { SettingsStore } from '../config/index.js';
 import type { AuditStoreWorker } from '../storage/index.js';
+import { STARTUP_MIN_BYTES, type StorageCapacity } from '../storage/index.js';
 import type { PersonaStore } from '../persona/index.js';
 import type { SafetyPolicyStore } from '../safety/index.js';
 import type { QdrantSidecarManager } from '../qdrant/index.js';
@@ -17,6 +18,8 @@ export interface ServiceGateDependencies {
   safety: SafetyPolicyStore;
   qdrant: QdrantSidecarManager;
   qdrantClient: QdrantClient;
+  /** Optional data-volume capacity read; absent ⇒ the gate skips the check. */
+  readStorage?: () => StorageCapacity | null;
 }
 
 export function createLiveSessionWriter(deps: {
@@ -78,6 +81,12 @@ export function createServiceGateChecks(deps: ServiceGateDependencies): ServiceG
       } catch {
         return false;
       }
+    },
+    async isStorageReady(): Promise<boolean> {
+      // No volume read wired (e.g. unit gate tests) ⇒ no threshold to enforce.
+      const storage = deps.readStorage?.();
+      if (storage === null || storage === undefined) return true;
+      return storage.availableBytes >= STARTUP_MIN_BYTES;
     },
   };
 }
