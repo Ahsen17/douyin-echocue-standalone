@@ -33,7 +33,7 @@
 
 ### 修改 `tests/integration/T-AUD-001-audit-storage.test.ts`
 - 删除被取代的 4 条 headline todo 骨架（行为已由同文件真实测试 + `audit-store-worker.test.ts` + `T-CON-002` 覆盖，映射见上）。
-- 补「authorized reader 解密」真实用例：NORMALIZED_COMMENT 快照落库后 raw `audit_snapshot.envelope` ≠ 明文；`getTraceWorkflowV1`（audit.getWorkflow IPC 授权路径）解密返回原文；`AuditWorkflowV1Schema.parse` 通过；workflow 投影不含 envelope 字节（安全红线：只断言解密成功 + 越权拒绝，不输出敏感原文）。
+- 补「authorized reader 解密」真实用例：NORMALIZED_COMMENT 快照落库后 raw `audit_snapshot.envelope` ≠ 明文；`getTraceWorkflowV1`（audit.getWorkflow IPC 授权路径）解密返回原文；`AuditWorkflowV1Schema.parse` 通过；workflow 投影不含 envelope 字节（安全红线：只断言解密成功，不输出敏感原文）。「越权拒绝」由 IPC 权限层承担（preload-surface / ipc-allowlist 测试已覆盖浮窗无审计访问、错误 sender 拒绝），worker 层无授权概念，本用例验证的是授权解密路径。
 
 ### 修改 `tests/contract/T-SAFE-001-safety-fixtures.test.ts`（+3 用例）
 驱动 OUTPUT 阶段 fixture 过 `SuggestionOutputValidator.validate`（step 5 输出复验）：

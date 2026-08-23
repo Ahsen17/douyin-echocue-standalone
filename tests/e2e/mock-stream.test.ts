@@ -232,6 +232,51 @@ describe('M7-05 模拟 E2E 实时流 (A-02～A-08)', () => {
     }
   });
 
+  it('drops a duplicate of the currently-displayed message without stopping (boundary)', async () => {
+    const h = await buildMockStreamHarness({ hits: [goldenHit()], displayDurationMs: 500 });
+    try {
+      await h.startService();
+      h.sendComment('今天状态真好', 'msg-display-dup');
+      const [first] = await waitForTraces(h, 1);
+      await waitForTraceState(h.worker, first.traceId, 'DISPLAYED');
+      h.sendComment('今天状态真好', 'msg-display-dup');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      // audit_trace UNIQUE(session_id, source_message_id): a duplicate of the
+      // displayed message is dropped — never a second row, never an
+      // audit-outage stop.
+      expect(h.traceIds()).toHaveLength(1);
+      expect(h.machine.getViewState().lifecycle).toBe('RUNNING');
+      expect(h.shown).toHaveLength(1);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('drops a re-send of a display-suppressed message after the window ends (boundary)', async () => {
+    const h = await buildMockStreamHarness({ hits: [goldenHit()], displayDurationMs: 300 });
+    try {
+      await h.startService();
+      h.sendComment('今天状态真好', 'msg-a');
+      const [a] = await waitForTraces(h, 1);
+      await waitForTraceState(h.worker, a.traceId, 'DISPLAYED');
+      // A new message during the display window is audited DISPLAY_WINDOW_ACTIVE.
+      h.sendComment('窗口内的消息', 'msg-b');
+      const traces = await waitForTraces(h, 2);
+      const b = traces.find((t) => t.traceId !== a.traceId)!;
+      await waitForTerminal(h.worker, b.traceId);
+      // After the window ends (msg-a HIDDEN), the suppressed message is re-sent:
+      // it is in the session dedup set, so it is dropped — not a second trace
+      // and not an audit-outage stop.
+      await waitForTerminal(h.worker, a.traceId);
+      h.sendComment('窗口内的消息', 'msg-b');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(h.traceIds()).toHaveLength(2);
+      expect(h.machine.getViewState().lifecycle).toBe('RUNNING');
+    } finally {
+      await h.close();
+    }
+  });
+
   it('stops mid-LLM, closes the in-flight trace as USER_STOPPED and cleans up (A-02/A-07)', async () => {
     const h = await buildMockStreamHarness({ hits: [preHit()], providerDelayMs: 3000 });
     try {

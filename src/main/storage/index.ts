@@ -2,6 +2,7 @@ export { MigrationRunner } from './MigrationRunner.js';
 export type { MigrationFile } from './MigrationRunner.js';
 export {
   AuditStoreWorker,
+  AuditDuplicateTraceError,
   AuditStateInvalidError,
   AuditUnavailableError,
 } from './AuditStoreWorker.js';
