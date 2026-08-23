@@ -32,6 +32,6 @@ export function formatRecentActivity(summary: DiagnosticSummaryV1): RecentActivi
       suggestionTime !== null && processedLabel !== null
         ? `${processedLabel} · ${suggestionTime}`
         : '暂无',
-    lastE2eMs: summary.lastE2eLatencyMs !== undefined ? `${summary.lastE2eLatencyMs} 毫秒` : '暂无',
+    lastE2eMs: summary.lastE2eLatencyMs !== undefined ? `${summary.lastE2eLatencyMs.toFixed(2)} 毫秒` : '暂无',
   }
 }

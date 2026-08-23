@@ -8,6 +8,21 @@ export function formatBytes(bytes: number | undefined): string {
   return `${bytes} B`
 }
 
+// UI §8.1 timestamps: local "yyyy-MM-dd HH:mm:ss" (24h), never the raw ISO tail.
+export function formatDateTime(iso: string | undefined | null): string {
+  if (iso === undefined || iso === null) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+// E2E latency (UI §8.1): exactly two decimals, trailing zeros kept.
+export function formatE2eMs(ms: number): string {
+  return `${ms.toFixed(2)} ms`
+}
+
 const RESULT_LABELS: Record<NonNullable<DiagnosticSummaryV1['lastSuggestionResult']>, string> = {
   displayed: '已展示后隐藏',
   filtered: '已过滤',
@@ -35,13 +50,15 @@ export function localizeDomainError(code: DiagnosticSummaryV1['lastDomainError']
 // Desensitized summary for copy (FR-09 / UI §8.1): lifecycle, activity and
 // anonymized metrics only — never comment text, persona text, keys or trace ids.
 export function buildCopyableSummary(summary: DiagnosticSummaryV1): string {
+  const receivedAt = formatDateTime(summary.lastCommentReceivedAt)
+  const suggestionAt = formatDateTime(summary.lastSuggestionAt)
   const lines = [
     `运行状态：${summary.lifecycle} / ${summary.activity}`,
-    `最近接收弹幕：${summary.lastCommentReceivedAt ?? '暂无'}`,
-    `最近建议结果：${localizeSuggestionResult(summary.lastSuggestionResult)}${summary.lastSuggestionAt ? `（${summary.lastSuggestionAt}）` : ''}`,
+    `最近接收弹幕：${receivedAt === '' ? '暂无' : receivedAt}`,
+    `最近建议结果：${localizeSuggestionResult(summary.lastSuggestionResult)}${suggestionAt === '' ? '' : `（${suggestionAt}）`}`,
     summary.lastE2eLatencyMs === undefined
       ? '最近端到端耗时：暂无'
-      : `最近端到端耗时：${summary.lastE2eLatencyMs} ms`,
+      : `最近端到端耗时：${formatE2eMs(summary.lastE2eLatencyMs)}`,
     `审计存储可用：${formatBytes(summary.storageAvailableBytes)}${summary.storageLowSpace === true ? '（低空间预警 E_STORAGE_LOW）' : ''}`,
     summary.lastDomainError === undefined
       ? '最近领域错误：无'

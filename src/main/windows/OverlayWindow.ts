@@ -16,6 +16,18 @@ const DEFAULT_OVERLAY_PREFS: OverlayPreferenceV1 = {
 
 const DEFAULT_ACK_TIMEOUT_MS = 1500;
 
+// UI §5 default position: horizontal center, vertical middle-lower — the overlay
+// occupies the lower portion of the screen, never vertically centered.
+export function defaultOverlayPosition(
+  workArea: { x: number; y: number; width: number; height: number },
+  size: { width: number; height: number },
+): { x: number; y: number } {
+  return {
+    x: workArea.x + Math.round((workArea.width - size.width) / 2),
+    y: workArea.y + Math.round((workArea.height - size.height) * 0.6),
+  };
+}
+
 export type OverlayShowResult =
   | { ok: true; firstFrameAtMonotonicMs: number }
   | { ok: false; reason: string };
@@ -44,6 +56,7 @@ export class OverlayWindow {
   private readonly ackTimeoutMs: number;
   private readonly pendingAcks = new Map<string, PendingAck>();
   private lastAppliedSize: { width: number; height: number } | null = null;
+  private positionSeeded = false;
 
   constructor(options: OverlayWindowOptions) {
     this.getSettings = options.getSettings;
@@ -52,7 +65,18 @@ export class OverlayWindow {
   }
 
   private createWindow(): void {
+    // Default position (UI §5): horizontal center, vertical middle-lower — the
+    // overlay occupies the lower portion of the screen, never vertically
+    // centered. Settings may not be loaded at construction (eager window), so
+    // this seeds with DEFAULT size; showSuggestion() re-seeds once the real
+    // prefs size is known (review M3).
+    const { x, y } = defaultOverlayPosition(
+      screen.getPrimaryDisplay().workArea,
+      { width: DEFAULT_OVERLAY_PREFS.width, height: DEFAULT_OVERLAY_PREFS.height },
+    );
     this.window = new BrowserWindow({
+      x,
+      y,
       width: DEFAULT_OVERLAY_PREFS.width,
       height: DEFAULT_OVERLAY_PREFS.height,
       minWidth: 320,
@@ -96,6 +120,12 @@ export class OverlayWindow {
     }
     await this.waitReady();
     await this.applyPreferences(await this.readPrefs());
+    // First show only: re-seed the default position from the prefs-applied size
+    // (the construction seed used DEFAULT size). Later shows keep the dragged
+    // spot — the seed flag stays set for the window's lifetime (review M3).
+    this.seedDefaultPosition();
+    // ensureOnScreen runs AFTER the seed so an oversized pref cannot leave the
+    // seeded top off-screen un-clamped (review m-2).
     this.ensureOnScreen();
     // Re-read after the awaits: a destroy() during them nulls the instance.
     const win = this.window;
@@ -178,6 +208,14 @@ export class OverlayWindow {
         resolve();
       });
     });
+  }
+
+  private seedDefaultPosition(): void {
+    const win = this.window;
+    if (win === null || win.isDestroyed() || this.positionSeeded) return;
+    this.positionSeeded = true;
+    const { x, y } = defaultOverlayPosition(screen.getPrimaryDisplay().workArea, win.getBounds());
+    win.setBounds({ x, y, width: win.getBounds().width, height: win.getBounds().height });
   }
 
   /** Last position must stay on a display; otherwise fall back to primary's corner. */

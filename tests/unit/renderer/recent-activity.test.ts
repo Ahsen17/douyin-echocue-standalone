@@ -31,9 +31,9 @@ describe('formatRecentActivity (UI §4 recent-activity card)', () => {
     expect(view.lastProcessed).toMatch(/已展示 · \d{2}:\d{2}:\d{2}/);
   });
 
-  it('formats e2e latency', () => {
+  it('formats e2e latency with two decimals', () => {
     const view = formatRecentActivity(summary({ lastE2eLatencyMs: 1800 }));
-    expect(view.lastE2eMs).toBe('1800 毫秒');
+    expect(view.lastE2eMs).toBe('1800.00 毫秒');
   });
 
   it('result without time stays 暂无', () => {

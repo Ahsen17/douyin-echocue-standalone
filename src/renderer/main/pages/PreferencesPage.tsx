@@ -17,6 +17,7 @@ function OverlayPreview({ prefs }: { prefs: OverlayPreferenceV1 }) {
       className={`overlay ${prefs.theme}`}
       style={{
         width: `min(${prefs.width}px, 100%)`,
+        minHeight: Math.min(prefs.height, 420),
         opacity: prefs.opacity,
         fontSize: `${prefs.fontScale * 100}%`,
       }}

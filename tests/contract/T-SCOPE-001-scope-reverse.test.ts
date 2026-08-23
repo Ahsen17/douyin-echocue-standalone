@@ -16,10 +16,15 @@ const FORBIDDEN_CHANNEL = [
   /golden|bad.?case|sync.?status|threshold/i,
 ];
 
-// Sanctioned user-facing retrieval-init surfaces (RUNBOOK §3.1: import pre_set +
-// readiness status). Any other retrieval.* channel would be an internal leak —
-// golden/bad-case/sync/threshold stay forbidden by FORBIDDEN_CHANNEL.
-const SANCTIONED_RETRIEVAL_CHANNELS = new Set(['retrieval.getStatus', 'retrieval.importPreSet']);
+// Sanctioned user-facing retrieval surfaces (RUNBOOK §3.1: import pre_set +
+// readiness status + diagnostic collection point counts). Any other retrieval.*
+// channel would be an internal leak — golden/bad-case/sync/threshold stay
+// forbidden by FORBIDDEN_CHANNEL.
+const SANCTIONED_RETRIEVAL_CHANNELS = new Set([
+  'retrieval.getStatus',
+  'retrieval.importPreSet',
+  'retrieval.getCollectionCounts',
+]);
 
 const FORBIDDEN_USER_VISIBLE_KEY = [
   /golden|bad.?case|sync|threshold|score|confidence|envelope/i,
