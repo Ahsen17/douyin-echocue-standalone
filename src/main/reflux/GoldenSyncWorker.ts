@@ -126,7 +126,20 @@ export class GoldenSyncWorker {
       this.audit.completeSyncJob(job.jobId, ctx.feedbackId, point.id);
       return;
     }
-    // SET_BAD_CASE lands in M7-03; treat any such job as permanently unhandled.
+    if (job.action === 'SET_BAD_CASE') {
+      // CONTRACT §4.3: only the golden direct source point is marked bad; the
+      // migration trigger already rejected anything else at insert time.
+      if (ctx.source.collection !== 'golden_set' || ctx.source.pointId === null) {
+        throw new RefluxPayloadError(`SET_BAD_CASE job has no golden direct source: ${job.jobId}`);
+      }
+      await this.qdrantClient.setPayload('golden_set', {
+        wait: true,
+        payload: { is_bad_case: true, updated_at: this.now().toISOString() },
+        points: [ctx.source.pointId],
+      });
+      this.audit.completeSyncJob(job.jobId, ctx.feedbackId, ctx.source.pointId);
+      return;
+    }
     throw new RefluxPayloadError(`unhandled sync action: ${job.action}`);
   }
 

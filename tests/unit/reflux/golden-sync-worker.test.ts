@@ -63,7 +63,7 @@ function makeWorker(overrides: Record<string, unknown> = {}) {
   return { worker, audit, qdrantClient };
 }
 
-describe('GoldenSyncWorker.processPending (M7-02)', () => {
+describe('GoldenSyncWorker.processPending (M7-02/03)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
@@ -153,6 +153,55 @@ describe('GoldenSyncWorker.processPending (M7-02)', () => {
     const result = await worker.processPending();
     expect(result.failed).toBe(1);
     expect(audit.failSyncJob).toHaveBeenCalledWith('job-1', 'missing', expect.stringContaining('feedback context missing'), true);
+  });
+
+  it('marks a rejected golden direct source as bad via setPayload and completes the job (M7-03)', async () => {
+    const { worker, audit, qdrantClient } = makeWorker();
+    const ctx = validCtx({
+      labelStatus: 'REJECTED',
+      qualityScore: 0,
+      source: { collection: 'golden_set', pointId: 'golden-1' },
+    });
+    audit.claimNextSyncJob
+      .mockReturnValueOnce({ jobId: 'job-1', feedbackId: ctx.feedbackId, action: 'SET_BAD_CASE' })
+      .mockReturnValueOnce(null);
+    audit.readFeedbackSyncContext.mockReturnValue(ctx);
+    qdrantClient.getCollection.mockResolvedValue(PROFILE_METADATA);
+    qdrantClient.setPayload.mockResolvedValue({ status: 'ok' });
+
+    const result = await worker.processPending();
+    expect(result.claimed).toBe(1);
+    expect(result.succeeded).toBe(1);
+    expect(qdrantClient.setPayload).toHaveBeenCalledWith(
+      'golden_set',
+      expect.objectContaining({
+        payload: expect.objectContaining({ is_bad_case: true }),
+        points: ['golden-1'],
+      }),
+    );
+    expect(audit.completeSyncJob).toHaveBeenCalledWith('job-1', ctx.feedbackId, 'golden-1');
+    expect(qdrantClient.upsert).not.toHaveBeenCalled();
+  });
+
+  it('permanently fails a SET_BAD_CASE job that lost its golden source (M7-03)', async () => {
+    const { worker, audit, qdrantClient } = makeWorker();
+    const ctx = validCtx({
+      labelStatus: 'REJECTED',
+      qualityScore: 0,
+      source: { collection: null, pointId: null },
+    });
+    audit.claimNextSyncJob.mockReturnValueOnce({ jobId: 'job-1', feedbackId: ctx.feedbackId, action: 'SET_BAD_CASE' });
+    audit.readFeedbackSyncContext.mockReturnValue(ctx);
+    qdrantClient.getCollection.mockResolvedValue(PROFILE_METADATA);
+
+    const result = await worker.processPending();
+    expect(result.failed).toBe(1);
+    expect(audit.failSyncJob).toHaveBeenCalledWith(
+      'job-1',
+      ctx.feedbackId,
+      expect.stringContaining('no golden direct source'),
+      true,
+    );
   });
 
   it('guards against overlapping sweeps', async () => {

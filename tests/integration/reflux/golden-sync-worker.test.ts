@@ -9,9 +9,15 @@ import { AuditStoreWorker } from '../../../src/main/storage/index.js';
 import { PersonaStore } from '../../../src/main/persona/index.js';
 import { CryptoKeyManager } from '../../../src/main/crypto/key-manager.js';
 import { CredentialStore } from '../../../src/main/credentials/CredentialStore.js';
-import { GoldenSyncWorker } from '../../../src/main/reflux/index.js';
-import { SuggestionRetriever, bootstrapPreSet } from '../../../src/main/retrieval/index.js';
-import { uuidv7 } from '../../../src/main/util/index.js';
+import { GoldenSyncWorker, readGoldenProfile } from '../../../src/main/reflux/index.js';
+import {
+  SuggestionRetriever,
+  bootstrapPreSet,
+  buildDocumentVector,
+  createBm25TextPipeline,
+} from '../../../src/main/retrieval/index.js';
+import type { GoldenSetPayloadV1 } from '@echocue/contracts';
+import { uuidv5, uuidv7 } from '../../../src/main/util/index.js';
 import { resolveQdrantBinary, startTestQdrant, type TestQdrant } from '../retrieval/qdrant-test-utils.js';
 
 const MIGRATION_PATH = join(
@@ -46,7 +52,7 @@ afterEach(async () => {
   }
 });
 
-(binary ? describe : describe.skip)('golden sync worker integration (M7-02 UPSERT)', () => {
+(binary ? describe : describe.skip)('golden sync worker integration (M7-02/03)', () => {
   let testDir: string;
   let worker: AuditStoreWorker;
   let keyManager: CryptoKeyManager;
@@ -122,6 +128,41 @@ afterEach(async () => {
       snap('SUGGESTION_JSON', 'LLM_PARSED_OUTPUT', { quickReply: '主播晚上好呀', cues: ['回礼', '问好'] }),
     ]);
     worker.appendTransition(traceId, 'GENERATED', 'DISPLAY_READY', 'OUTPUT_VALIDATED');
+    worker.appendTransition(traceId, 'DISPLAY_READY', 'DISPLAYED', 'OVERLAY_RENDERED');
+    worker.appendTransition(traceId, 'DISPLAYED', 'HIDDEN', 'DISPLAY_DURATION_ELAPSED');
+    return traceId;
+  }
+
+  function setupDirectTrace(personaVersion: string, pointId: string): string {
+    const traceId = uuidv7();
+    const sessionId = uuidv7();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    worker.createTrace({ traceId, sessionId, sourceMessageId: `msg-${traceId}`, receivedAt: now });
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED', [
+      snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', {
+        sourceMessageId: `msg-${traceId}`,
+        rawText: '今天状态真好',
+        normalizedText: '今天状态真好',
+        receivedAt: now,
+        receivedMonotonicMs: 1,
+      }),
+    ]);
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED', [
+      snap('DECISION_JSON', 'PERSONA_ROUTE', { personaId: 'p-1' }),
+      snap('PERSONA_TEXT', 'PERSONA_VERSION_SNAPSHOT', {
+        personaId: 'p-1', personaVersion, content: '你是主播。', contentHmac: 'hmac-v1',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'ROUTED', 'RETRIEVING', 'RETRIEVAL_STARTED');
+    worker.appendTransition(traceId, 'RETRIEVING', 'DIRECT_READY', 'GOLDEN_DIRECT_ELIGIBLE', [
+      snap('SUGGESTION_JSON', 'DIRECT_PAYLOAD', { quick_reply: '谢谢你！', cues: ['接住夸奖', '继续互动'] }),
+      snap('DECISION_JSON', 'DIRECT_DECISION', {
+        eligible: true, pointId, reason: 'GOLDEN_DIRECT_ELIGIBLE',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'DIRECT_READY', 'DISPLAY_READY', 'OUTPUT_VALIDATED');
     worker.appendTransition(traceId, 'DISPLAY_READY', 'DISPLAYED', 'OVERLAY_RENDERED');
     worker.appendTransition(traceId, 'DISPLAYED', 'HIDDEN', 'DISPLAY_DURATION_ELAPSED');
     return traceId;
@@ -232,5 +273,63 @@ afterEach(async () => {
     } finally {
       reader.close();
     }
+  }, 30_000);
+
+  it('marks a rejected golden direct point as a bad case and excludes it from retrieval (M7-03)', async () => {
+    const { personaVersion } = setupPersonaAndVersion();
+
+    // Pre-seed the golden point the direct trace pushes from.
+    const profile = readGoldenProfile(await client.getCollection('golden_set'));
+    const pipeline = createBm25TextPipeline();
+    const golden: GoldenSetPayloadV1 = {
+      case_id: 'seeded-1',
+      tokenizer_version: 'zh_jieba_search_v1',
+      source_trace_id: uuidv7(),
+      persona_id: 'p-1',
+      persona_version: personaVersion,
+      text: '今天状态真好',
+      semantic_type: 'positive_praise',
+      reply: '谢谢你！',
+      cues: ['接住夸奖', '继续互动'],
+      quality_score: 90,
+      enabled: true,
+      is_bad_case: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const pointId = uuidv5(`echocue:golden_set:${golden.case_id}`);
+    const analyzed = pipeline.analyze(golden.text);
+    const vector = buildDocumentVector(analyzed, profile);
+    await client.upsert('golden_set', {
+      wait: true,
+      points: [{
+        id: pointId,
+        vector: { bm25_zh_jieba_v1: { indices: vector.indices, values: vector.values } },
+        payload: golden,
+      }],
+    });
+
+    const traceId = setupDirectTrace(personaVersion, pointId);
+    const status = worker.submitLabel({ traceId, expectedRevisionNo: 0, score: 0 });
+    expect(status).toBe('REJECTED');
+
+    const result = await goldenSync.processPending();
+    expect(result.succeeded).toBe(1);
+
+    const points = await client.retrieve('golden_set', { ids: [pointId], with_payload: true });
+    expect(points).toHaveLength(1);
+    const payload = points[0].payload as Record<string, unknown>;
+    expect(payload.is_bad_case).toBe(true);
+    expect(payload.updated_at).toBeTruthy();
+
+    // The bad point is excluded by the golden filter and no longer retrievable.
+    const retriever = new SuggestionRetriever(client);
+    const raw = await retriever.search({
+      queryText: '今天状态真好',
+      personaId: 'p-1',
+      personaVersion,
+      topK: 5,
+    });
+    expect(raw.goldenHits).toEqual([]);
   }, 30_000);
 });
