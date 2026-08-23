@@ -8,7 +8,7 @@
 |------|------|
 | 类型 | 插入实现（缺陷修复 + 功能接线），非路图原子任务 |
 | 分支 | feat/retrieval-preset-import |
-| 状态 | ✅ 已完成（本地验证通过，待批次级 Subagent 审查 + PR） |
+| 状态 | ✅ 已完成（两轮隔离 Subagent 审查通过，待 PR + CI） |
 | 完成时间 | 2026-08-23 |
 | 追溯 | RUNBOOK §2.2/§3.1/§3.2/§5.1/§8.2；PRESET §1/§6/§7；A-05；T-RET-001；T-SCOPE-001 |
 
@@ -67,11 +67,22 @@ npm run build
 
 全量结果：typecheck 零错误；contract 155/155；vitest 1035 passed / 5 skipped；build 通过。集成用例依赖 `assets/qdrant_linux`（仓库已有）。
 
+## Subagent 审查（两轮，均非 fork 完全隔离）
+
+**第一轮**：无 P0；P1×3 + P2×3 全部修复：
+- P1-1 导入互斥 N≥3 不串行 → 改 promise-chain（`chain = task.catch(...)`），链尾永拒、失败不毒化后续。
+- P1-2 导入/启动 TOCTOU → 队列等待后重查守卫 + `isServiceStopped = STOPPED && !controller.isStarting()`；`ServiceController` 新增 `isStarting()`（`phase !== 'idle'`）。
+- P1-3 Qdrant 启停互斥/退出孤儿 → `start()` 先预留 `this.starting` 再跑 `doStart()`（防并发双起）；`stop()` 等待 pending start 后 `killChild()`；`doStart` 失败路径直接 `killChild()`（避免自等待死锁）。
+- P2-4 ipc-allowlist 补 wireRetrievalControl + 2 通道（27→29）。P2-5 RetrievalCard 未就绪轮询刷新。P2-6 错误 id/path 截断至契约上界。
+- 新增测试：三并发串行化、队列后守卫重查、错误截断、并发 start 幂等、stop 打断 pending start 无孤儿。
+
+**第二轮**：无 P0/P1；P2-1（门禁意外抛出 phase 滞留 'gate' 会经 isStarting() 永久阻断导入）已修复——`start()` 包 `runGate()`，异常复位 `phase='idle'` 后重抛 + 单测。P2-2（killChild `once(exit)` 窄竞态，**既有代码原样搬移**）与 P2-3（主进程 bootstrap 失败时轮询持续，**已降级路径**）为非阻塞，接受并记录，不改动。
+
 ## 已知限制 / 后续
 
 - **首次运行完整向导未实现**：本任务为 RunPage 内联导入卡片（保持七入口导航），非 RUNBOOK §3.1 描述的独立初始化向导；向导作为后续可选增强，不改变本任务「可导入、可启动」的核心能力。
 - **`getStatus` 只读**：不触发 sidecar 启动重试；sidecar 启动失败由 `index.ts` 一次性尝试 + 导入时 `ensureQdrant()` 重试。
-- **T-PKG smoke-quit 时序风险**：eager 启动 Qdrant 后，4s smoke-quit 可能早于 Qdrant 就绪；`start()` 中断被 `.catch` 吸收、`stop()` 幂等，不阻塞退出码 0；若 Windows CI 出现孤儿进程断言失败按 `fix/` 处理。
+- **T-PKG smoke-quit 时序风险**：eager 启动 Qdrant 后，4s smoke-quit 可能早于 Qdrant 就绪；`start()` 中断被 `.catch` 吸收、`stop()` 等待 pending start 后清理，不阻塞退出码 0；最坏等待受 startup timeout（15s）约束。若 Windows CI 出现孤儿进程断言失败按 `fix/` 处理。
 - **T-SCOPE-001 变更说明**：新增通道为合法用户面初始化能力（RUNBOOK §3.1 强制的导入流程），测试改为显式允许 `retrieval.getStatus`/`retrieval.importPreSet` 两个受控通道、其余 `retrieval.*` 仍禁止。
 
 ## 追溯
