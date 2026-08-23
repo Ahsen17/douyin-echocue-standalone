@@ -143,7 +143,10 @@ try {
   $script:exitCode = 1
 } finally {
   $jsonPath = Join-Path $releaseDir 'verify-results.json'
-  $results | ConvertTo-Json -Depth 5 | Set-Content -Path $jsonPath -Encoding utf8
+  $json = $results | ConvertTo-Json -Depth 5
+  # Windows PowerShell 5.1 Set-Content -Encoding utf8 writes a BOM, which would
+  # break downstream JSON.parse; write UTF-8 without a BOM explicitly.
+  [System.IO.File]::WriteAllText($jsonPath, $json, (New-Object System.Text.UTF8Encoding($false)))
   Write-Host "wrote $jsonPath"
 }
 

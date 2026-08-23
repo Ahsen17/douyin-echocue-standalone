@@ -22,7 +22,7 @@ function findInstaller(): string {
 
 function readVerifyResults(): Record<string, unknown> {
   const raw = readFileSync(join(pkgDir!, 'verify-results.json'), 'utf8');
-  return JSON.parse(raw) as Record<string, unknown>;
+  return JSON.parse(raw.replace(/^\uFEFF/, '')) as Record<string, unknown>;
 }
 
 // Minimal PE inspection: MZ signature, then the COFF Machine field which is
