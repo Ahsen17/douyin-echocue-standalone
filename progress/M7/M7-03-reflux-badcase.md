@@ -49,7 +49,17 @@
 - `onLabelSubmitted` 与 sweep 重叠时新 job 最多延迟一个 sweep 周期（60s）。
 - 生产接线缺口（既有依赖，非本批次引入）：`bootstrapPreSet` 尚未接线到生产运行时，`golden_set` 在 bootstrap 落地前不存在，回流 worker 将保持 PENDING（前向兼容不烧 attempts），需在 retrieval bootstrap 接线后联动验证端到端回流。
 
-## 批次级验证结果（修复后）
+## 批次审查（第二轮，全新非 fork Subagent，e0121d2→99b69c6）
+结论：**无阻断级问题**；第一轮 5 项修复全部独立核验为实质正确。新发现 4 项非阻断改进项，均已在本批次处理：
+
+- **F1（已修复）**：config-error 分支原先将 UPSERT 与 SET_BAD_CASE 一视同仁永久失败；改为按 action 分流——UPSERT 需 profile 故永久失败可观察，SET_BAD_CASE 无需 profile 正常执行并 complete。
+- **F2（已修复）**：`processPending` 加顶层 catch，杜绝 fire-and-forget 调用方（sweep 定时器、onLabelSubmitted）的未处理 rejection。
+- **F3（已修复）**：`extract*` 快照 JSON 解析失败改为 `RefluxPayloadError`（永久分类），与 correction 解密路径一致。
+- **F4（已修复）**：config-error 分支 `result.claimed` 正确计数。
+
+**留档（产品/设计决策，非代码缺陷）**：CORRECTED 只 UPSERT 新点、不标坏源 golden point（契约既有语义，仅 REJECTED 无修正才 SET_BAD_CASE）；生产接线缺口（`bootstrapPreSet` 未接线，`golden_set` 落地前 worker 保持 PENDING）。
+
+## 批次级验证结果（F1-F4 修复后）
 - `npm run typecheck`：零错误
 - `npm run test:contracts`：149 passed
 - `npm run test`：945 passed / 15 todo（2 个 skip 为既有 Windows/E2E）
