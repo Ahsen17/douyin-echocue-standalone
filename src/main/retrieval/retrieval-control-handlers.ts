@@ -78,10 +78,11 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
         return 0;
       }
     };
-    return {
-      preSetPointCount: await countOf(QDRANT_ALIAS_PRE_SET),
-      goldenSetPointCount: await countOf(QDRANT_ALIAS_GOLDEN_SET),
-    };
+    const [preSetPointCount, goldenSetPointCount] = await Promise.all([
+      countOf(QDRANT_ALIAS_PRE_SET),
+      countOf(QDRANT_ALIAS_GOLDEN_SET),
+    ]);
+    return { preSetPointCount, goldenSetPointCount };
   };
 
   const importPreSet = async (raw: unknown): Promise<PreSetImportResultV1> => {
