@@ -83,6 +83,22 @@ describe('Persona IPC handlers (M6-04)', () => {
     expect(detail.editableContent).toBe('第二版草稿');
   });
 
+  it('saveDraft updates the working draft in place and leaves no orphan after publish', async () => {
+    const created = await handlers.create({ displayName: '小A' });
+    const draft = await handlers.saveDraft({ personaId: created.personaId, content: '草稿内容' });
+    // Save again with the same personaVersion → the working draft row is reused,
+    // so publish cannot leave a stale DRAFT behind.
+    const draft2 = await handlers.saveDraft({ personaId: created.personaId, content: '草稿内容' });
+    expect(draft2.personaVersion).toBe(draft.personaVersion);
+
+    const published = await handlers.publish({ personaVersion: draft.personaVersion });
+    expect(published.status).toBe('PUBLISHED');
+
+    const detail = await handlers.get({ personaId: created.personaId });
+    expect(detail.versions.filter((v) => v.status === 'DRAFT')).toHaveLength(0);
+    expect(detail.editableContent).toBe('草稿内容');
+  });
+
   it('saveDraft with fromVersion copies the referenced version content (rollback)', async () => {
     const created = await handlers.create({ displayName: '小A' });
     await handlers.saveDraft({ personaId: created.personaId, content: '第一版内容' });

@@ -64,9 +64,8 @@ export function createPersonaControlHandlers(deps: PersonaControlDeps): PersonaC
       try {
         const summary = persona.getPersona(req.personaId);
         const versions = persona.listVersions(req.personaId);
-        // Editing starts from the latest draft (listVersions is ASC by
-        // created_at; createDraft never updates an existing draft row), else
-        // the active published content.
+        // Editing starts from the working draft (saveDraft updates it in place,
+        // so there is at most one DRAFT per member), else the active published.
         const latestDraft = [...versions].reverse().find((v) => v.status === 'DRAFT');
         const contentVersion = latestDraft?.personaVersion ?? summary.activeVersion ?? null;
         const editableContent = contentVersion === null ? '' : persona.readVersionContent(contentVersion);
@@ -122,6 +121,16 @@ export function createPersonaControlHandlers(deps: PersonaControlDeps): PersonaC
         content = persona.readVersionContent(req.fromVersion);
       }
       try {
+        // 单工作草稿模型：content 直存时若该成员已有一个 DRAFT，更新它而非追加新行
+        //（避免发布后残留孤儿草稿、下次编辑加载陈旧内容）。fromVersion 回滚始终新建。
+        if (req.fromVersion === undefined) {
+          const versions = persona.listVersions(req.personaId);
+          const latestDraft = [...versions].reverse().find((v) => v.status === 'DRAFT');
+          if (latestDraft !== undefined) {
+            persona.updateDraftContent(latestDraft.personaVersion, content);
+            return persona.getVersionMeta(latestDraft.personaVersion);
+          }
+        }
         return persona.createDraft({ personaId: req.personaId, content, fromVersion: req.fromVersion });
       } catch (err) {
         throw translatePersonaError(err);
