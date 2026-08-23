@@ -75,7 +75,9 @@ afterEach(async () => {
     client = new QdrantClient({ host: '127.0.0.1', port: qdrant.manager.httpPort });
     await bootstrapPreSet(client, { content: VALID_CONTENT });
     goldenSync = new GoldenSyncWorker({ audit: worker, qdrantClient: client });
-  });
+    // qdrant cold start + pre_set bootstrap can exceed vitest's 10s hook default
+    // under parallel load (startTestQdrant itself allows 20s).
+  }, 30_000);
 
   afterEach(async () => {
     worker.close();

@@ -13,10 +13,10 @@ directories:
   buildResources: build
 
 # Vite bundles everything except node builtins, electron, jieba-wasm and
-# @qdrant/js-client-rest (vite.config.main.ts). Only those two scopes plus
-# undici (a hoisted transitive dep of @qdrant/js-client-rest) must ship as real
-# node_modules; the rest is already inside dist/**. Restricting `files` also
-# keeps Linux sidecars, docs and sources out of the installer.
+# @qdrant/js-client-rest (vite.config.main.ts). electron-builder also packs all
+# other production node_modules automatically, so these three globs just pin the
+# must-ship externalized runtime modules; `files` keeps Linux sidecars, docs and
+# sources out of the installer.
 files:
   - dist/**
   - node_modules/jieba-wasm/**
@@ -54,3 +54,8 @@ nsis:
   perMachine: false
   deleteAppDataOnUninstall: false
   allowElevation: false
+  # Deterministic install E2E: silent install must not auto-launch the app
+  # (would hold %LOCALAPPDATA%\Echocue open), and stale processes are killed
+  # before reinstall/upgrade.
+  runAfterFinish: false
+  killRunningProcesses: true
