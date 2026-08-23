@@ -307,7 +307,7 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
     const orchestrator = new SuggestionAttemptOrchestrator({
       audit: worker,
       stateMachine: machine,
-      router: { route: () => ({ personaId: 'p-1', personaVersion: 'v-1', personaMarkdown: 'x', decision: 'principal_fallback', candidates: [] }) } as never,
+      router: { route: () => ({ personaId: 'p-1', personaVersion: 'v-1', displayName: '主播A', personaMarkdown: 'x', decision: 'principal_fallback', candidates: [] }) } as never,
       personas: { listPersonas: () => [], listAliases: () => [], getVersionMeta: () => ({ contentHmac: 'h' }) } as never,
       safety: { getActivePublishedVersion: async () => 'pol-v1', readPolicy: () => ({ policyText: '', keywords: [], compiledRules: null, validationErrors: null }) } as never,
       retriever: { search: async () => ({ goldenHits: [], preHits: [] }) } as never,

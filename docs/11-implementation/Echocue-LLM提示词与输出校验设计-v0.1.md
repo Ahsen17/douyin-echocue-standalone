@@ -114,15 +114,12 @@ MVP 采用一条 `system` 消息和一条 `user` 消息；不维护聊天历史�
 
 ```json
 {
-  "contract": "echocue.reply_generation.v1",
   "target_comment": "<已标准化的目标弹幕>",
   "persona": {
-    "persona_id": "<UUID>",
-    "persona_version": "<UUID>",
+    "nickname": "<成员显示名（人设昵称）>",
     "content": "<当前冻结的自然语言人设>"
   },
   "team_boundaries": {
-    "version": "<规则版本>",
     "policy_text": "<自然语言禁忌>",
     "keywords": ["<关键词>"]
   },
@@ -143,7 +140,7 @@ MVP 采用一条 `system` 消息和一条 `user` 消息；不维护聊天历史�
 }
 ```
 
-Prompt 不含 retrieval 原始分数、归一置信度、直出阈值、bad-case、同步状态、Qdrant point ID、内部 reason code 或审计密钥。它们既不利于生成，也不应泄露给模型提供商。
+Prompt 不含 `contract`/`persona_id`/`persona_version`/`team_boundaries.version` 等内部 id/version 标记——它们对模型无信息价值（仅作内部契约标识，见 `PROMPT_ASSEMBLER_VERSION_V1 = v2` / `USER_CONTRACT_ID_V1`），也不含 retrieval 原始分数、归一置信度、直出阈值、bad-case、同步状态、Qdrant point ID、内部 reason code 或审计密钥。它们既不利于生成，也不应泄露给模型提供商。
 
 ### 3.3 版本化、可复现性与 POC 项
 

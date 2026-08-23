@@ -11,6 +11,7 @@ import {
 export interface PersonaRoute extends RouteDecision {
   personaId: string;
   personaVersion: string;
+  displayName: string;
   personaMarkdown: string;
   decision: PersonaRouteDecision;
   candidates: RouteCandidate[];
@@ -68,6 +69,7 @@ export class PersonaRouter {
     return {
       personaId: targetId,
       personaVersion: summary.activeVersion,
+      displayName: summary.displayName,
       personaMarkdown: this.store.readVersionContent(summary.activeVersion),
       decision: finalDecision,
       candidates: decision.candidates,
