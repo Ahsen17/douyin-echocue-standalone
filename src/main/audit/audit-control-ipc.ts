@@ -7,14 +7,15 @@ import { createAuditControlHandlers } from './audit-control-handlers.js';
 export interface AuditControlIpcOptions {
   audit: AuditStoreWorker;
   isTrustedSender: (contents: WebContents) => boolean;
+  onLabelSubmitted?: () => void;
 }
 
 // CONTRACT §7: audit.search / audit.getWorkflow from the main window only.
 // The overlay preload has no audit.* surface; a wrong sender is rejected by the
 // guarded handler before any query runs.
 export function wireAuditControl(options: AuditControlIpcOptions): void {
-  const { audit, isTrustedSender } = options;
-  const handlers = createAuditControlHandlers({ audit });
+  const { audit, isTrustedSender, onLabelSubmitted } = options;
+  const handlers = createAuditControlHandlers({ audit, onLabelSubmitted });
 
   ipcMain.handle(
     IpcChannel.AuditSearch,

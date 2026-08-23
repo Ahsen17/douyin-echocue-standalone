@@ -91,6 +91,7 @@ app.whenReady().then(async () => {
         overlayWindowInstance?.hideSuggestion()
       },
     })
+    services.goldenSync.start()
     services.stateMachine.onChanged((state) => {
       services?.diagnostics.updateLifecycle(state.lifecycle, state.activity)
     })
@@ -105,7 +106,14 @@ app.whenReady().then(async () => {
     })
     wirePersonaControl({ persona: services.persona, isTrustedSender })
     wireSafetyControl({ safety: services.safety, isTrustedSender })
-    wireAuditControl({ audit: services.audit, isTrustedSender })
+    wireAuditControl({
+      audit: services.audit,
+      isTrustedSender,
+      // M7-02: reflux immediately after a label commits (fire-and-forget).
+      onLabelSubmitted: () => {
+        void services?.goldenSync?.processPending()
+      },
+    })
     wireDiagnosticsControl({ diagnostics: services.diagnostics, isTrustedSender })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble

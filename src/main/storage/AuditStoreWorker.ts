@@ -16,12 +16,14 @@ import type {
   AuditSubmitLabelRequestV1,
   LabelStatus,
   TraceFinalState,
+  OutboxActionV1,
 } from '@echocue/contracts';
 import { FieldEncryptor, buildAad } from '../crypto/field-encryptor.js';
 import { CryptoKeyManager } from '../crypto/key-manager.js';
 import { uuidv7 } from '../util/uuidv7.js';
 import type { MigrationFile } from './MigrationRunner.js';
 import { MigrationRunner } from './MigrationRunner.js';
+import { RefluxPayloadError, deriveRefluxAction } from '../reflux/payload-builder.js';
 
 export interface AuditStoreWorkerOptions {
   dbPath: string;
@@ -77,6 +79,41 @@ export interface TraceWorkflowTransition {
 export interface TraceWorkflow {
   traceId: string;
   transitions: TraceWorkflowTransition[];
+}
+
+// qdrant_sync_job I/O contract (M7-01). These types stay in the storage layer
+// because the job lifecycle methods below are AuditStoreWorker's own surface;
+// the reflux worker consumes them via ../storage/index.js.
+
+/** A qdrant_sync_job row in PENDING state, eligible for claim. */
+export interface PendingSyncJob {
+  jobId: string;
+  feedbackId: string;
+  action: OutboxActionV1;
+}
+
+/** A FAILED job row, used by the worker to decide when backoff has elapsed. */
+export interface FailedSyncJob extends PendingSyncJob {
+  attempts: number;
+  updatedAt: string;
+}
+
+/**
+ * Decrypted feedback revision + trace workflow that the golden sync worker
+ * needs to build a golden_set point (M7-02) or mark a source bad (M7-03).
+ * The correction envelope is decrypted here — never in the reflux module.
+ */
+export interface FeedbackSyncContext {
+  feedbackId: string;
+  traceId: string;
+  revisionNo: number;
+  personaId: string;
+  personaVersion: string;
+  qualityScore: number;
+  labelStatus: LabelStatus;
+  correction: { correctedQuickReply: string; correctedCues: string[] } | null;
+  source: { collection: 'golden_set' | null; pointId: string | null };
+  workflow: AuditWorkflowV1;
 }
 
 export class AuditStateInvalidError extends Error {
@@ -387,10 +424,12 @@ export class AuditStoreWorker {
 
   /**
    * Persist a label revision (DATA §4.3): write suggestion_feedback
-   * (UNIQUE(trace_id, revision_no)) and update audit_trace.label_status /
-   * current_feedback_id in one transaction. The optimistic lock rejects a
-   * concurrent edit (修订而非覆盖). Returns the user-visible labelStatus only;
-   * qdrant_sync_job / outbox is M7-01.
+   * (UNIQUE(trace_id, revision_no)), update audit_trace.label_status /
+   * current_feedback_id, and when the revision qualifies for reflux write the
+   * qdrant_sync_job outbox row — all in ONE transaction. The optimistic lock
+   * rejects a concurrent edit (修订而非覆盖); the idempotency key
+   * feedbackId:revisionNo:action prevents duplicate jobs. Returns the
+   * user-visible labelStatus only; sync_status stays internal (M7-01).
    */
   submitLabel(input: AuditSubmitLabelRequestV1): LabelStatus {
     const workflow = this.getTraceWorkflowV1(input.traceId);
@@ -404,9 +443,15 @@ export class AuditStoreWorker {
     const labelStatus = deriveLabelStatus(input);
     const persona = this.readPersonaBinding(workflow);
     const source = this.readDirectSource(workflow);
-    // M7-03 gate: a golden direct point is a bad case only when rejected with no
-    // correction. The outbox job is M7-01; the flag records the source derivation.
+    // A golden direct point becomes a bad case only when rejected with no
+    // correction; the outbox trigger re-validates the same condition.
     const isBadCase = labelStatus === 'REJECTED' && input.correctedQuickReply === undefined && source.pointId !== null;
+    const refluxAction = deriveRefluxAction({
+      labelStatus,
+      score: input.score,
+      hasCorrection: input.correctedQuickReply !== undefined,
+      source,
+    });
 
     try {
       this.db.exec('BEGIN');
@@ -436,7 +481,7 @@ export class AuditStoreWorker {
         input.score,
         correction,
         labelStatus,
-        'NOT_REQUIRED',
+        refluxAction === null ? 'NOT_REQUIRED' : 'PENDING',
         isBadCase ? 1 : 0,
         source.collection,
         source.pointId,
@@ -445,12 +490,237 @@ export class AuditStoreWorker {
       this.db.prepare(
         `UPDATE audit_trace SET label_status = ?, current_feedback_id = ? WHERE trace_id = ?`,
       ).run(labelStatus, feedbackId, input.traceId);
+      if (refluxAction !== null) {
+        this.db.prepare(
+          `INSERT INTO qdrant_sync_job
+            (job_id, feedback_id, target_collection, action, idempotency_key,
+             state, attempts, last_error, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        ).run(
+          uuidv7(),
+          feedbackId,
+          'golden_set',
+          refluxAction,
+          `${feedbackId}:${revisionNo}:${refluxAction}`,
+          'PENDING',
+          0,
+          null,
+          createdAt,
+          createdAt,
+        );
+      }
       this.db.exec('COMMIT');
       return labelStatus;
     } catch (err) {
       try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
       if (err instanceof AuditStateInvalidError) throw err;
       throw new AuditUnavailableError(`submitLabel failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Atomically claim one PENDING outbox job (PENDING→RUNNING). BEGIN IMMEDIATE
+   * plus `WHERE state='PENDING'` guarantees two callers never claim the same
+   * job. Returns null when nothing is pending.
+   */
+  claimNextSyncJob(): PendingSyncJob | null {
+    try {
+      this.db.exec('BEGIN IMMEDIATE');
+      const row = this.db.prepare(
+        `SELECT job_id, feedback_id, action FROM qdrant_sync_job
+         WHERE state = 'PENDING' ORDER BY created_at LIMIT 1`,
+      ).get() as { job_id: string; feedback_id: string; action: OutboxActionV1 } | undefined;
+      if (row === undefined) {
+        this.db.exec('COMMIT');
+        return null;
+      }
+      this.db.prepare(
+        `UPDATE qdrant_sync_job SET state = 'RUNNING', updated_at = ? WHERE job_id = ?`,
+      ).run(new Date().toISOString(), row.job_id);
+      this.db.exec('COMMIT');
+      return { jobId: row.job_id, feedbackId: row.feedback_id, action: row.action };
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      throw new AuditUnavailableError(`claimNextSyncJob failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Re-arm FAILED jobs whose backoff has elapsed (FAILED→PENDING), flipping the
+   * feedback sync_status the same way so it stays derived from the job (DATA
+   * §4.3). Returns the number of jobs re-armed.
+   */
+  rearmEligibleSyncJobs(jobIds: readonly string[]): number {
+    if (jobIds.length === 0) return 0;
+    const now = new Date().toISOString();
+    const marks = jobIds.map(() => '?').join(',');
+    try {
+      this.db.exec('BEGIN');
+      const res = this.db.prepare(
+        `UPDATE qdrant_sync_job SET state = 'PENDING', updated_at = ? WHERE job_id IN (${marks}) AND state = 'FAILED'`,
+      ).run(now, ...jobIds);
+      const jobRows = this.db.prepare(
+        `SELECT feedback_id FROM qdrant_sync_job WHERE job_id IN (${marks})`,
+      ).all(...jobIds) as Array<{ feedback_id: string }>;
+      if (jobRows.length > 0) {
+        const fbMarks = jobRows.map(() => '?').join(',');
+        this.db.prepare(
+          `UPDATE suggestion_feedback SET sync_status = 'PENDING'
+           WHERE feedback_id IN (${fbMarks}) AND sync_status = 'FAILED'`,
+        ).run(...jobRows.map((r) => r.feedback_id));
+      }
+      this.db.exec('COMMIT');
+      return Number(res.changes);
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      throw new AuditUnavailableError(`rearmEligibleSyncJobs failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Decrypted feedback + workflow the worker needs to reflux. Returns null when
+   * the feedback row or its trace no longer exists.
+   */
+  readFeedbackSyncContext(feedbackId: string): FeedbackSyncContext | null {
+    try {
+      const row = this.db.prepare(
+        `SELECT feedback_id, trace_id, revision_no, persona_id, persona_version, quality_score,
+                label_status, correction_envelope, source_collection, source_point_id
+         FROM suggestion_feedback WHERE feedback_id = ?`,
+      ).get(feedbackId) as {
+        feedback_id: string;
+        trace_id: string;
+        revision_no: number;
+        persona_id: string;
+        persona_version: string;
+        quality_score: number;
+        label_status: LabelStatus;
+        correction_envelope: Uint8Array | null;
+        source_collection: 'golden_set' | null;
+        source_point_id: string | null;
+      } | undefined;
+      if (row === undefined) return null;
+      const workflow = this.getTraceWorkflowV1(row.trace_id);
+      if (workflow === null) return null;
+      return {
+        feedbackId: row.feedback_id,
+        traceId: row.trace_id,
+        revisionNo: row.revision_no,
+        personaId: row.persona_id,
+        personaVersion: row.persona_version,
+        qualityScore: row.quality_score,
+        labelStatus: row.label_status,
+        correction: row.correction_envelope === null
+          ? null
+          : this.decryptCorrection(row.feedback_id, Buffer.from(row.correction_envelope)),
+        source: { collection: row.source_collection, pointId: row.source_point_id },
+        workflow,
+      };
+    } catch (err) {
+      // A corrupt correction envelope is a data-integrity problem the reflux
+      // worker must see as permanent, not a generic audit failure.
+      if (err instanceof RefluxPayloadError) throw err;
+      throw new AuditUnavailableError(`readFeedbackSyncContext failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Mark a claimed job and its feedback as synced (RUNNING→SUCCEEDED /
+   * PENDING→SYNCED) and record the Qdrant point id, in one transaction. The
+   * `WHERE state='RUNNING'` guard rejects a double-complete (changes === 0).
+   */
+  completeSyncJob(jobId: string, feedbackId: string, targetPointId: string): void {
+    try {
+      this.db.exec('BEGIN');
+      const res = this.db.prepare(
+        `UPDATE qdrant_sync_job SET state = 'SUCCEEDED', last_error = NULL, updated_at = ?
+         WHERE job_id = ? AND state = 'RUNNING'`,
+      ).run(new Date().toISOString(), jobId);
+      if (res.changes === 0) {
+        this.db.exec('ROLLBACK');
+        throw new AuditStateInvalidError(`sync job is not RUNNING: ${jobId}`);
+      }
+      this.db.prepare(
+        `UPDATE suggestion_feedback SET sync_status = 'SYNCED', target_point_id = ? WHERE feedback_id = ?`,
+      ).run(targetPointId, feedbackId);
+      this.db.exec('COMMIT');
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      if (err instanceof AuditStateInvalidError) throw err;
+      throw new AuditUnavailableError(`completeSyncJob failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Mark a claimed job as failed (RUNNING→FAILED, attempts+1, last_error) and
+   * the feedback PENDING→FAILED. A permanent data error caps attempts so the
+   * rearm sweep never retries it (M7-03). Permanent failures are terminal for
+   * automated retry; recovering them requires manual SQLite/Qdrant intervention
+   * (no diagnostic IPC exists in MVP).
+   */
+  failSyncJob(jobId: string, feedbackId: string, error: string, permanent = false): void {
+    try {
+      this.db.exec('BEGIN');
+      const row = this.db.prepare(
+        `SELECT attempts FROM qdrant_sync_job WHERE job_id = ? AND state = 'RUNNING'`,
+      ).get(jobId) as { attempts: number } | undefined;
+      if (row === undefined) {
+        this.db.exec('ROLLBACK');
+        throw new AuditStateInvalidError(`sync job is not RUNNING: ${jobId}`);
+      }
+      const nextAttempts = permanent ? Number.MAX_SAFE_INTEGER : row.attempts + 1;
+      this.db.prepare(
+        `UPDATE qdrant_sync_job SET state = 'FAILED', attempts = ?, last_error = ?, updated_at = ?
+         WHERE job_id = ?`,
+      ).run(nextAttempts, error, new Date().toISOString(), jobId);
+      this.db.prepare(
+        `UPDATE suggestion_feedback SET sync_status = 'FAILED' WHERE feedback_id = ?`,
+      ).run(feedbackId);
+      this.db.exec('COMMIT');
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      if (err instanceof AuditStateInvalidError) throw err;
+      throw new AuditUnavailableError(`failSyncJob failed: ${String(err)}`);
+    }
+  }
+
+  /** Read-only list of FAILED jobs (oldest first) for backoff computation. */
+  listFailedSyncJobs(limit: number): FailedSyncJob[] {
+    try {
+      const rows = this.db.prepare(
+        `SELECT job_id, feedback_id, action, attempts, updated_at
+         FROM qdrant_sync_job WHERE state = 'FAILED' ORDER BY updated_at LIMIT ?`,
+      ).all(limit) as Array<{
+        job_id: string;
+        feedback_id: string;
+        action: OutboxActionV1;
+        attempts: number;
+        updated_at: string;
+      }>;
+      return rows.map((r) => ({
+        jobId: r.job_id,
+        feedbackId: r.feedback_id,
+        action: r.action,
+        attempts: r.attempts,
+        updatedAt: r.updated_at,
+      }));
+    } catch (err) {
+      throw new AuditUnavailableError(`listFailedSyncJobs failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Process-crash recovery on worker startup: any RUNNING job left by a dead
+   * process goes back to PENDING (single-writer means nothing is in flight).
+   */
+  resetStaleRunningJobs(): number {
+    try {
+      const res = this.db.prepare(
+        `UPDATE qdrant_sync_job SET state = 'PENDING', updated_at = ? WHERE state = 'RUNNING'`,
+      ).run(new Date().toISOString());
+      return Number(res.changes);
+    } catch (err) {
+      throw new AuditUnavailableError(`resetStaleRunningJobs failed: ${String(err)}`);
     }
   }
 
@@ -467,6 +737,38 @@ export class AuditStoreWorker {
       buildAad('suggestion_feedback', feedbackId, 'CORRECTION_JSON'),
     );
     return Buffer.from(envelope);
+  }
+
+  private decryptCorrection(
+    feedbackId: string,
+    envelope: Buffer,
+  ): { correctedQuickReply: string; correctedCues: string[] } {
+    // A present envelope that fails to decrypt is a data-integrity problem (e.g.
+    // key rotation), not an absent correction — surface it as a permanent error
+    // rather than masking it as "no correction".
+    let plaintext: Buffer;
+    try {
+      plaintext = this.encryptor.decrypt(
+        envelope,
+        buildAad('suggestion_feedback', feedbackId, 'CORRECTION_JSON'),
+      );
+    } catch {
+      throw new RefluxPayloadError('correction envelope failed to decrypt');
+    }
+    let parsed: { correctedQuickReply?: unknown; correctedCues?: unknown };
+    try {
+      parsed = JSON.parse(plaintext.toString('utf-8')) as { correctedQuickReply?: unknown; correctedCues?: unknown };
+    } catch {
+      throw new RefluxPayloadError('correction envelope is not valid JSON');
+    }
+    if (
+      typeof parsed.correctedQuickReply !== 'string' ||
+      !Array.isArray(parsed.correctedCues) ||
+      !parsed.correctedCues.every((cue) => typeof cue === 'string')
+    ) {
+      throw new RefluxPayloadError('correction envelope has an unexpected shape');
+    }
+    return { correctedQuickReply: parsed.correctedQuickReply, correctedCues: parsed.correctedCues };
   }
 
   private readPersonaBinding(workflow: AuditWorkflowV1): { personaId: string; personaVersion: string } {

@@ -14,6 +14,11 @@ import type { AuditStoreWorker } from '../storage/index.js';
 
 export interface AuditControlDeps {
   audit: AuditStoreWorker;
+  /**
+   * Fired after a label revision commits, so the golden sync worker can reflux
+   * immediately (M7-01). Fire-and-forget; never blocks the IPC response.
+   */
+  onLabelSubmitted?: () => void;
 }
 
 export interface AuditControlHandlers {
@@ -48,6 +53,9 @@ export function createAuditControlHandlers(deps: AuditControlDeps): AuditControl
         throw new Error('修正答案质量分必须大于 0');
       }
       const labelStatus = deps.audit.submitLabel(parsed.data);
+      // M7-01: reflux immediately after the outbox row commits. Not awaited so a
+      // Qdrant outage never delays the label response.
+      void deps.onLabelSubmitted?.();
       return AuditSubmitLabelResponseV1Schema.parse({ labelStatus });
     },
   };

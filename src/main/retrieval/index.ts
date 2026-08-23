@@ -9,7 +9,7 @@ export {
   computeAvgDocLenBaseline,
   docTermWeight,
 } from './bm25-weights.js';
-export type { DocumentVector, TokenCollision } from './bm25-weights.js';
+export type { DocumentVector, TokenCollision, GoldenProfileParams } from './bm25-weights.js';
 export { importPreSet } from './pre-set-importer.js';
 export type {
   PreSetImportError,

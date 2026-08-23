@@ -13,4 +13,7 @@ export type {
   TraceWorkflow,
   TraceWorkflowSnapshot,
   TraceWorkflowTransition,
+  PendingSyncJob,
+  FailedSyncJob,
+  FeedbackSyncContext,
 } from './AuditStoreWorker.js';

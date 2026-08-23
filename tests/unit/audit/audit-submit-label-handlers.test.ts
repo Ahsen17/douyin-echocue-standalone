@@ -5,11 +5,15 @@ import type { AuditSubmitLabelRequestV1 } from '@echocue/contracts';
 
 const TRACE_ID = '01932a3b-4c5d-7000-8000-000000000001';
 
-function makeDeps(submitLabelImpl: () => 'ACCEPTED' | 'REJECTED' | 'CORRECTED' = () => 'ACCEPTED'): AuditControlDeps {
+function makeDeps(
+  submitLabelImpl: () => 'ACCEPTED' | 'REJECTED' | 'CORRECTED' = () => 'ACCEPTED',
+  onLabelSubmitted: () => void = () => undefined,
+): AuditControlDeps {
   return {
     audit: {
       submitLabel: vi.fn().mockImplementation(submitLabelImpl),
     } as unknown as AuditControlDeps['audit'],
+    onLabelSubmitted,
   };
 }
 
@@ -68,5 +72,21 @@ describe('audit.submitLabel handler (M6-10)', () => {
     const deps = makeDeps();
     const handlers = createAuditControlHandlers(deps);
     await expect(handlers.submitLabel({ ...validRequest(), traceId: 'nope' })).rejects.toThrow('打标参数不合法');
+  });
+
+  it('fires onLabelSubmitted after a successful label commit (M7-01)', async () => {
+    const onLabelSubmitted = vi.fn();
+    const deps = makeDeps(() => 'ACCEPTED', onLabelSubmitted);
+    const handlers = createAuditControlHandlers(deps);
+    await handlers.submitLabel(validRequest());
+    expect(onLabelSubmitted).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire onLabelSubmitted when the label request is invalid', async () => {
+    const onLabelSubmitted = vi.fn();
+    const deps = makeDeps(() => 'ACCEPTED', onLabelSubmitted);
+    const handlers = createAuditControlHandlers(deps);
+    await expect(handlers.submitLabel({ ...validRequest(), leaked: 1 })).rejects.toThrow('打标参数不合法');
+    expect(onLabelSubmitted).not.toHaveBeenCalled();
   });
 });
