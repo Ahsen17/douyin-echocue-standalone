@@ -25,9 +25,16 @@ const mocks = vi.hoisted(() => {
     isDestroyed: vi.fn(() => false),
     destroy: vi.fn(),
   };
+  let lastOptions: Record<string, unknown> | null = null;
   return {
+    get lastOptions() {
+      return lastOptions;
+    },
     windowObj,
-    BrowserWindowMock: vi.fn(() => windowObj),
+    BrowserWindowMock: vi.fn((opts?: Record<string, unknown>) => {
+      lastOptions = opts ?? null;
+      return windowObj;
+    }),
     getAllDisplays: vi.fn(() => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }]),
     getPrimaryDisplay: vi.fn(() => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })),
   };
@@ -90,6 +97,18 @@ describe('T-OVR-001: Overlay Window Behavior', () => {
     // TD-06 浮窗默认置顶：构造即把层级提升到 screen-saver，压过全屏直播/采集软件。
     const win = new OverlayWindow({ getSettings: async () => null });
     expect(mocks.windowObj.setAlwaysOnTop).toHaveBeenCalledWith(true, 'screen-saver');
+  });
+
+  it('seeds the default position horizontal-center, vertical middle-lower (UI §5)', () => {
+    // Primary 1920x1080, default 800x200 → x centered at 560, y at 60% of
+    // usable height (528) so the overlay sits in the lower-middle, not centered.
+    new OverlayWindow({ getSettings: async () => null });
+    expect(mocks.lastOptions).toMatchObject({
+      x: 560,
+      y: 528,
+      width: 800,
+      height: 200,
+    });
   });
 
   it('hides the overlay when the display window ends', async () => {

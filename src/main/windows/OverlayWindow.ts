@@ -52,7 +52,15 @@ export class OverlayWindow {
   }
 
   private createWindow(): void {
+    // Default position (UI §5): horizontal center, vertical middle-lower — the
+    // overlay occupies the lower portion of the screen, never vertically
+    // centered. Position is only seeded at creation; dragging keeps the spot.
+    const primary = screen.getPrimaryDisplay().workArea;
+    const x = primary.x + Math.round((primary.width - DEFAULT_OVERLAY_PREFS.width) / 2);
+    const y = primary.y + Math.round((primary.height - DEFAULT_OVERLAY_PREFS.height) * 0.6);
     this.window = new BrowserWindow({
+      x,
+      y,
       width: DEFAULT_OVERLAY_PREFS.width,
       height: DEFAULT_OVERLAY_PREFS.height,
       minWidth: 320,

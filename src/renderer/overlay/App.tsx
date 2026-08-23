@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { OverlayDisplayRequestV1, OverlayPreferenceV1 } from '@echocue/contracts'
 import { overlayEchocue } from './echocue'
 
@@ -33,11 +33,19 @@ function rootStyle(prefs: OverlayPreferenceV1): CSSProperties {
 function App() {
   const [req, setReq] = useState<OverlayDisplayRequestV1 | null>(null)
   const [prefs, setPrefs] = useState<OverlayPreferenceV1>(DEFAULT_PREFS)
+  // Latest preference mirror for the countdown start (display arrives after
+  // applyPreferences pushed the prefs, but React state updates lag the IPC).
+  const prefsRef = useRef(prefs)
+  prefsRef.current = prefs
+  // Remaining display seconds for the top hint (UI §5 展示中倒计时).
+  const [remainingSec, setRemainingSec] = useState<number | null>(null)
 
   useEffect(() => {
     const echocue = overlayEchocue()
     const offDisplay = echocue.overlay.onDisplay((next) => {
       setReq(next)
+      const totalSec = Math.max(1, Math.round(prefsRef.current.durationMs / 1000))
+      setRemainingSec(totalSec)
       // Ack only once the frame is actually painted (UI §5 first-frame ack).
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
@@ -45,7 +53,10 @@ function App() {
         }),
       )
     })
-    const offHide = echocue.overlay.onHide(() => setReq(null))
+    const offHide = echocue.overlay.onHide(() => {
+      setReq(null)
+      setRemainingSec(null)
+    })
     const offPreference = echocue.overlay.onPreference((p) => setPrefs(p))
     return () => {
       offDisplay()
@@ -53,6 +64,15 @@ function App() {
       offPreference()
     }
   }, [])
+
+  // Tick the countdown once per second for the lifetime of the display window.
+  useEffect(() => {
+    if (req === null) return
+    const id = setInterval(() => {
+      setRemainingSec((prev) => (prev === null || prev <= 1 ? prev : prev - 1))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [req])
 
   if (req === null) return <div style={rootStyle(prefs)} />
 
@@ -62,8 +82,11 @@ function App() {
   const authorColor = dark ? '#77a7ff' : '#215cbf'
   return (
     <div style={rootStyle(prefs)}>
+      <small style={{ display: 'block', opacity: 0.72 }}>
+        Echocue 提示　展示中 · {remainingSec ?? 0} 秒
+      </small>
       {comment.nickname ? (
-        <p style={{ margin: 0, color: authorColor, fontWeight: 700 }}>
+        <p style={{ margin: '8px 0 0', color: authorColor, fontWeight: 700 }}>
           @{comment.nickname}
           {comment.sentAt ? (
             <span style={{ marginLeft: 8, fontSize: '0.8em', fontWeight: 400, opacity: 0.72 }}>
