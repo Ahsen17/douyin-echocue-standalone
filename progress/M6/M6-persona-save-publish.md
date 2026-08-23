@@ -32,6 +32,11 @@
 - `npm run build`：通过
 - 既有 persona-handlers / persona-logic 测试不受影响（均为 handler 与纯逻辑层）
 
+## 第二轮审查修复（M1 收尾 / m-4）
+
+- M1：`saveDraft` content 直存时就地更新现有工作 DRAFT（`updateDraftContent`），不再追加新行；`get()` 注释同步「每成员至多一个 DRAFT」。
+- m-4：`saveDraft` 就地更新与 `publish` 后均调用 `removeOrphanDrafts`，清理该成员其余未发布的 DRAFT（回滚新建草稿后直接发布、期间未再保存正文的场景不再残留孤儿草稿）。新增 `PersonaStore.deleteDraft`（仅 DRAFT 可删）。
+
 ## 未关闭风险
 
-- 发布会额外产生一个 DRAFT 行（由 `createDraft` 语义决定，随后立即 PUBLISHED），不会残留未发布草稿；多次直接发布会各留一个已发布版本（正常版本历史）。
+- 多次直接发布会各留一个已发布版本（正常版本历史，符合不可变版本语义）。

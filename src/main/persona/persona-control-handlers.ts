@@ -128,6 +128,7 @@ export function createPersonaControlHandlers(deps: PersonaControlDeps): PersonaC
           const latestDraft = [...versions].reverse().find((v) => v.status === 'DRAFT');
           if (latestDraft !== undefined) {
             persona.updateDraftContent(latestDraft.personaVersion, content);
+            removeOrphanDrafts(persona, req.personaId, latestDraft.personaVersion);
             return persona.getVersionMeta(latestDraft.personaVersion);
           }
         }
@@ -141,7 +142,11 @@ export function createPersonaControlHandlers(deps: PersonaControlDeps): PersonaC
       const req = requireValid(PersonaPublishRequestV1Schema.safeParse(raw), '版本标识不合法');
       try {
         persona.publishDraft(req.personaVersion);
-        return persona.getVersionMeta(req.personaVersion);
+        const meta = persona.getVersionMeta(req.personaVersion);
+        // 发布即终止工作草稿：清理该成员其余未发布的 DRAFT，避免残留孤儿草稿
+        //（回滚新建草稿后直接发布、期间未再保存正文的场景，第二轮审查 m-4）。
+        removeOrphanDrafts(persona, meta.personaId, req.personaVersion);
+        return meta;
       } catch (err) {
         throw translatePersonaError(err);
       }
@@ -201,6 +206,16 @@ export function createPersonaControlHandlers(deps: PersonaControlDeps): PersonaC
 function requireValid<T>(result: { success: true; data: T } | { success: false }, message: string): T {
   if (!result.success) throw new Error(message);
   return result.data;
+}
+
+// Single-working-draft invariant: only the keeper DRAFT may remain for a member;
+// rollback can briefly create a second DRAFT, so save/publish sweep the others.
+function removeOrphanDrafts(persona: PersonaStore, personaId: string, keepPersonaVersion: string): void {
+  for (const v of persona.listVersions(personaId)) {
+    if (v.status === 'DRAFT' && v.personaVersion !== keepPersonaVersion) {
+      persona.deleteDraft(v.personaVersion);
+    }
+  }
 }
 
 function translatePersonaError(err: unknown): Error {

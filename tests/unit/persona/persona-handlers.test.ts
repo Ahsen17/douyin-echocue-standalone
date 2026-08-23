@@ -99,6 +99,28 @@ describe('Persona IPC handlers (M6-04)', () => {
     expect(detail.editableContent).toBe('草稿内容');
   });
 
+  it('publishing a rollback-created draft sweeps the stale working draft (m-4)', async () => {
+    const created = await handlers.create({ displayName: '小A' });
+    const v1 = await handlers.saveDraft({ personaId: created.personaId, content: '已发布内容' });
+    await handlers.publish({ personaVersion: v1.personaVersion });
+
+    // A working draft exists...
+    const working = await handlers.saveDraft({ personaId: created.personaId, content: '工作草稿' });
+    // ...then the host rolls back another version, creating a second DRAFT.
+    const rolled = await handlers.saveDraft({ personaId: created.personaId, fromVersion: v1.personaVersion });
+    expect(rolled.personaVersion).not.toBe(working.personaVersion);
+    const before = await handlers.get({ personaId: created.personaId });
+    expect(before.versions.filter((v) => v.status === 'DRAFT')).toHaveLength(2);
+
+    // Publishing the rollback draft must leave no orphan DRAFT behind.
+    await handlers.publish({ personaVersion: rolled.personaVersion });
+    const after = await handlers.get({ personaId: created.personaId });
+    expect(after.versions.filter((v) => v.status === 'DRAFT')).toHaveLength(0);
+    expect(after.versions.find((v) => v.status === 'PUBLISHED')?.personaVersion).toBe(rolled.personaVersion);
+    // Editing now starts from the published rollback content, not the stale draft.
+    expect(after.editableContent).toBe('已发布内容');
+  });
+
   it('saveDraft with fromVersion copies the referenced version content (rollback)', async () => {
     const created = await handlers.create({ displayName: '小A' });
     await handlers.saveDraft({ personaId: created.personaId, content: '第一版内容' });
