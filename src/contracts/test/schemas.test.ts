@@ -533,6 +533,14 @@ test('valid overlay payload without nickname', () => expectValid(OverlayDisplayP
   comment: { text: '主播晚上好' },
   suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
 }, 'nickname optional'));
+test('valid overlay payload with sentAt', () => expectValid(OverlayDisplayPayloadV1Schema, {
+  comment: { nickname: '观众A', text: '主播晚上好', sentAt: '19:55:26' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'sentAt present'));
+test('rejects overlay payload with over-long sentAt', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
+  comment: { nickname: '观众A', text: '主播晚上好', sentAt: 'x'.repeat(65) },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'sentAt 65'));
 test('rejects overlay payload with empty comment text', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
   comment: { text: '' },
   suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },

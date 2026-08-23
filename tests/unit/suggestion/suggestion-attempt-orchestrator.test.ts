@@ -734,7 +734,11 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ userNickname: '观众B', normalizedText: '主播真棒' }));
       await waitFor(() => sink.shown.length === 1);
-      expect(sink.shown[0].comment).toEqual({ nickname: '观众B', text: '主播真棒' });
+      // sentAt is the local rendering of receivedAt (timezone-dependent), so
+      // assert the two fixed fields plus the HH:mm:ss shape, not a value.
+      expect(sink.shown[0].comment.nickname).toBe('观众B');
+      expect(sink.shown[0].comment.text).toBe('主播真棒');
+      expect(sink.shown[0].comment.sentAt).toMatch(/^\d{2}:\d{2}:\d{2}$/);
       expect(sink.shown[0].suggestion.quickReply.length).toBeGreaterThan(0);
     });
 

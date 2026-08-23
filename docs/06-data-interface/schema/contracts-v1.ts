@@ -578,6 +578,8 @@ export const OverlayDisplayPayloadV1Schema = z.strictObject({
   comment: z.strictObject({
     nickname: z.string().min(1).max(64).optional(),
     text: z.string().min(1).max(2000),
+    // Comment sent time as local "HH:mm:ss" (createTime, or receivedAt fallback).
+    sentAt: z.string().min(1).max(64).optional(),
   }),
   suggestion: ValidatedSuggestionV1Schema,
 });

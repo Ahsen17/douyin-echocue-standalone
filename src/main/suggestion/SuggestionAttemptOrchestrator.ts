@@ -18,6 +18,7 @@ import { CredentialStore } from '../credentials/index.js';
 import { AuditDuplicateTraceError, AuditUnavailableError } from '../storage/index.js';
 import { uuidv7 } from '../util/index.js';
 import { SuggestionWindow } from './SuggestionWindow.js';
+import { formatOverlaySentTime } from './format-overlay-sent-time.js';
 import type { SuggestionOrchestratorDeps } from './types.js';
 import type { PendingCandidate, ProcessingComment, SuggestionAttempt } from './types.js';
 import type { CancelTraceReason, OutputValidationContext, TeamMemberNameV1 } from '../validation/types.js';
@@ -604,11 +605,14 @@ export class SuggestionAttemptOrchestrator {
     if (!pre.ok) return this.cancelAttempt(attempt, pre.reason);
     this.enterDisplaying();
     // UI §5: the overlay shows @nickname + comment text beside the suggestion.
-    // An empty nickname is the same as absent (no "@" placeholder line).
+    // An empty nickname is the same as absent (no "@" placeholder line). The
+    // comment sent time is pre-formatted here (createTime, receivedAt fallback).
+    const sentAt = formatOverlaySentTime(attempt.comment.upstreamCreatedAt, attempt.comment.receivedAt);
     const payload: OverlayDisplayPayloadV1 = {
       comment: {
         nickname: attempt.comment.userNickname || undefined,
         text: attempt.comment.normalizedText,
+        ...(sentAt !== undefined ? { sentAt } : {}),
       },
       suggestion: output,
     };

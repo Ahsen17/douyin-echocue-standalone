@@ -63,7 +63,14 @@ function App() {
   return (
     <div style={rootStyle(prefs)}>
       {comment.nickname ? (
-        <p style={{ margin: 0, color: authorColor, fontWeight: 700 }}>@{comment.nickname}</p>
+        <p style={{ margin: 0, color: authorColor, fontWeight: 700 }}>
+          @{comment.nickname}
+          {comment.sentAt ? (
+            <span style={{ marginLeft: 8, fontSize: '0.8em', fontWeight: 400, opacity: 0.72 }}>
+              {comment.sentAt}
+            </span>
+          ) : null}
+        </p>
       ) : null}
       <p style={{ margin: '6px 0 0' }}>“{comment.text}”</p>
       <div style={{ margin: '14px 0 0', padding: '12px 14px', borderRadius: '10px', background: replyBackground }}>
