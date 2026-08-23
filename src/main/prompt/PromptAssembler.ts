@@ -9,8 +9,8 @@ import type {
 // assembler behavior requires bumping these so old RENDERED_PROMPT snapshots
 // stay reproducible.
 export const PROMPT_TEMPLATE_VERSION_V1 = 'v1';
-export const PROMPT_ASSEMBLER_VERSION_V1 = 'v1';
-export const USER_CONTRACT_ID_V1 = 'echocue.reply_generation.v1';
+export const PROMPT_ASSEMBLER_VERSION_V1 = 'v2';
+export const USER_CONTRACT_ID_V1 = 'echocue.reply_generation.v2';
 
 // Default context budget (estimated tokens). This is a POC-calibration
 // placeholder (LLM §3.3): the calibrated value belongs in controlled config and
@@ -102,15 +102,15 @@ function toReferenceCase(hit: RetrievalHitV1): ReferenceCase {
 /** Build the user payload with a fixed key order for byte-stable output. */
 function buildUserPayload(input: PromptInput, cases: readonly ReferenceCase[]): Record<string, unknown> {
   return {
-    contract: USER_CONTRACT_ID_V1,
     target_comment: input.targetComment,
     persona: {
-      persona_id: input.personaSnapshot.personaId,
-      persona_version: input.personaSnapshot.personaVersion,
+      // Only semantic persona facts reach the model (LLM §3.2): the display
+      // name and the frozen persona text. persona_id/persona_version carry no
+      // information for the model and stay in the RENDERED_PROMPT audit only.
+      nickname: input.personaSnapshot.nickname,
       content: input.personaSnapshot.content,
     },
     team_boundaries: {
-      version: input.safetySnapshot.version,
       policy_text: input.safetySnapshot.policyText,
       keywords: input.safetySnapshot.keywords,
     },

@@ -24,6 +24,7 @@ function candidate(id: string, priority: number, receivedAt: number): PendingCan
     personaSnapshot: {
       personaId: 'p-1',
       personaVersion: 'v1',
+      nickname: '主播A',
       content: 'content',
       contentHmac: 'hmac',
     },

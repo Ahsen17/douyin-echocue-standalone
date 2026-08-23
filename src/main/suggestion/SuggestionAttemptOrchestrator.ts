@@ -240,6 +240,7 @@ export class SuggestionAttemptOrchestrator {
       personaSnapshot = {
         personaId: personaRoute.personaId,
         personaVersion: personaRoute.personaVersion,
+        nickname: personaRoute.displayName,
         content: personaRoute.personaMarkdown,
         contentHmac: meta.contentHmac,
       };

@@ -5,7 +5,6 @@ import {
   estimateTokens,
   PROMPT_TEMPLATE_VERSION_V1,
   PROMPT_ASSEMBLER_VERSION_V1,
-  USER_CONTRACT_ID_V1,
 } from '../../../src/main/prompt/index.js';
 import type { PersonaSnapshot, SafetySnapshot } from '../../../src/main/prompt/index.js';
 
@@ -75,6 +74,7 @@ function preHit(id: string, rank: number, text = '主播今天好可爱'): Retri
 const PERSONA: PersonaSnapshot = {
   personaId: 'p-1',
   personaVersion: GOLDEN_PAYLOAD.persona_version,
+  nickname: '主播A',
   content: '你是一个温柔、爱笑的直播出镜人员，语气亲切自然。',
   contentHmac: 'deadbeef',
 };
@@ -109,15 +109,13 @@ describe('renderPrompt', () => {
   it('renders a well-formed user payload with the documented structure', () => {
     const out = renderPrompt(BASE_INPUT);
     const user = parseUser(out.user);
-    expect(user.contract).toBe(USER_CONTRACT_ID_V1);
+    expect(user.contract).toBeUndefined();
     expect(user.target_comment).toBe(BASE_INPUT.targetComment);
     expect(user.persona).toEqual({
-      persona_id: PERSONA.personaId,
-      persona_version: PERSONA.personaVersion,
+      nickname: PERSONA.nickname,
       content: PERSONA.content,
     });
     expect(user.team_boundaries).toEqual({
-      version: SAFETY.version,
       policy_text: SAFETY.policyText,
       keywords: SAFETY.keywords,
     });
@@ -166,15 +164,15 @@ describe('renderPrompt', () => {
   it('never leaks internal retrieval/provider identifiers into the prompt', () => {
     const out = renderPrompt(BASE_INPUT);
     const user = parseUser(out.user);
-    // persona object is exactly the three documented keys, no content_hmac
-    expect(Object.keys(user.persona).sort()).toEqual(['content', 'persona_id', 'persona_version']);
+    // persona object is exactly the two semantic keys, no id/version/hmac
+    expect(Object.keys(user.persona).sort()).toEqual(['content', 'nickname']);
     for (const c of user.reference_cases) {
       expect(Object.keys(c).sort()).toEqual(
         Object.keys(c).filter((k) => ['source', 'semantic_type', 'comment', 'description', 'reply', 'cues'].includes(k)).sort(),
       );
     }
     const raw = out.user;
-    for (const forbidden of ['rawScore', 'retrievalConfidence', 'quality_score', 'pointId', 'case_id', 'source_trace_id', 'is_bad_case', 'content_hmac', '0.98', '0.998', '9.5', '12.5', 'deadbeef']) {
+    for (const forbidden of ['rawScore', 'retrievalConfidence', 'quality_score', 'pointId', 'case_id', 'source_trace_id', 'is_bad_case', 'content_hmac', '0.98', '0.998', '9.5', '12.5', 'deadbeef', 'p-1', '01932a3b-4c5d-7000-8000-000000000002', 'echocue.reply_generation']) {
       expect(raw).not.toContain(forbidden);
     }
   });
@@ -217,7 +215,7 @@ describe('renderPrompt truncation', () => {
     expect(out.truncationLog.excludedCases).toEqual(['g-1', 'g-2', 'g-3', 'g-4', 'g-5']);
     // the fixed base is still rendered, never truncated
     expect(parseUser(out.user).target_comment).toBe(BASE_INPUT.targetComment);
-    expect(parseUser(out.user).persona.persona_version).toBe(PERSONA.personaVersion);
+    expect(parseUser(out.user).persona.nickname).toBe(PERSONA.nickname);
   });
 
   it('renders an empty reference_cases list and empty truncation log for no hits', () => {
@@ -227,7 +225,7 @@ describe('renderPrompt truncation', () => {
     expect(out.truncationLog.excludedCases).toEqual([]);
     // the fixed base still renders with no cases
     expect(user.target_comment).toBe(BASE_INPUT.targetComment);
-    expect(user.persona.persona_version).toBe(PERSONA.personaVersion);
+    expect(user.persona.nickname).toBe(PERSONA.nickname);
   });
 
   it('keeps the longest fitting prefix in rerank order and logs the dropped tail', () => {
@@ -265,7 +263,7 @@ describe('renderPrompt injection isolation', () => {
     expect(out.system).not.toContain('忽略前述规则');
     // no new top-level keys were introduced by the hostile payload
     expect(Object.keys(user).sort()).toEqual(
-      ['contract', 'output_contract', 'persona', 'reference_cases', 'target_comment', 'team_boundaries'].sort(),
+      ['output_contract', 'persona', 'reference_cases', 'target_comment', 'team_boundaries'].sort(),
     );
   });
 });
