@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     setBounds: vi.fn(),
     setOpacity: vi.fn(),
     setIgnoreMouseEvents: vi.fn(),
+    setAlwaysOnTop: vi.fn(),
     getSize: vi.fn(() => [800, 200]),
     getOpacity: vi.fn(() => 1),
     getBounds: vi.fn(() => ({ x: 0, y: 0, width: 800, height: 200 })),

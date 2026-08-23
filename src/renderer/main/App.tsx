@@ -8,6 +8,7 @@ import PromptPage from './pages/PromptPage'
 import PreferencesPage from './pages/PreferencesPage'
 import DiagnosticsPage from './pages/DiagnosticsPage'
 import AuditPage from './pages/AuditPage'
+import WelcomePage from './pages/WelcomePage'
 
 const pages: Record<PageName, ComponentType<PageProps>> = {
   运行: RunPage,
@@ -23,6 +24,8 @@ const pages: Record<PageName, ComponentType<PageProps>> = {
 function App() {
   const [page, setPage] = useState<PageName>('运行')
   const [isMaximized, setIsMaximized] = useState(false)
+  // Mock entry screen (TD-06): standalone app, no real account validation.
+  const [screen, setScreen] = useState<'welcome' | 'workspace'>('welcome')
 
   useEffect(() => {
     window.echocue.window.onMaximizeChange(setIsMaximized)
@@ -38,6 +41,10 @@ function App() {
   }
 
   const CurrentPage = pages[page]
+
+  if (screen === 'welcome') {
+    return <WelcomePage onEnter={() => setScreen('workspace')} />
+  }
 
   return (
     <div className="app">
@@ -69,6 +76,16 @@ function App() {
           />
         </div>
         <strong className="titlebar-title">Echocue</strong>
+        <div className="account-chip">
+          <span className="avatar">主</span>
+          <span>
+            <strong>主播工作台</strong>
+            <small>预置账号 · 本地</small>
+          </span>
+        </div>
+        <button type="button" className="text-button" onClick={() => setScreen('welcome')}>
+          退出
+        </button>
       </header>
       <aside role="navigation">
         {NAV_ITEMS.map((item) => (
@@ -84,7 +101,7 @@ function App() {
           </button>
         ))}
       </aside>
-      <article>
+      <article className={page === '审计追溯' ? 'page-fluid' : undefined}>
         <CurrentPage onNavigate={setPage} />
       </article>
     </div>

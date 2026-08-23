@@ -18,7 +18,7 @@ import {
   shortTime,
 } from '../audit/audit-logic'
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 20
 
 export default function AuditPage() {
   const [authorized, setAuthorized] = useState(false)
@@ -57,8 +57,11 @@ export default function AuditPage() {
 
   if (!authorized) {
     return (
-      <>
-        <h1>审计追溯</h1>
+      <div className="audit-page">
+        <div className="page-heading">
+          <h1>审计追溯</h1>
+          <span className="badge">本机加密 · 永久保存 · 不可导出</span>
+        </div>
         <section className="card privacy-notice">
           <h2>本机审计访问提示</h2>
           <p>此处包含直播审计原文，请仅由获授权配置人员在本机查看。MVP 不提供导出或清空。</p>
@@ -66,7 +69,7 @@ export default function AuditPage() {
             我已获授权，进入审计
           </button>
         </section>
-      </>
+      </div>
     )
   }
 
@@ -102,7 +105,7 @@ export default function AuditPage() {
   }
 
   return (
-    <>
+    <div className="audit-page">
       <div className="page-heading">
         <div>
           <h1>审计追溯</h1>
@@ -144,7 +147,7 @@ export default function AuditPage() {
           <p>调整筛选条件后重试；不会自动清除历史审计。</p>
         </section>
       ) : (
-        <div className="split audit-layout">
+        <div className="audit-body">
           <section className="card audit-list">
             <h2>审计记录</h2>
             {items.map((row) => (
@@ -184,7 +187,7 @@ export default function AuditPage() {
             </div>
           </section>
 
-          <section className="card grow">
+          <section className="card grow audit-detail">
             {selectedRow === null ? (
               <div className="empty-state">
                 <b>选择一条记录查看详情</b>
@@ -205,7 +208,7 @@ export default function AuditPage() {
           </section>
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -249,10 +252,12 @@ function WorkflowPanel({ workflow, loading, error }: {
     <div className="workflow">
       {timeline.map((item) => (
         <section key={item.sequenceNo}>
-          <small>
-            {shortTime(item.occurredAt)} · {item.stateLabel}
-          </small>
-          <b>{item.reasonCode}</b>
+          <div className="transition-head">
+            <span className="reason-badge">{item.reasonCode}</span>
+            <small>
+              {shortTime(item.occurredAt)} · {item.stateLabel}
+            </small>
+          </div>
           {item.snapshots.map((snap) => (
             <details key={snap.snapshotId}>
               <summary>
