@@ -55,7 +55,5 @@ nsis:
   deleteAppDataOnUninstall: false
   allowElevation: false
   # Deterministic install E2E: silent install must not auto-launch the app
-  # (would hold %LOCALAPPDATA%\Echocue open), and stale processes are killed
-  # before reinstall/upgrade.
+  # (would hold %LOCALAPPDATA%\Echocue open during Clear-DataRoot).
   runAfterFinish: false
-  killRunningProcesses: true
