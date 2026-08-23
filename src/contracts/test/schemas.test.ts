@@ -541,6 +541,10 @@ test('rejects overlay payload with over-long sentAt', () => expectInvalid(Overla
   comment: { nickname: '观众A', text: '主播晚上好', sentAt: 'x'.repeat(65) },
   suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
 }, 'sentAt 65'));
+test('rejects overlay payload with empty sentAt', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
+  comment: { nickname: '观众A', text: '主播晚上好', sentAt: '' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'sentAt empty'));
 test('rejects overlay payload with empty comment text', () => expectInvalid(OverlayDisplayPayloadV1Schema, {
   comment: { text: '' },
   suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },

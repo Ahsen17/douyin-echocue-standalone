@@ -29,7 +29,9 @@ import type { CancelTraceReason, OutputValidationContext, TeamMemberNameV1 } fro
 //
 // 2026-08 校准：DeepSeek 一次 JSON 生成真实延迟 1~3s；原 T0=3000 且
 // windowMaxAgeMs=1500 使 min 恒取 t0+1500，LLM 实际预算仅约 1s，导致几乎
-// 每条 LLM 建议 DEADLINE_EXCEEDED 被丢弃。临时将整个过期时间放宽到 5s 观察效果。
+// 每条 LLM 建议 DEADLINE_EXCEEDED 被丢弃。临时将 t0 上限与窗口驻留放宽到
+// 5s（整个过期时间上限 5s；LLM 选中后预算仍由 selectedAt+2500 决定，约
+// 2.5s，从原 ~1.5s 提升）。
 // TODO(优化): 应将窗口驻留与 attempt 寿命预算解耦——窗口驻留只作淘汰线，
 // attempt 截止改用 min(t0+5s, selectedAt+2.5s)，避免 5s 窗口候选驻留过久。
 const T0_FRESHNESS_BUDGET_MS = 5000;
