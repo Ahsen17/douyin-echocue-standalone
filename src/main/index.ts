@@ -10,7 +10,7 @@ import {
   wireStateBroadcast,
   type CreatedServiceController,
 } from './service/index.js'
-import { wireDiagnosticsControl } from './telemetry/index.js'
+import { Logger, wireDiagnosticsControl } from './telemetry/index.js'
 import { wireAuditControl } from './audit/index.js'
 import { wireProviderControl } from './provider/index.js'
 import { wireConfigControl } from './config/index.js'
@@ -43,6 +43,10 @@ if (app.isPackaged) {
   app.setPath('userData', localAppData)
 }
 
+// Daily main-process log under the data dir: <userData>/logs/main-YYYY-MM-DD.log.
+// Created at module scope so early boot failures are captured too.
+const logger = new Logger({ logDir: join(app.getPath('userData'), 'logs') })
+
 function getIsExplicitQuit(): boolean {
   return isExplicitQuit
 }
@@ -53,6 +57,7 @@ function showMainWindow(): void {
 
 async function doQuit(): Promise<void> {
   isExplicitQuit = true
+  logger.info('lifecycle', 'app quit')
   trayManager?.dispose()
   try {
     await services?.controller.stop()
@@ -81,6 +86,7 @@ function resolveAssetBinary(kind: 'qdrant' | 'douyinLive'): string {
 }
 
 app.whenReady().then(async () => {
+  logger.info('lifecycle', 'app ready')
   mainWindowInstance = new MainWindow(getIsExplicitQuit)
 
   const isTrustedSender = (contents: WebContents) =>
@@ -124,16 +130,41 @@ app.whenReady().then(async () => {
       cleanupOnStop: () => {
         overlayWindowInstance?.hideSuggestion()
       },
+      logger,
     })
+    logger.info('lifecycle', 'service controller ready')
     services.goldenSync.start()
     // RUNBOOK §3.2: the Qdrant loopback sidecar is a boot-time init step. A start
     // failure is non-fatal here — the gate stays fail-closed and retrieval
     // getStatus reports the sidecar as unavailable instead of crashing the app.
     void services.qdrant.start().catch((err) => {
-      console.error('qdrant sidecar start failed', err)
+      const code =
+        typeof (err as { code?: unknown } | null)?.code === 'string'
+          ? (err as { code: string }).code
+          : undefined
+      logger.error('storage', `qdrant sidecar start failed: ${err instanceof Error ? err.message : String(err)}`, code)
     })
+    // Log lifecycle transitions (and every recorded recoverable error, which is
+    // how a repeated start attempt fails while already STOPPED). Activity ticks
+    // inside RUNNING are skipped so a busy session does not flood the file.
+    let lastLoggedLifecycle: string | null = null
     services.stateMachine.onChanged((state) => {
       services?.diagnostics.updateLifecycle(state.lifecycle, state.activity)
+      const lifecycleChanged = state.lifecycle !== lastLoggedLifecycle
+      if (!lifecycleChanged && state.recoverableError === undefined) return
+      lastLoggedLifecycle = state.lifecycle
+      if (state.recoverableError !== undefined) {
+        logger.error(
+          'lifecycle',
+          `service lifecycle -> ${state.lifecycle} (stopReason=${state.stopReason})`,
+          state.recoverableError.code,
+        )
+      } else if (lifecycleChanged) {
+        logger.info(
+          'lifecycle',
+          `service lifecycle -> ${state.lifecycle}${state.stopReason !== undefined ? ` (stopReason=${state.stopReason})` : ''}`,
+        )
+      }
     })
     wireStateBroadcast({ stateMachine: services.stateMachine, isTrustedSender })
     wireServiceControl({ controller: services.controller, isTrustedSender })
