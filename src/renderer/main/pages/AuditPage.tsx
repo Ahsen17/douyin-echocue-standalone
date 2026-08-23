@@ -344,7 +344,7 @@ function LabelForm({ row, workflow, onSaved }: {
         <div className="ai-suggestion">
           <b>AI 建议回复</b>
           <p>{suggestion.quickReply}</p>
-          <small>提词：{suggestion.cues.join(' · ')}</small>
+          {suggestion.cues.length > 0 ? <small>提词：{suggestion.cues.join(' · ')}</small> : null}
         </div>
       ) : null}
       <p><b>为本条最终建议打标</b></p>

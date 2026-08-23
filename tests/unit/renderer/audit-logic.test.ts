@@ -110,6 +110,23 @@ describe('audit-logic', () => {
       })
     })
 
+    it('keeps the reply when cues are missing or empty (M4 fix)', () => {
+      const noCues = base([{
+        snapshotId: 's4',
+        role: 'DIRECT_PAYLOAD',
+        contentType: 'SUGGESTION_JSON',
+        plaintext: JSON.stringify({ quick_reply: '谢谢支持' }),
+      }])
+      expect(extractSuggestionFromWorkflow(noCues)).toEqual({ quickReply: '谢谢支持', cues: [] })
+      const emptyCues = base([{
+        snapshotId: 's5',
+        role: 'DIRECT_PAYLOAD',
+        contentType: 'SUGGESTION_JSON',
+        plaintext: JSON.stringify({ quick_reply: '谢谢支持', cues: [] }),
+      }])
+      expect(extractSuggestionFromWorkflow(emptyCues)).toEqual({ quickReply: '谢谢支持', cues: [] })
+    })
+
     it('returns null when the workflow has no suggestion snapshot', () => {
       expect(extractSuggestionFromWorkflow(base([]))).toBeNull()
       expect(extractSuggestionFromWorkflow(null)).toBeNull()

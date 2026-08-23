@@ -98,9 +98,12 @@ function parseSuggestionJson(plaintext: string): WorkflowSuggestion | null {
     }
     const reply = typeof data.quick_reply === 'string' ? data.quick_reply : data.quickReply
     if (typeof reply !== 'string' || reply.length === 0) return null
-    if (!Array.isArray(data.cues) || data.cues.length === 0) return null
-    if (!data.cues.every((c) => typeof c === 'string' && c.length > 0)) return null
-    return { quickReply: reply, cues: data.cues as string[] }
+    // Cues are optional: the label form must still show the AI reply when a
+    // suggestion carries no cues (review M4).
+    const cues = data.cues === undefined ? [] : data.cues
+    if (!Array.isArray(cues)) return null
+    if (!cues.every((c) => typeof c === 'string' && c.length > 0)) return null
+    return { quickReply: reply, cues }
   } catch {
     return null
   }
