@@ -52,7 +52,7 @@
 - T-PKG-001：5 个 todo 填实（installer 为 x64 PE、随包资源齐全、sidecar SHA 与 assets/README 一致、无孤儿进程、升级不丢数据），`describe.skipIf(!ECHOCUE_PKG_DIR)` 仅在打包 job 运行。
 
 ### 既有 flake 修复（非本任务范围，影响验收，已记录）
-- `mock-stream-harness` 用 `freePort()`（绑 0→关→重绑）存在 TOCTOU，并行 worker 偶发 `EADDRINUSE:46233` + 5s 超时。改为 WS server 直接绑 port 0 读回 OS 分配端口，消除竞态。连跑 3 次稳定。
+- 共享 `freePort()`（绑 0→关→重绑）存在 TOCTOU，并行 worker 偶发 `EADDRINUSE` + 5s 超时，影响所有 WS server 消费方（mock-stream-harness、T-CON-002-ws-lifecycle、ws-adapter）。新增共享 `tests/integration/ws-test-server.ts`（WS server 直接绑 port 0 读回 OS 分配端口，消除竞态），三处统一改用。连跑 3 次稳定。
 
 ## 测试命令
 

@@ -2,7 +2,8 @@ import { mkdtemp, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { DatabaseSync } from 'node:sqlite';
-import { WebSocketServer, type WebSocket } from 'ws';
+import type { WebSocketServer, WebSocket } from 'ws';
+import { createTestWebSocketServer } from '../integration/ws-test-server.js';
 import type {
   AuditWorkflowV1,
   OverlayDisplayPayloadV1,
@@ -149,19 +150,7 @@ export async function buildMockStreamHarness(
 
   const machine = new ServiceStateMachine();
   const sidecar = new NoopSidecar();
-  // Bind to ephemeral port 0 and read the OS-assigned port. freePort() (bind to
-  // 0, close, rebind) had a TOCTOU race where parallel workers could collide
-  // (EADDRINUSE) on the re-bound port.
-  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
-  await new Promise<void>((resolve, reject) => {
-    server.once('listening', resolve);
-    server.once('error', reject);
-  });
-  const address = server.address();
-  if (address === null || typeof address === 'string') {
-    throw new Error('unable to allocate mock stream WS port');
-  }
-  const serverPort = address.port;
+  const { server, port: serverPort } = await createTestWebSocketServer();
 
   const shown: DisplayedRecord[] = [];
   const providerCalls = { count: 0 };

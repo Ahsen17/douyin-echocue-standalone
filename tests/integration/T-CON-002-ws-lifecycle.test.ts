@@ -14,7 +14,7 @@ import { DouyinLiveWsAdapter } from '../../src/main/douyin/index.js';
 import { AuditStoreWorker } from '../../src/main/storage/index.js';
 import { CryptoKeyManager } from '../../src/main/crypto/index.js';
 import { CredentialStore } from '../../src/main/credentials/CredentialStore.js';
-import { freePort } from './retrieval/qdrant-test-utils.js';
+import { createTestWebSocketServer } from './ws-test-server.js';
 
 const MIGRATION_PATH = join(
   process.cwd(),
@@ -80,8 +80,9 @@ describe('T-CON-002: WebSocket Lifecycle Integration', () => {
   let worker: AuditStoreWorker;
 
   beforeEach(async () => {
-    serverPort = await freePort();
-    server = new WebSocketServer({ host: '127.0.0.1', port: serverPort });
+    const ws = await createTestWebSocketServer();
+    server = ws.server;
+    serverPort = ws.port;
     testDir = await mkdtemp(join(tmpdir(), 'echocue-tcon002-'));
     const credStore = new CredentialStore(testDir, mockStorage);
     const keyManager = new CryptoKeyManager(credStore);

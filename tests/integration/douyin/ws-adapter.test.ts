@@ -2,6 +2,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DouyinLiveWsAdapter } from '../../../src/main/douyin/index.js';
 import { freePort } from '../retrieval/qdrant-test-utils.js';
+import { createTestWebSocketServer } from '../ws-test-server.js';
 
 const stopped: DouyinLiveWsAdapter[] = [];
 
@@ -22,9 +23,8 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 3000): Promise<vo
 }
 
 async function startServer(): Promise<{ wss: WebSocketServer; port: number }> {
-  const port = await freePort();
-  const wss = new WebSocketServer({ host: '127.0.0.1', port });
-  return { wss, port };
+  const { server, port } = await createTestWebSocketServer();
+  return { wss: server, port };
 }
 
 describe('DouyinLiveWsAdapter integration', () => {
