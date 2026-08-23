@@ -14,6 +14,7 @@ import type {
   OverlayPreferenceV1,
   PersonaDetailV1,
   PersonaSummaryV1,
+  PersonaVersionContentV1,
   PersonaVersionMetaV1,
   PreSetImportResultV1,
   RetrievalInitStatusV1,
@@ -83,6 +84,11 @@ const echocueApi = {
       ipcRenderer.invoke(IpcChannel.PersonaListVersions, { personaId }) as Promise<PersonaVersionMetaV1[]>,
     compare: (a: string, b: string) =>
       ipcRenderer.invoke(IpcChannel.PersonaCompare, { a, b }) as Promise<VersionComparisonV1>,
+    getVersionContent: (personaId: string, personaVersion: string) =>
+      ipcRenderer.invoke(IpcChannel.PersonaGetVersionContent, {
+        personaId,
+        personaVersion,
+      }) as Promise<PersonaVersionContentV1>,
     updateAliases: (personaId: string, aliases: { aliasText: string; aliasKind: string; enabled?: boolean }[]) =>
       ipcRenderer.invoke(IpcChannel.PersonaUpdateAliases, {
         personaId,

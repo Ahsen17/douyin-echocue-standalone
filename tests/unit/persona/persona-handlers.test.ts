@@ -137,6 +137,34 @@ describe('Persona IPC handlers (M6-04)', () => {
     expect(result.sameContent).toBe(true);
   });
 
+  it('getVersionContent returns a specific published version even when a newer draft exists (TD-07)', async () => {
+    const created = await handlers.create({ displayName: '小A' });
+    const draft = await handlers.saveDraft({ personaId: created.personaId, content: '已发布内容' });
+    const published = await handlers.publish({ personaVersion: draft.personaVersion });
+    await handlers.saveDraft({ personaId: created.personaId, content: '更新的草稿' });
+
+    // persona.get prefers the latest draft for editing...
+    const detail = await handlers.get({ personaId: created.personaId });
+    expect(detail.editableContent).toBe('更新的草稿');
+    // ...while getVersionContent reads the historical version's full text.
+    const versionContent = await handlers.getVersionContent({
+      personaId: created.personaId,
+      personaVersion: published.personaVersion,
+    });
+    expect(versionContent.content).toBe('已发布内容');
+    expect(versionContent.personaVersion).toBe(published.personaVersion);
+  });
+
+  it('getVersionContent rejects a version that belongs to another member (TD-07)', async () => {
+    const a = await handlers.create({ displayName: '小A' });
+    const b = await handlers.create({ displayName: '阿哲' });
+    const draft = await handlers.saveDraft({ personaId: a.personaId, content: '机密人设' });
+    // Cross-member read must be refused without leaking the content or member.
+    await expect(
+      handlers.getVersionContent({ personaId: b.personaId, personaVersion: draft.personaVersion }),
+    ).rejects.toThrow(/版本不存在/);
+  });
+
   it('non-content responses never include persona text', async () => {
     const a = await handlers.create({ displayName: '小A' });
     const b = await handlers.create({ displayName: '阿哲' });

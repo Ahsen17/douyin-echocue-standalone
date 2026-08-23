@@ -443,6 +443,18 @@ export const PersonaCompareRequestV1Schema = z.strictObject({
   b: z.string().min(1).max(128),
 });
 
+// TD-07: fetch one version's decrypted full content for the view mode.
+// personaId is required so a version id alone cannot read another member.
+export const PersonaGetVersionContentRequestV1Schema = z.strictObject({
+  personaId: z.string().min(1).max(64),
+  personaVersion: z.string().min(1).max(128),
+});
+
+export const PersonaVersionContentV1Schema = z.strictObject({
+  personaVersion: z.string().min(1).max(128),
+  content: z.string().max(50000),
+});
+
 export const PersonaUpdateAliasesRequestV1Schema = z.strictObject({
   personaId: z.string().min(1).max(64),
   aliases: z.array(AliasInputV1Schema).max(50),
@@ -698,6 +710,8 @@ export type AliasKindV1 = z.infer<typeof AliasKindV1Schema>;
 export type AliasInputV1 = z.infer<typeof AliasInputV1Schema>;
 export type AliasRowV1 = z.infer<typeof AliasRowV1Schema>;
 export type PersonaVersionMetaV1 = z.infer<typeof PersonaVersionMetaV1Schema>;
+export type PersonaGetVersionContentRequestV1 = z.infer<typeof PersonaGetVersionContentRequestV1Schema>;
+export type PersonaVersionContentV1 = z.infer<typeof PersonaVersionContentV1Schema>;
 export type VersionComparisonV1 = z.infer<typeof VersionComparisonV1Schema>;
 export type PersonaDetailV1 = z.infer<typeof PersonaDetailV1Schema>;
 export type PersonaCreateRequestV1 = z.infer<typeof PersonaCreateRequestV1Schema>;

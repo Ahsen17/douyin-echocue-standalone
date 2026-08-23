@@ -15,6 +15,8 @@ import {
   AliasInputV1Schema,
   AliasRowV1Schema,
   PersonaVersionMetaV1Schema,
+  PersonaGetVersionContentRequestV1Schema,
+  PersonaVersionContentV1Schema,
   VersionComparisonV1Schema,
   PersonaDetailV1Schema,
   PersonaCreateRequestV1Schema,
@@ -264,6 +266,21 @@ test('valid version comparison', () => expectValid(VersionComparisonV1Schema, {
   b: { personaVersion: 'v2', personaId: 'p-1', status: 'SUPERSEDED', contentHmac: 'h2', createdAt: '2026-08-22T00:00:00.000Z', publishedAt: null, createdFromVersion: 'v1' },
   sameContent: false,
 }, 'valid'));
+
+// PersonaGetVersionContent (TD-07)
+console.log('\nPersonaGetVersionContentRequestV1Schema');
+test('valid get version content request', () => expectValid(PersonaGetVersionContentRequestV1Schema, {
+  personaId: 'p-1', personaVersion: 'v-1',
+}, 'valid'));
+test('rejects missing personaId', () => expectInvalid(PersonaGetVersionContentRequestV1Schema, {
+  personaVersion: 'v-1',
+}, 'missing personaId'));
+test('valid version content response', () => expectValid(PersonaVersionContentV1Schema, {
+  personaVersion: 'v-1', content: '你是一位温柔真诚的主播。',
+}, 'valid'));
+test('rejects over-long content', () => expectInvalid(PersonaVersionContentV1Schema, {
+  personaVersion: 'v-1', content: 'x'.repeat(50001),
+}, 'over-long content'));
 test('valid persona detail', () => expectValid(PersonaDetailV1Schema, {
   summary: {
     personaId: 'p-1', displayName: '小A', isPrincipal: true, activeVersion: null,

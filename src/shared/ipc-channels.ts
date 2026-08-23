@@ -25,6 +25,7 @@ export const IpcChannel = {
   PersonaListVersions: 'persona.listVersions',
   PersonaCompare: 'persona.compare',
   PersonaUpdateAliases: 'persona.updateAliases',
+  PersonaGetVersionContent: 'persona.getVersionContent',
   SafetyGet: 'safety.get',
   SafetySaveDraft: 'safety.saveDraft',
   SafetyPublish: 'safety.publish',
