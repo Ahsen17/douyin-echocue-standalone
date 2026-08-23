@@ -12,7 +12,7 @@ English | [简体中文](README_zh.md)
 
 Echocue is a Windows standalone desktop application for Douyin (抖音) live-stream hosts and operations teams.
 It turns live chat (弹幕) into faster, persona-consistent reply suggestions in real time — from the WebSocket
-frame arriving to a suggestion rendering in an always-on-top overlay, targeting P95 latency under 3 seconds.
+frame arriving to a suggestion rendering in an always-on-top overlay, **targeting** P95 latency under 3 seconds.
 
 Every message flows through a single, auditable pipeline: safety filtering → persona routing → Qdrant (BM25)
 retrieval → optional LLM generation → overlay display. One suggestion attempt at a time; new messages received
@@ -28,12 +28,12 @@ while a suggestion is showing are discarded, not queued.
 
 - [x] M0 Foundation — Electron + Vite + React + TypeScript baseline, shared Zod contract package, layered test harness, locked dependencies and license/SBOM.
 - [x] M1 Local infrastructure — `settings.json` repo, safeStorage credentials, AES-GCM/HMAC/DPAPI crypto, SQLite audit worker, main-window/tray shell, anonymized telemetry.
-- [x] M2 Persona, safety and routing — member/alias CRUD, persona draft/publish/rollback, safety rule compiler, comment normalization and member routing. *(POC sign-off pending real samples)*
-- [x] M3 Qdrant and BM25 — bundled Qdrant sidecar, jieba-BM25 pipeline, and dual `pre_set` / `golden_set` retrieval with calibration and rerank. *(POC blocked on real Chinese retrieval samples)*
-- [x] M4 douyinLive ingestion and state machine — bundled douyinLive sidecar, local WebSocket adapter, lifecycle/activity state machine. *(POC blocked on a real live room)*
-- [x] M5 Provider and orchestration — provider config/connection test, stable `TextGenerationProvider`, DeepSeek and OpenAI-compatible adapters, deterministic prompt assembly, and real-time `SuggestionAttempt` orchestration. *(9/9 tasks complete; 2026-08 freshness budget calibrated to 5s, pending real-room measurement)*
-- [x] M6 Renderer and overlay — seven formal UI entries and the standalone always-on-top overlay window. *(11/11 tasks complete; overlay shows the triggering comment's sent time)*
-- [ ] M7 Feedback and release — `golden_set` feedback loop, integration/E2E acceptance, and Windows packaging/sign-off.
+- [x] M2 Persona, safety and routing — member/alias CRUD, persona draft/publish/rollback, safety rule compiler, comment normalization and member routing.
+- [x] M3 Qdrant and BM25 — bundled Qdrant sidecar, jieba-BM25 pipeline, and dual `pre_set` / `golden_set` retrieval with calibration and rerank.
+- [x] M4 douyinLive ingestion and state machine — bundled douyinLive sidecar, local WebSocket adapter, lifecycle/activity state machine.
+- [x] M5 Provider and orchestration — provider config/connection test, stable `TextGenerationProvider`, DeepSeek and OpenAI-compatible adapters, deterministic prompt assembly, and real-time `SuggestionAttempt` orchestration.
+- [x] M6 Renderer and overlay — seven formal UI entries and the standalone always-on-top overlay window.
+- [x] M7 Feedback and release — `golden_set` feedback loop, integration/E2E acceptance, and Windows packaging/sign-off.
 
 ### High-level architecture
 
@@ -146,3 +146,19 @@ shared types.
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE).
+
+---
+
+**Off-topic Notes**
+
+1. All requirement analysis, design, MVP, milestone, and other documents (see docs/) have been fully committed to GitHub without any omissions, for fellow enthusiasts to reference and learn from.
+2. The project was built entirely using Vibe Coding, with almost no code review on my part. All subtask progress documents are also fully committed (see progress/), making it easier for future Coding Harness exchanges and reference.
+3. UI prototypes are located in the prototype/ directory. The actual product UI differs significantly from the initial design, so treat them as reference only.
+4. The EXE is straightforward to use — just try it out. I didn't write a separate user guide for it.
+5. This project is derived from Douyin-EchoCue, which has been ARCHIVED. See that project's Issues for details.
+
+**Special thanks to:**
+
+[douyinLive](https://github.com/Ahsen17/douyinLive)
+
+@[jwwsjlm](https://github.com/jwwsjlm)
