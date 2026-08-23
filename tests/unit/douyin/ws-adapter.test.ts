@@ -104,4 +104,52 @@ describe('mapUpstreamFrame', () => {
     expect(mapUpstreamFrame(null, CTX)).toBeNull();
     expect(mapUpstreamFrame('plain string', CTX)).toBeNull();
   });
+
+  it('maps ROOM_ONLINE with top-level room_id (no data object)', () => {
+    const event = mapUpstreamFrame(
+      { type: 'system', event: 'live_status', code: 'ROOM_ONLINE', room_id: '7012345678901234567' },
+      CTX,
+    );
+    expect(event).toEqual({
+      type: 'LIVE_ONLINE',
+      roomReference: 'room-abc',
+      platformRoomId: '7012345678901234567',
+      receivedAt: CTX.receivedAt,
+    });
+  });
+
+  it('maps ROOM_ONLINE without any readable room id, omitting platformRoomId', () => {
+    const event = mapUpstreamFrame(
+      { type: 'system', event: 'live_status', code: 'ROOM_ONLINE' },
+      CTX,
+    );
+    expect(event).toEqual({ type: 'LIVE_ONLINE', roomReference: 'room-abc', receivedAt: CTX.receivedAt });
+  });
+
+  it('filters out a live_status frame without a readable code', () => {
+    expect(mapUpstreamFrame({ type: 'system', event: 'live_status' }, CTX)).toBeNull();
+    expect(mapUpstreamFrame({ type: 'system', event: 'live_status', code: '' }, CTX)).toBeNull();
+  });
+
+  it('filters out a WebcastChatMessage without readable content', () => {
+    expect(mapUpstreamFrame({ method: 'WebcastChatMessage', common: { msgId: 1 } }, CTX)).toBeNull();
+    expect(
+      mapUpstreamFrame({ method: 'WebcastChatMessage', content: '   ', common: { msgId: 1 } }, CTX),
+    ).toBeNull();
+  });
+
+  it('maps a chat with content but missing common/user to COMMENT with defaults', () => {
+    const event = mapUpstreamFrame({ method: 'WebcastChatMessage', content: '  主播 晚上好 ' }, CTX);
+    expect(event).not.toBeNull();
+    if (event?.type === 'COMMENT') {
+      expect(event.comment.rawText).toBe('  主播 晚上好 ');
+      expect(event.comment.normalizedText).toBe('主播 晚上好');
+      expect(event.comment.sourceMessageId).toMatch(/^local-/);
+      expect(event.comment.platformRoomId).toBeUndefined();
+      expect(event.comment.userNickname).toBeUndefined();
+      expect(event.comment.upstreamCreatedAt).toBeUndefined();
+    } else {
+      throw new Error('expected COMMENT event');
+    }
+  });
 });
