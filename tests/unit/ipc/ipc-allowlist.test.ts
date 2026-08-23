@@ -84,6 +84,7 @@ const HANDLE_CHANNELS = [
   IpcChannel.DiagnosticsGetSummary,
   IpcChannel.RetrievalGetStatus,
   IpcChannel.RetrievalImportPreSet,
+  IpcChannel.RetrievalGetCollectionCounts,
   IpcChannel.AuditSearch,
   IpcChannel.AuditGetWorkflow,
   IpcChannel.AuditSubmitLabel,
@@ -104,7 +105,7 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     vi.clearAllMocks();
   });
 
-  it('registers exactly the 30 request channels and no broadcast/send-only channel', () => {
+  it('registers exactly the 31 request channels and no broadcast/send-only channel', () => {
     registerMainWires(() => true);
     registerOverlayWire(() => true);
     const registered = [...mocks.registered.keys()].sort();

@@ -180,6 +180,14 @@ export const RetrievalInitStatusV1Schema = z.strictObject({
   error: z.string().min(1).max(64).optional(),
 });
 
+// Diagnostic visibility of the two local collections (UI §8.1): anonymous point
+// counts only, so the host can confirm backflow into golden_set without exposing
+// any case payload. 0 means the collection is absent or empty, never an error.
+export const CollectionCountsV1Schema = z.strictObject({
+  preSetPointCount: z.number().int().nonnegative(),
+  goldenSetPointCount: z.number().int().nonnegative(),
+});
+
 export const SafetyReasonCodeV1Schema = z.enum([
   'ABUSE', 'PII', 'POLITICS', 'SEXUAL', 'ILLEGAL',
   'MEDICAL_FINANCIAL_ADVICE', 'COMPETITOR', 'TRANSACTION_PRICE',
@@ -777,3 +785,4 @@ export type PreSetImportErrorV1 = z.infer<typeof PreSetImportErrorV1Schema>;
 export type PreSetImportRequestV1 = z.infer<typeof PreSetImportRequestV1Schema>;
 export type PreSetImportResultV1 = z.infer<typeof PreSetImportResultV1Schema>;
 export type RetrievalInitStatusV1 = z.infer<typeof RetrievalInitStatusV1Schema>;
+export type CollectionCountsV1 = z.infer<typeof CollectionCountsV1Schema>;

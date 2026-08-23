@@ -1,21 +1,28 @@
 import { useEffect, useState } from 'react'
-import type { DiagnosticSummaryV1 } from '@echocue/contracts'
+import type { CollectionCountsV1, DiagnosticSummaryV1 } from '@echocue/contracts'
 import { useAsyncAction } from '../hooks/useAsyncAction'
 import { ErrorState, LoadingState } from '../components/StateViews'
 import {
   buildCopyableSummary,
   formatBytes,
+  formatDateTime,
+  formatE2eMs,
   localizeDomainError,
   localizeSuggestionResult,
 } from '../diagnostics/diagnostics-logic'
 
 export default function DiagnosticsPage() {
   const [summary, setSummary] = useState<DiagnosticSummaryV1 | null>(null)
+  const [counts, setCounts] = useState<CollectionCountsV1 | null>(null)
   const [copied, setCopied] = useState(false)
 
   const load = useAsyncAction(async () => {
-    const next = await window.echocue.diagnostics.getSummary()
+    const [next, nextCounts] = await Promise.all([
+      window.echocue.diagnostics.getSummary(),
+      window.echocue.retrieval.getCollectionCounts(),
+    ])
     setSummary(next)
+    setCounts(nextCounts)
     setCopied(false)
     return true
   })
@@ -51,9 +58,9 @@ export default function DiagnosticsPage() {
     : null
   const metrics = [
     ['运行状态', `${summary.lifecycle} / ${summary.activity}`],
-    ['最近接收弹幕', summary.lastCommentReceivedAt ?? '暂无'],
+    ['最近接收弹幕', summary.lastCommentReceivedAt === undefined ? '暂无' : formatDateTime(summary.lastCommentReceivedAt)],
     ['最近建议结果', localizeSuggestionResult(summary.lastSuggestionResult)],
-    ['最近端到端耗时', summary.lastE2eLatencyMs === undefined ? '暂无' : `${summary.lastE2eLatencyMs} ms`],
+    ['最近端到端耗时', summary.lastE2eLatencyMs === undefined ? '暂无' : formatE2eMs(summary.lastE2eLatencyMs)],
     ['审计存储可用', formatBytes(summary.storageAvailableBytes)],
   ]
 
@@ -97,6 +104,20 @@ export default function DiagnosticsPage() {
           </section>
         ))}
       </div>
+      <section className="card">
+        <b>● 检索库样本</b>
+        <p>只显示两个本地集合的样本数量，用于确认 golden_set 回流是否成功，不展示案例内容。</p>
+        <div className="metrics compact">
+          <div>
+            <small>pre_set 样本</small>
+            <strong>{counts === null ? '…' : `${counts.preSetPointCount} 条`}</strong>
+          </div>
+          <div>
+            <small>golden_set 样本</small>
+            <strong>{counts === null ? '…' : `${counts.goldenSetPointCount} 条`}</strong>
+          </div>
+        </div>
+      </section>
     </>
   )
 }

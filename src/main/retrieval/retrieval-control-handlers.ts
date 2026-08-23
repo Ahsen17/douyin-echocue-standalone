@@ -1,4 +1,5 @@
 import type {
+  CollectionCountsV1,
   PreSetImportErrorV1,
   PreSetImportResultV1,
   RetrievalInitStatusV1,
@@ -7,7 +8,7 @@ import { PreSetImportRequestV1Schema } from '@echocue/contracts';
 import type { QdrantClient } from '@qdrant/js-client-rest';
 import type { QdrantSidecarManager } from '../qdrant/index.js';
 import { importPreSet as importPreSetStrict } from './pre-set-importer.js';
-import { QDRANT_ALIAS_PRE_SET, bootstrapPreSet } from './bootstrap.js';
+import { QDRANT_ALIAS_GOLDEN_SET, QDRANT_ALIAS_PRE_SET, bootstrapPreSet } from './bootstrap.js';
 
 export interface RetrievalControlDeps {
   qdrant: QdrantSidecarManager;
@@ -21,6 +22,7 @@ export interface RetrievalControlDeps {
 export interface RetrievalControlHandlers {
   getStatus(): Promise<RetrievalInitStatusV1>;
   importPreSet(raw: unknown): Promise<PreSetImportResultV1>;
+  getCollectionCounts(): Promise<CollectionCountsV1>;
 }
 
 // Bound the IPC error list; the importer reports the whole package, the UI only
@@ -64,6 +66,24 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
     }
   };
 
+  // Diagnostic-only counts (UI §8.1): anonymous point totals per collection so
+  // the host can verify golden_set backflow. Absent/empty collections report 0;
+  // any qdrant failure also reports 0 rather than surfacing internal errors.
+  const getCollectionCounts = async (): Promise<CollectionCountsV1> => {
+    const countOf = async (alias: string): Promise<number> => {
+      try {
+        const { count } = await deps.client.count(alias, { exact: true });
+        return count ?? 0;
+      } catch {
+        return 0;
+      }
+    };
+    return {
+      preSetPointCount: await countOf(QDRANT_ALIAS_PRE_SET),
+      goldenSetPointCount: await countOf(QDRANT_ALIAS_GOLDEN_SET),
+    };
+  };
+
   const importPreSet = async (raw: unknown): Promise<PreSetImportResultV1> => {
     const parsed = PreSetImportRequestV1Schema.safeParse(raw);
     if (!parsed.success) {
@@ -97,7 +117,7 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
     return task;
   };
 
-  return { getStatus, importPreSet };
+  return { getStatus, importPreSet, getCollectionCounts };
 }
 
 function toContractError(error: PreSetImportErrorV1): PreSetImportErrorV1 {
