@@ -156,10 +156,10 @@ export function renderPrompt(input: PromptInput): RenderedPrompt {
     }
   }
 
-  const useCustom =
-    input.systemPromptTemplate !== undefined && input.systemPromptTemplate.trim() !== '';
+  const customTemplate = input.systemPromptTemplate?.trim();
+  const useCustom = customTemplate !== undefined && customTemplate !== '';
   const system = useCustom
-    ? `${input.systemPromptTemplate}\n\n${SYSTEM_HARD_RULES_V1}`
+    ? `${customTemplate}\n\n${SYSTEM_HARD_RULES_V1}`
     : SYSTEM_MESSAGE_V1;
   const templateVersion = useCustom
     ? (input.systemPromptTemplateVersion ?? 'custom')

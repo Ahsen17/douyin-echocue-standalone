@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   PersonaDetailV1,
   PersonaSummaryV1,
@@ -22,6 +22,10 @@ export default function PersonaPage() {
   const [viewContent, setViewContent] = useState<string | null>(null)
   const [viewingVersion, setViewingVersion] = useState<PersonaVersionMetaV1 | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  // Latest selection mirror: stale async responses must not overwrite a newer
+  // selection after a fast member switch (review M3).
+  const selectedIdRef = useRef<string | null>(null)
+  selectedIdRef.current = selectedId
 
   const reloadList = useAsyncAction(async () => {
     const list = await window.echocue.persona.list()
@@ -35,6 +39,7 @@ export default function PersonaPage() {
 
   const loadDetail = useAsyncAction(async (personaId: string) => {
     const next = await window.echocue.persona.get(personaId)
+    if (selectedIdRef.current !== personaId) return false
     setDetail(next)
     setDraftText(next.editableContent)
     setAliasInput(aliasText(next.aliases))
@@ -44,6 +49,7 @@ export default function PersonaPage() {
     const active = next.versions.find((v) => v.status === 'PUBLISHED') ?? null
     if (active !== null) {
       const content = await window.echocue.persona.getVersionContent(personaId, active.personaVersion)
+      if (selectedIdRef.current !== personaId) return false
       setViewContent(content.content)
     } else {
       setViewContent(null)
@@ -103,8 +109,10 @@ export default function PersonaPage() {
   }
 
   const loadVersionView = useAsyncAction(async (version: PersonaVersionMetaV1) => {
-    if (selectedId === null) return false
-    const content = await window.echocue.persona.getVersionContent(selectedId, version.personaVersion)
+    const personaId = selectedIdRef.current
+    if (personaId === null) return false
+    const content = await window.echocue.persona.getVersionContent(personaId, version.personaVersion)
+    if (selectedIdRef.current !== personaId) return false
     setViewContent(content.content)
     setViewingVersion(version)
     return true

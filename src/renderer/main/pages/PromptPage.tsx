@@ -93,7 +93,7 @@ export default function PromptPage() {
 
         <div className="button-row">
           <button type="button" disabled={busy} onClick={() => void save.run()}>
-            保存并应用
+            保存提示词
           </button>
           <button
             type="button"

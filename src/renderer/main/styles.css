@@ -40,7 +40,7 @@ p{line-height:1.6}
 .account-chip strong{font-size:12px}
 .account-chip small{color:var(--subtle);font-size:10px}
 .avatar{display:grid;width:30px;height:30px;place-items:center;border-radius:50%;color:#fff;background:#27394f;font-size:12px;font-weight:700}
-.text-button{border:0;padding:4px 6px;min-height:auto;color:var(--blue);background:transparent;font-size:11px;font-weight:700}
+.text-button{border:0;padding:4px 6px;min-height:auto;color:var(--blue);background:transparent;font-size:11px;font-weight:700;-webkit-app-region:no-drag}
 .text-button:hover:not(:disabled){background:#eef5ff;color:var(--blue-dark)}
 aside{grid-column:1;display:flex;flex-direction:column;gap:5px;padding:22px 14px;overflow-y:auto;background:var(--surface);border-right:1px solid var(--line)}
 aside>button{display:flex;width:100%;align-items:center;gap:11px;border:0;border-radius:5px;padding:11px 14px;min-height:auto;color:var(--muted);background:transparent;text-align:left;cursor:pointer;font-size:12px}
@@ -55,10 +55,12 @@ article.page-fluid{display:flex;flex-direction:column;height:100%;max-width:none
 .page-heading h2{margin-top:8px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:24px;margin-bottom:20px}
 .card.warning{border-color:#f0d9a8;background:#fff9ee}
+.card.status{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .card.status.success{border-color:#bfe3d0;background:#f2fbf6}
 .card.status.warning{border-color:#f0d9a8;background:#fff9ee}
 .card.status.danger{border-color:#f0c4c4;background:#fff4f4}
 .card.status.neutral{border-color:var(--line);background:#fff}
+.card.status>button{align-self:flex-end}
 .status b{display:block;margin-top:2px}
 .status.success b{color:var(--green)}
 .status.warning b{color:var(--amber)}
