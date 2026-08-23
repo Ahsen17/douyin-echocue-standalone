@@ -97,8 +97,14 @@ try {
   if (-not (Test-Path $auditDb)) { throw 'audit.sqlite lost after reinstall/upgrade' }
   $results.upgradeDataPreserved = $true
 
-  # 6. uninstall removes the app but never the permanent audit data
+  # 6. uninstall removes the app but never the permanent audit data. NSIS
+  # uninstallers self-spawn and the launched process exits before files are
+  # gone, so poll for the install dir to disappear rather than checking at once.
   Run-Silent $uninstaller @('/S')
+  $uninstallDeadline = (Get-Date).AddSeconds(60)
+  while ((Test-Path $installRoot) -and (Get-Date) -lt $uninstallDeadline) {
+    Start-Sleep -Milliseconds 500
+  }
   if (Test-Path $installRoot) { throw "install dir still present after uninstall: $installRoot" }
   $orphansAfter = Get-SidecarProcesses
   if ($orphansAfter) {
