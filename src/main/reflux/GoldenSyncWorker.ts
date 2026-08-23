@@ -77,93 +77,128 @@ export class GoldenSyncWorker {
     this.inFlight = true;
     const result: GoldenSyncProcessResult = { rearmed: 0, claimed: 0, succeeded: 0, failed: 0 };
     try {
-      result.rearmed = this.rearmEligible(this.batchSize);
-
-      let info: Parameters<typeof readGoldenProfile>[0];
       try {
-        info = await this.qdrantClient.getCollection('golden_set');
-      } catch {
-        // Qdrant down or golden_set not bootstrapped: a transient outage. Leave
-        // PENDING jobs alone so no attempts are burned; a later sweep retries.
-        return result;
-      }
+        result.rearmed = this.rearmEligible(this.batchSize);
 
-      let profile: GoldenProfileParams;
-      try {
-        profile = readGoldenProfile(info);
-      } catch (err) {
-        // golden_set exists but its BM25 metadata is missing/invalid — a
-        // persistent config error, not a transient outage. Permanently fail the
-        // pending batch so it is observable (FAILED + last_error) instead of
-        // silently idling every sweep; the operator must repair the collection.
-        const message = err instanceof RefluxPayloadError
-          ? err.message
-          : 'golden_set profile unavailable';
+        let info: Parameters<typeof readGoldenProfile>[0];
+        try {
+          info = await this.qdrantClient.getCollection('golden_set');
+        } catch {
+          // Qdrant down or golden_set not bootstrapped: a transient outage. Leave
+          // PENDING jobs alone so no attempts are burned; a later sweep retries.
+          return result;
+        }
+
+        let profile: GoldenProfileParams;
+        try {
+          profile = readGoldenProfile(info);
+        } catch (err) {
+          // golden_set exists but its BM25 metadata is missing/invalid — a
+          // persistent config error, not a transient outage. UPSERT jobs cannot
+          // proceed without the profile, so they are permanently failed
+          // (observable) instead of silently idling. SET_BAD_CASE does not need
+          // the profile and is processed normally.
+          const message = err instanceof RefluxPayloadError
+            ? err.message
+            : 'golden_set profile unavailable';
+          for (let i = 0; i < this.batchSize; i++) {
+            const job = this.audit.claimNextSyncJob();
+            if (job === null) break;
+            result.claimed += 1;
+            if (job.action === 'SET_BAD_CASE') {
+              try {
+                await this.processBadCase(job);
+                result.succeeded += 1;
+              } catch (badCaseErr) {
+                result.failed += 1;
+                if (badCaseErr instanceof RefluxPayloadError) {
+                  this.audit.failSyncJob(job.jobId, job.feedbackId, badCaseErr.message, true);
+                } else {
+                  this.audit.failSyncJob(
+                    job.jobId,
+                    job.feedbackId,
+                    badCaseErr instanceof Error ? badCaseErr.name : 'UnknownSyncError',
+                  );
+                }
+              }
+              continue;
+            }
+            this.audit.failSyncJob(job.jobId, job.feedbackId, message, true);
+            result.failed += 1;
+          }
+          return result;
+        }
+
         for (let i = 0; i < this.batchSize; i++) {
           const job = this.audit.claimNextSyncJob();
           if (job === null) break;
-          this.audit.failSyncJob(job.jobId, job.feedbackId, message, true);
-          result.failed += 1;
-        }
-        return result;
-      }
-
-      for (let i = 0; i < this.batchSize; i++) {
-        const job = this.audit.claimNextSyncJob();
-        if (job === null) break;
-        result.claimed += 1;
-        try {
-          await this.processOne(job, profile);
-          result.succeeded += 1;
-        } catch (err) {
-          result.failed += 1;
-          if (err instanceof RefluxPayloadError) {
-            // Permanent data problem: never auto-retry (M7-03). The message is a
-            // fixed internal string, safe to persist.
-            this.audit.failSyncJob(job.jobId, job.feedbackId, err.message, true);
-          } else {
-            // Infrastructure failure: fail this job and stop the batch; the
-            // backoff timer re-arms it on a later sweep. A Qdrant error may echo
-            // the golden request body (reply/comment text), so only the error
-            // class is persisted — never the raw message (安全红线).
-            const safe = err instanceof Error ? err.name : 'UnknownSyncError';
-            this.audit.failSyncJob(job.jobId, job.feedbackId, safe);
-            break;
+          result.claimed += 1;
+          try {
+            await this.processOne(job, profile);
+            result.succeeded += 1;
+          } catch (err) {
+            result.failed += 1;
+            if (err instanceof RefluxPayloadError) {
+              // Permanent data problem: never auto-retry (M7-03). The message is a
+              // fixed internal string, safe to persist.
+              this.audit.failSyncJob(job.jobId, job.feedbackId, err.message, true);
+            } else {
+              // Infrastructure failure: fail this job and stop the batch; the
+              // backoff timer re-arms it on a later sweep. A Qdrant error may echo
+              // the golden request body (reply/comment text), so only the error
+              // class is persisted — never the raw message (安全红线).
+              const safe = err instanceof Error ? err.name : 'UnknownSyncError';
+              this.audit.failSyncJob(job.jobId, job.feedbackId, safe);
+              break;
+            }
           }
         }
+        return result;
+      } catch {
+        // Defensive: a storage/Qdrant hiccup outside the per-job handlers must
+        // never surface as an unhandled rejection to fire-and-forget callers
+        // (sweep timer, onLabelSubmitted).
+        return result;
       }
-      return result;
     } finally {
       this.inFlight = false;
     }
   }
 
   private async processOne(job: PendingSyncJob, profile: GoldenProfileParams): Promise<void> {
-    const ctx = this.audit.readFeedbackSyncContext(job.feedbackId);
-    if (ctx === null) {
-      throw new RefluxPayloadError(`feedback context missing for job ${job.jobId}`);
-    }
     if (job.action === 'UPSERT') {
+      const ctx = this.audit.readFeedbackSyncContext(job.feedbackId);
+      if (ctx === null) {
+        throw new RefluxPayloadError(`feedback context missing for job ${job.jobId}`);
+      }
       const point = buildUpsertPoint(ctx, profile, this.pipeline, this.now().toISOString());
       await this.qdrantClient.upsert('golden_set', { wait: true, points: [point] });
       this.audit.completeSyncJob(job.jobId, ctx.feedbackId, point.id);
       return;
     }
     if (job.action === 'SET_BAD_CASE') {
-      // CONTRACT §4.3: only the golden direct source point is marked bad; the
-      // migration trigger already rejected anything else at insert time.
-      if (ctx.source.collection !== 'golden_set' || ctx.source.pointId === null) {
-        throw new RefluxPayloadError(`SET_BAD_CASE job has no golden direct source: ${job.jobId}`);
-      }
-      await this.qdrantClient.setPayload('golden_set', {
-        wait: true,
-        payload: { is_bad_case: true, updated_at: this.now().toISOString() },
-        points: [ctx.source.pointId],
-      });
-      this.audit.completeSyncJob(job.jobId, ctx.feedbackId, ctx.source.pointId);
+      await this.processBadCase(job);
       return;
     }
     throw new RefluxPayloadError(`unhandled sync action: ${job.action}`);
+  }
+
+  private async processBadCase(job: PendingSyncJob): Promise<void> {
+    const ctx = this.audit.readFeedbackSyncContext(job.feedbackId);
+    if (ctx === null) {
+      throw new RefluxPayloadError(`feedback context missing for job ${job.jobId}`);
+    }
+    // CONTRACT §4.3: only the golden direct source point is marked bad; the
+    // migration trigger already rejected anything else at insert time.
+    if (ctx.source.collection !== 'golden_set' || ctx.source.pointId === null) {
+      throw new RefluxPayloadError(`SET_BAD_CASE job has no golden direct source: ${job.jobId}`);
+    }
+    await this.qdrantClient.setPayload('golden_set', {
+      wait: true,
+      payload: { is_bad_case: true, updated_at: this.now().toISOString() },
+      points: [ctx.source.pointId],
+    });
+    this.audit.completeSyncJob(job.jobId, ctx.feedbackId, ctx.source.pointId);
   }
 
   private rearmEligible(limit: number): number {

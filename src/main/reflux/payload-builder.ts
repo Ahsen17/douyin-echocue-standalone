@@ -82,11 +82,21 @@ function findSnapshot(
   return null;
 }
 
+// A malformed snapshot is a data-integrity problem, not a transient fault —
+// classify it permanent so it surfaces instead of retrying (F3).
+function parseSnapshot<T>(plaintext: string, label: string): T {
+  try {
+    return JSON.parse(plaintext) as T;
+  } catch {
+    throw new RefluxPayloadError(`${label} snapshot is not valid JSON`);
+  }
+}
+
 /** The comment text a golden point should match on future queries (≤200). */
 export function extractNormalizedText(workflow: AuditWorkflowV1): string {
   const plaintext = findSnapshot(workflow, 'NORMALIZED_COMMENT', 'NORMALIZED_COMMENT_JSON');
   if (plaintext === null) throw new RefluxPayloadError('trace has no NORMALIZED_COMMENT snapshot');
-  const parsed = JSON.parse(plaintext) as { normalizedText?: unknown };
+  const parsed = parseSnapshot<{ normalizedText?: unknown }>(plaintext, 'NORMALIZED_COMMENT');
   if (typeof parsed.normalizedText !== 'string' || parsed.normalizedText.length === 0) {
     throw new RefluxPayloadError('NORMALIZED_COMMENT has no non-empty normalizedText');
   }
@@ -99,9 +109,9 @@ export function extractNormalizedText(workflow: AuditWorkflowV1): string {
 export function extractSemanticType(workflow: AuditWorkflowV1): SemanticTypeV1 {
   const plaintext = findSnapshot(workflow, 'RERANK_DECISION');
   if (plaintext === null) return 'low_value';
-  const parsed = JSON.parse(plaintext) as {
+  const parsed = parseSnapshot<{
     mergedTopK?: Array<{ payload?: { semantic_type?: unknown } }>;
-  };
+  }>(plaintext, 'RERANK_DECISION');
   const first = parsed.mergedTopK?.[0]?.payload?.semantic_type;
   if (first !== undefined && SemanticTypeV1Schema.safeParse(first).success) {
     return first as SemanticTypeV1;
@@ -118,7 +128,7 @@ export function extractSuggestion(
 ): { quickReply: string; cues: string[] } | null {
   const direct = findSnapshot(workflow, 'DIRECT_PAYLOAD', 'SUGGESTION_JSON');
   if (direct !== null) {
-    const parsed = JSON.parse(direct) as { quick_reply?: unknown; cues?: unknown };
+    const parsed = parseSnapshot<{ quick_reply?: unknown; cues?: unknown }>(direct, 'DIRECT_PAYLOAD');
     if (
       typeof parsed.quick_reply === 'string' &&
       Array.isArray(parsed.cues) &&
@@ -129,7 +139,7 @@ export function extractSuggestion(
   }
   const llm = findSnapshot(workflow, 'LLM_PARSED_OUTPUT', 'SUGGESTION_JSON');
   if (llm !== null) {
-    const parsed = JSON.parse(llm) as { quickReply?: unknown; cues?: unknown };
+    const parsed = parseSnapshot<{ quickReply?: unknown; cues?: unknown }>(llm, 'LLM_PARSED_OUTPUT');
     if (
       typeof parsed.quickReply === 'string' &&
       Array.isArray(parsed.cues) &&

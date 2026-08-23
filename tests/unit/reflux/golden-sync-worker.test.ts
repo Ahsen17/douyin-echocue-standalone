@@ -205,22 +205,32 @@ describe('GoldenSyncWorker.processPending (M7-02/03)', () => {
     );
   });
 
-  it('permanently fails pending jobs when golden_set metadata is invalid, not idles (IMP-2)', async () => {
+  it('permanently fails UPSERT jobs on broken metadata but still marks bad cases (IMP-2/F1)', async () => {
     const { worker, audit, qdrantClient } = makeWorker();
+    const badCaseCtx = validCtx({
+      labelStatus: 'REJECTED',
+      qualityScore: 0,
+      source: { collection: 'golden_set', pointId: 'golden-1' },
+    });
     audit.claimNextSyncJob
       .mockReturnValueOnce({ jobId: 'job-1', feedbackId: 'fb-1', action: 'UPSERT' })
-      .mockReturnValueOnce({ jobId: 'job-2', feedbackId: 'fb-2', action: 'SET_BAD_CASE' })
+      .mockReturnValueOnce({ jobId: 'job-2', feedbackId: badCaseCtx.feedbackId, action: 'SET_BAD_CASE' })
       .mockReturnValueOnce(null);
+    audit.readFeedbackSyncContext.mockImplementation((feedbackId: string) =>
+      feedbackId === badCaseCtx.feedbackId ? badCaseCtx : null,
+    );
     // Qdrant is reachable but the collection metadata is broken — a config error.
     qdrantClient.getCollection.mockResolvedValue({ config: { metadata: {} } });
+    qdrantClient.setPayload.mockResolvedValue({ status: 'ok' });
 
     const result = await worker.processPending();
-    expect(result.claimed).toBe(0);
-    expect(result.failed).toBe(2);
-    expect(audit.failSyncJob).toHaveBeenCalledTimes(2);
+    expect(result.claimed).toBe(2);
+    expect(result.failed).toBe(1); // only the UPSERT job
+    expect(result.succeeded).toBe(1); // SET_BAD_CASE proceeded without a profile
+    expect(audit.failSyncJob).toHaveBeenCalledTimes(1);
     expect(audit.failSyncJob.mock.calls[0][3]).toBe(true); // permanent
+    expect(audit.completeSyncJob).toHaveBeenCalledWith('job-2', badCaseCtx.feedbackId, 'golden-1');
     expect(qdrantClient.upsert).not.toHaveBeenCalled();
-    expect(qdrantClient.setPayload).not.toHaveBeenCalled();
   });
 
   it('guards against overlapping sweeps', async () => {
