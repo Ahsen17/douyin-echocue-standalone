@@ -141,6 +141,13 @@ export class AuditDuplicateTraceError extends Error {
   }
 }
 
+/** Outcome of verifyIntegrity(): the audit DB passed structural and HMAC checks. */
+export interface IntegrityReport {
+  integrityCheck: string;
+  migrationVersion: number;
+  transitionsChecked: number;
+}
+
 function isUniqueConstraintError(err: unknown): boolean {
   return err instanceof Error && err.message.includes('UNIQUE constraint failed');
 }
@@ -162,8 +169,108 @@ export class AuditStoreWorker {
     this.encryptor = new FieldEncryptor(dek, options.keyVersion);
   }
 
+  /** Controlled close: flush WAL then release the handle (RUNBOOK §5.3). */
   close(): void {
+    this.checkpoint();
     this.db.close();
+  }
+
+  /**
+   * Controlled WAL checkpoint (RUNBOOK §5.3 / DELIVERY A-12). TRUNCATE flushes
+   * committed frames into the main DB file and resets the -wal log, so a
+   * stopped service leaves a single consistent file. Idempotent on an empty DB.
+   */
+  checkpoint(): void {
+    try {
+      this.db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+    } catch (err) {
+      throw new AuditUnavailableError(`checkpoint failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Full integrity verification (RUNBOOK §5.3 crash recovery; DELIVERY A-12):
+   * structural integrity_check, the applied migration version, and a recompute
+   * of every transition's entry_hmac + the previous_hmac chain. A mismatch
+   * means the audit data cannot be trusted and the service must stay stopped.
+   */
+  verifyIntegrity(): IntegrityReport {
+    try {
+      const integrity = this.db.prepare('PRAGMA integrity_check').get() as {
+        integrity_check: string;
+      };
+      if (integrity.integrity_check !== 'ok') {
+        throw new AuditUnavailableError(`integrity_check failed: ${integrity.integrity_check}`);
+      }
+      const migration = this.db.prepare(
+        'SELECT version FROM schema_migration ORDER BY version DESC LIMIT 1',
+      ).get() as { version: number } | undefined;
+      if (migration === undefined) {
+        throw new AuditUnavailableError('schema_migration is missing; cannot verify');
+      }
+      const rows = this.db.prepare(
+        `SELECT trace_id, sequence_no, from_state, to_state, reason_code, occurred_at,
+                previous_hmac, entry_hmac
+         FROM audit_transition ORDER BY trace_id, sequence_no`,
+      ).all() as Array<{
+        trace_id: string;
+        sequence_no: number;
+        from_state: TraceState | null;
+        to_state: TraceState;
+        reason_code: TraceReasonCodeV1;
+        occurred_at: string;
+        previous_hmac: string | null;
+        entry_hmac: string;
+      }>;
+      const hmacKey = this.options.keyManager.getHmacKey(this.options.keyVersion);
+      let transitionsChecked = 0;
+      for (const row of rows) {
+        const expected = computeTransitionHmac(
+          hmacKey,
+          row.trace_id,
+          row.sequence_no,
+          row.from_state,
+          row.to_state,
+          row.reason_code,
+          row.occurred_at,
+          row.previous_hmac,
+        );
+        if (expected !== row.entry_hmac) {
+          throw new AuditUnavailableError(
+            `entry_hmac mismatch at trace ${row.trace_id} seq ${row.sequence_no}`,
+          );
+        }
+        transitionsChecked += 1;
+      }
+      return {
+        integrityCheck: 'ok',
+        migrationVersion: migration.version,
+        transitionsChecked,
+      };
+    } catch (err) {
+      if (err instanceof AuditUnavailableError) throw err;
+      throw new AuditUnavailableError(`verifyIntegrity failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Consistent on-disk snapshot for a controlled local recovery drill
+   * (RUNBOOK §8.3). Must only run after the service is fully stopped and this
+   * worker is closed; opens a separate read-only handle so the running worker
+   * never participates in the copy.
+   */
+  backupTo(targetPath: string): void {
+    let backup: DatabaseSync | null = null;
+    try {
+      // VACUUM INTO a read-only handle produces a consistent snapshot of the
+      // closed file; the running worker never participates in the copy.
+      backup = new DatabaseSync(this.options.dbPath, { readOnly: true });
+      backup.exec(`VACUUM INTO '${targetPath.replaceAll("'", "''")}'`);
+    } catch (err) {
+      throw new AuditUnavailableError(`backup failed: ${String(err)}`);
+    } finally {
+      backup?.close();
+    }
   }
 
   healthCheck(): boolean {

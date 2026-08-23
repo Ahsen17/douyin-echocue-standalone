@@ -5,7 +5,7 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 import { SettingsStore } from '../config/index.js';
 import { CredentialStore, type SafeStorageLike } from '../credentials/index.js';
 import { CryptoKeyManager } from '../crypto/index.js';
-import { AuditStoreWorker, type MigrationFile } from '../storage/index.js';
+import { AuditStoreWorker, StorageMonitor, type MigrationFile } from '../storage/index.js';
 import { PersonaRouter, PersonaStore } from '../persona/index.js';
 import { SafetyPolicyStore } from '../safety/index.js';
 import { QDRANT_HTTP_PORT, QDRANT_LOOPBACK_HOST, QdrantSidecarManager } from '../qdrant/index.js';
@@ -91,16 +91,17 @@ export async function createServiceController(
 
   // M6-08: report the audit volume's free space in the diagnostics summary.
   // statfsSync is available on Windows and Linux; a read failure just omits it.
-  const diagnostics = new DiagnosticsSource({
-    readStorage: () => {
-      try {
-        const stat = statfsSync(options.dataDir);
-        return { availableBytes: stat.bavail * stat.bsize, totalBytes: stat.blocks * stat.bsize };
-      } catch {
-        return null;
-      }
-    },
-  });
+  // The same volume read feeds the startup gate (M7-07, ≥ 2 GiB) and the
+  // running-period monitor (M7-07, 256 MiB → AUDIT_UNAVAILABLE stop).
+  const readStorage = () => {
+    try {
+      const stat = statfsSync(options.dataDir);
+      return { availableBytes: stat.bavail * stat.bsize, totalBytes: stat.blocks * stat.bsize };
+    } catch {
+      return null;
+    }
+  };
+  const diagnostics = new DiagnosticsSource({ readStorage });
   const stateMachine = new ServiceStateMachine();
   const checks = createServiceGateChecks({
     settings,
@@ -110,6 +111,7 @@ export async function createServiceController(
     safety,
     qdrant: qdrantSidecar,
     qdrantClient,
+    readStorage,
   });
 
   // Real-time suggestion pipeline (M5-07). A missing published safety policy
@@ -161,6 +163,16 @@ export async function createServiceController(
     return sessionId;
   };
 
+  // RUNBOOK §5.3: below 256 MiB the service must stop (E_AUDIT_UNAVAILABLE) and
+  // refuse new attempts. The monitor only runs while the service is RUNNING; the
+  // controller starts/stops it with the lifecycle.
+  const storageMonitor = new StorageMonitor({
+    readStorage,
+    onCritical: () => {
+      void controller.stop('AUDIT_UNAVAILABLE');
+    },
+  });
+
   const controller = new ServiceController({
     stateMachine,
     sidecar: douyinSidecar,
@@ -173,6 +185,7 @@ export async function createServiceController(
       orchestrator.endSession();
       options.cleanupOnStop();
     },
+    storageMonitor,
   });
 
   const shutdown = () => {
