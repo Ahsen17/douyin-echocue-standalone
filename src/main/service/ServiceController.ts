@@ -161,8 +161,12 @@ export class ServiceController {
     adapter.onEvent((event) => this.handleLiveEvent(event));
     try {
       await adapter.connect();
-    } catch {
-      this.logger?.error('lifecycle', 'douyinLive WebSocket connect failed', 'E_SOURCE_UNAVAILABLE');
+    } catch (err) {
+      this.logger?.error(
+        'lifecycle',
+        `douyinLive WebSocket connect failed: ${err instanceof Error ? err.message : String(err)}`,
+        'E_SOURCE_UNAVAILABLE',
+      );
       await this.shutdownSource();
       this.enterStopped('SOURCE_ERROR', gateError('E_SOURCE_UNAVAILABLE'));
       return this.stateMachine.getViewState();
