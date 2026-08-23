@@ -4,6 +4,7 @@ import type { PageName, PageProps } from '../nav'
 import { useServiceState } from '../hooks/useServiceState'
 import { useAsyncAction } from '../hooks/useAsyncAction'
 import { LoadingState } from '../components/StateViews'
+import RetrievalCard from '../components/RetrievalCard'
 import {
   computeConfigCompleteness,
   deriveRunState,
@@ -103,6 +104,8 @@ export default function RunPage({ onNavigate }: PageProps) {
           </button>
         ) : null}
       </div>
+
+      <RetrievalCard serviceLifecycle={serviceState.lifecycle} onNavigate={onNavigate} />
 
       {completeness && !completeness.complete ? (
         <div className="card">

@@ -124,6 +124,7 @@ export async function createCollectionWithSparse(
     },
     metadata: {
       profile_id: options.profile.profileId,
+      pre_set_sha256: options.profile.preSetSha256,
       qdrant_version: options.profile.qdrantVersion,
       tokenizer_version: options.profile.tokenizerVersion,
       normalization_version: options.profile.normalizationVersion,

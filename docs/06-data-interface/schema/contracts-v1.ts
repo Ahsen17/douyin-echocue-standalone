@@ -127,6 +127,59 @@ export const RetrievalResultV1Schema = z.strictObject({
   directPointId: z.string().min(1).max(68).optional(),
 });
 
+// pre_set whole-package import (PRESET §7): the error-code union is the single
+// authority shared by the main-process importer and the IPC result schema.
+export const PreSetImportErrorCodeV1Schema = z.enum([
+  'PRE_SET_UTF8_BOM',
+  'PRE_SET_ENCODING',
+  'PRE_SET_OVER_SIZE',
+  'PRE_SET_OVER_ROWS',
+  'PRE_SET_EMPTY',
+  'PRE_SET_JSON',
+  'PRE_SET_SCHEMA',
+  'PRE_SET_DUPLICATE_ID',
+  'PRE_SET_UNSAFE_CONTENT',
+]);
+
+// Line-scoped validation error (no case text crosses IPC; only line/id/path).
+export const PreSetImportErrorV1Schema = z.strictObject({
+  line: z.number().int().nonnegative(),
+  id: z.string().min(1).max(68).optional(),
+  path: z.string().min(1).max(128).optional(),
+  errorCode: PreSetImportErrorCodeV1Schema,
+});
+
+export const PreSetImportRequestV1Schema = z.strictObject({
+  content: z.string(),
+});
+
+// Import is all-or-nothing: ok:false carries a bounded error list (truncated
+// marks that only the first errors were returned). ok:true reuses the frozen
+// Bm25 profile that bootstrap computed and atomically published.
+export const PreSetImportResultV1Schema = z.discriminatedUnion('ok', [
+  z.strictObject({
+    ok: z.literal(true),
+    profile: Bm25ZhJiebaProfileV1Schema,
+    entryCount: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    errors: z.array(PreSetImportErrorV1Schema),
+    truncated: z.boolean().optional(),
+  }),
+]);
+
+// Run-page retrieval readiness (RUNBOOK §3.1 step 5): qdrantHealthy reflects the
+// sidecar, ready reflects whether the pre_set alias is published. profileId/
+// preSetSha256 are anonymous profile facts, not case data.
+export const RetrievalInitStatusV1Schema = z.strictObject({
+  qdrantHealthy: z.boolean(),
+  ready: z.boolean(),
+  profileId: z.string().min(1).max(64).optional(),
+  preSetSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  error: z.string().min(1).max(64).optional(),
+});
+
 export const SafetyReasonCodeV1Schema = z.enum([
   'ABUSE', 'PII', 'POLITICS', 'SEXUAL', 'ILLEGAL',
   'MEDICAL_FINANCIAL_ADVICE', 'COMPETITOR', 'TRANSACTION_PRICE',
@@ -685,3 +738,8 @@ export type RetrievalHitV1 = z.infer<typeof RetrievalHitV1Schema>;
 export type RetrievalResultV1 = z.infer<typeof RetrievalResultV1Schema>;
 export type SourceComment = z.infer<typeof SourceCommentSchema>;
 export type LiveSourceEvent = z.infer<typeof LiveSourceEventSchema>;
+export type PreSetImportErrorCodeV1 = z.infer<typeof PreSetImportErrorCodeV1Schema>;
+export type PreSetImportErrorV1 = z.infer<typeof PreSetImportErrorV1Schema>;
+export type PreSetImportRequestV1 = z.infer<typeof PreSetImportRequestV1Schema>;
+export type PreSetImportResultV1 = z.infer<typeof PreSetImportResultV1Schema>;
+export type RetrievalInitStatusV1 = z.infer<typeof RetrievalInitStatusV1Schema>;

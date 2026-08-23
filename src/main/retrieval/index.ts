@@ -47,6 +47,10 @@ export type {
   SourceCollection,
   SuggestionRetrieverOptions,
 } from './retriever.js';
+export { createRetrievalControlHandlers } from './retrieval-control-handlers.js';
+export type { RetrievalControlDeps, RetrievalControlHandlers } from './retrieval-control-handlers.js';
+export { wireRetrievalControl } from './retrieval-control-ipc.js';
+export type { RetrievalControlIpcOptions } from './retrieval-control-ipc.js';
 export type { Bm25Analysis, PreSetEntryV1 } from './types.js';
 export {
   DEFAULT_CALIBRATION_ARTIFACT_V1,

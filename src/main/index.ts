@@ -16,6 +16,7 @@ import { wireProviderControl } from './provider/index.js'
 import { wireConfigControl } from './config/index.js'
 import { wirePersonaControl } from './persona/index.js'
 import { wireSafetyControl } from './safety/index.js'
+import { wireRetrievalControl } from './retrieval/index.js'
 import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
 import { resolveResourcePath } from './util/index.js'
 import { SIDECAR_PINS, sidecarSha256 } from './sidecar-pins.js'
@@ -57,6 +58,13 @@ async function doQuit(): Promise<void> {
     await services?.controller.stop()
   } catch {
     /* best-effort stop before exit */
+  }
+  // controller.stop() only owns the douyin sidecar; the Qdrant sidecar is owned
+  // by the app boot and must be torn down here so no child survives exit.
+  try {
+    await services?.qdrant?.stop()
+  } catch {
+    /* best-effort sidecar stop before exit */
   }
   services?.shutdown()
   overlayWindowInstance?.destroy()
@@ -118,6 +126,12 @@ app.whenReady().then(async () => {
       },
     })
     services.goldenSync.start()
+    // RUNBOOK §3.2: the Qdrant loopback sidecar is a boot-time init step. A start
+    // failure is non-fatal here — the gate stays fail-closed and retrieval
+    // getStatus reports the sidecar as unavailable instead of crashing the app.
+    void services.qdrant.start().catch((err) => {
+      console.error('qdrant sidecar start failed', err)
+    })
     services.stateMachine.onChanged((state) => {
       services?.diagnostics.updateLifecycle(state.lifecycle, state.activity)
     })
@@ -141,6 +155,12 @@ app.whenReady().then(async () => {
       },
     })
     wireDiagnosticsControl({ diagnostics: services.diagnostics, isTrustedSender })
+    wireRetrievalControl({
+      qdrant: services.qdrant,
+      qdrantClient: services.qdrantClient,
+      isTrustedSender,
+      isServiceStopped: () => services?.stateMachine.getViewState().lifecycle === 'STOPPED',
+    })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble
     console.error('service bootstrap failed', err)

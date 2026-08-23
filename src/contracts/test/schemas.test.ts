@@ -50,6 +50,11 @@ import {
   DomainErrorV1Schema,
   LiveSourceEventSchema,
   SourceCommentSchema,
+  PreSetImportErrorCodeV1Schema,
+  PreSetImportErrorV1Schema,
+  PreSetImportRequestV1Schema,
+  PreSetImportResultV1Schema,
+  RetrievalInitStatusV1Schema,
   SERVICE_LIFECYCLE_TRANSITIONS_V1,
   TRACE_TRANSITIONS_V1,
   OUTBOX_TRANSITIONS_V1,
@@ -883,6 +888,62 @@ test('rejects a fixture case with a non-https config and an unknown adapterType'
     adapterType: 'ANTHROPIC_MESSAGES',
     expected: { ok: true },
   }, 'unsupported fixture adapterType');
+});
+
+// Pre_set import + retrieval init status (runtime retrieval-init IPC, gap fix)
+console.log('\nPreSetImportResultV1Schema');
+test('accepts an ok import result with a frozen profile', () => {
+  expectValid(PreSetImportResultV1Schema, {
+    ok: true,
+    profile: {
+      profileId: '018f00000000000000000000',
+      tokenizerVersion: 'zh_jieba_search_v1',
+      normalizationVersion: 'zh_bm25_normalize_v1',
+      preSetSha256: '0'.repeat(64),
+      avgDocLenBaseline: 12.5,
+      k1: 1.2,
+      b: 0.75,
+      qdrantVersion: '1.19.0',
+      calibrationArtifactId: 'pending-calibration',
+    },
+    entryCount: 6,
+  }, 'ok result');
+});
+test('accepts a failed import result with line-scoped errors', () => {
+  expectValid(PreSetImportResultV1Schema, {
+    ok: false,
+    errors: [
+      { line: 2, id: 'pre-000002', path: '/text', errorCode: 'PRE_SET_UNSAFE_CONTENT' },
+      { line: 0, errorCode: 'PRE_SET_OVER_SIZE' },
+    ],
+    truncated: false,
+  }, 'failed result');
+});
+test('rejects an ok result without profile and a failed result with an unknown error code', () => {
+  expectInvalid(PreSetImportResultV1Schema, { ok: true, entryCount: 1 }, 'missing profile');
+  expectInvalid(PreSetImportResultV1Schema, {
+    ok: false,
+    errors: [{ line: 1, errorCode: 'PRE_SET_UNKNOWN' }],
+  }, 'unknown error code');
+});
+test('rejects a non-string import request content', () => {
+  expectInvalid(PreSetImportRequestV1Schema, { content: 42 }, 'non-string content');
+});
+test('retrieval init status accepts ready, needs-import and unavailable', () => {
+  expectValid(RetrievalInitStatusV1Schema, {
+    qdrantHealthy: true, ready: true, profileId: '018f0000', preSetSha256: '0'.repeat(64),
+  }, 'ready');
+  expectValid(RetrievalInitStatusV1Schema, { qdrantHealthy: true, ready: false }, 'needs-import');
+  expectValid(RetrievalInitStatusV1Schema, {
+    qdrantHealthy: false, ready: false, error: 'E_QDRANT_UNAVAILABLE',
+  }, 'unavailable');
+  expectInvalid(RetrievalInitStatusV1Schema, {
+    qdrantHealthy: true, ready: true, preSetSha256: 'zz',
+  }, 'bad sha');
+});
+test('pre-set import error code enum rejects unknown codes', () => {
+  expectInvalid(PreSetImportErrorCodeV1Schema, 'PRE_SET_UNKNOWN', 'unknown code');
+  expectInvalid(PreSetImportErrorV1Schema, { line: -1, errorCode: 'PRE_SET_JSON' }, 'negative line');
 });
 
 // Transition constants
