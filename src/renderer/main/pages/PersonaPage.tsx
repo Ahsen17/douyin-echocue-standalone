@@ -120,6 +120,8 @@ export default function PersonaPage() {
 
   const saveDraft = useAsyncAction(async () => {
     if (selectedId === null || !canEditSelected) return false
+    // 昵称随草稿一并保存（移除独立的「保存别名」操作）。
+    await window.echocue.persona.updateAliases(selectedId, parseAliases(aliasInput))
     await window.echocue.persona.saveDraft({ personaId: selectedId, content: draftText })
     await loadDetail.run(selectedId)
     setMessage('草稿已保存')
@@ -127,15 +129,18 @@ export default function PersonaPage() {
   })
 
   const publish = useAsyncAction(async () => {
-    if (!detail) return false
-    const latestDraft = detail.versions.find((v) => v.status === 'DRAFT')
-    if (!latestDraft) {
-      setMessage('没有可发布的草稿')
+    if (selectedId === null || !canEditSelected) return false
+    if (draftText.trim() === '') {
+      setMessage('人设内容为空，无法发布')
       return false
     }
     if (!window.confirm('发布后将作为该成员的当前人设，确定发布？')) return false
-    await window.echocue.persona.publish(latestDraft.personaVersion)
-    await loadDetail.run(detail.summary.personaId)
+    // 发布当前编辑器内容：无需先手动保存草稿。先存别名，再以当前正文创建
+    // 草稿并立即发布，保证发布版本与编辑器一致。
+    await window.echocue.persona.updateAliases(selectedId, parseAliases(aliasInput))
+    const draft = await window.echocue.persona.saveDraft({ personaId: selectedId, content: draftText })
+    await window.echocue.persona.publish(draft.personaVersion)
+    await loadDetail.run(selectedId)
     setMessage(
       serviceState && serviceState.lifecycle !== 'STOPPED'
         ? '已发布；将在下次启动服务时生效'
@@ -150,14 +155,6 @@ export default function PersonaPage() {
     await loadDetail.run(selectedId)
     enterEdit()
     setMessage('已基于所选版本创建新草稿')
-    return true
-  })
-
-  const saveAliases = useAsyncAction(async () => {
-    if (selectedId === null || !canEditSelected) return false
-    await window.echocue.persona.updateAliases(selectedId, parseAliases(aliasInput))
-    await loadDetail.run(selectedId)
-    setMessage('别名已保存')
     return true
   })
 
@@ -189,11 +186,6 @@ export default function PersonaPage() {
 
   const selected = members.find((p) => p.personaId === selectedId) ?? members[0] ?? null
   const activeDetail = detail && detail.summary.personaId === selected?.personaId ? detail : null
-  // listVersions is ASC by created_at; createDraft appends a new row, so the
-  // latest draft is the last DRAFT in the array.
-  const latestDraft = activeDetail
-    ? [...activeDetail.versions].reverse().find((v) => v.status === 'DRAFT') ?? null
-    : null
   const activeVersion = activeDetail?.versions.find((v) => v.status === 'PUBLISHED') ?? null
 
   const busy =
@@ -201,7 +193,6 @@ export default function PersonaPage() {
     loadDetail.running ||
     saveDraft.running ||
     publish.running ||
-    saveAliases.running ||
     loadVersionView.running
   const error =
     reloadList.error ??
@@ -212,7 +203,6 @@ export default function PersonaPage() {
     setPrincipal.error ??
     remove.error ??
     rollback.error ??
-    saveAliases.error ??
     loadVersionView.error
 
   return (
@@ -256,10 +246,8 @@ export default function PersonaPage() {
                 draftText={draftText}
                 aliasInput={aliasInput}
                 busy={busy}
-                latestDraft={latestDraft}
                 onChangeDraft={setDraftText}
                 onChangeAliases={setAliasInput}
-                onSaveAliases={() => void saveAliases.run()}
                 onSaveDraft={() => void saveDraft.run()}
                 onPublish={() => void publish.run()}
                 onCancel={() => setEditing(false)}
@@ -408,10 +396,8 @@ function EditForm(props: {
   draftText: string
   aliasInput: string
   busy: boolean
-  latestDraft: PersonaVersionMetaV1 | null
   onChangeDraft: (v: string) => void
   onChangeAliases: (v: string) => void
-  onSaveAliases: () => void
   onSaveDraft: () => void
   onPublish: () => void
   onCancel: () => void
@@ -446,9 +432,6 @@ function EditForm(props: {
         匹配名称 / 昵称（用逗号或顿号分隔）
         <input type="text" value={props.aliasInput} onChange={(e) => props.onChangeAliases(e.target.value)} />
       </label>
-      <button type="button" className="secondary" disabled={props.busy} onClick={props.onSaveAliases}>
-        保存别名
-      </button>
 
       <label>
         人设内容（发布后生成不可变版本）
@@ -458,16 +441,19 @@ function EditForm(props: {
         <button type="button" disabled={props.busy} onClick={props.onSaveDraft}>
           保存草稿
         </button>
-        {props.latestDraft ? (
-          <button type="button" className="secondary" disabled={props.busy} onClick={props.onPublish}>
-            发布此版本
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className="secondary"
+          disabled={props.busy || props.draftText.trim() === ''}
+          onClick={props.onPublish}
+        >
+          发布此版本
+        </button>
         <button type="button" className="secondary" disabled={props.busy} onClick={props.onCancel}>
           返回查看
         </button>
       </div>
-      <small>发布后将在下次启动服务时生效；已发布版本不可修改，请基于草稿编辑。</small>
+      <small>昵称随草稿/发布一并保存；发布无需先保存草稿，可直接发布当前内容。发布后将在下次启动服务时生效；已发布版本不可修改，请基于草稿编辑。</small>
     </>
   )
 }
