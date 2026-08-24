@@ -1,9 +1,8 @@
 name: Package on Windows
 
+# PR 不打包，仅在合并到 master 后打包；测试在 PR 上跑（test-windows.yml）
 on:
   push:
-    branches: [master, develop]
-  pull_request:
     branches: [master]
 
 # M7-08 / T-PKG-001 / A-09: build the real NSIS installer on a Windows runner,
