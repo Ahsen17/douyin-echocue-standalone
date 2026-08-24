@@ -21,3 +21,5 @@ export type {
 } from './AuditStoreWorker.js';
 export { StorageMonitor, STARTUP_MIN_BYTES, CRITICAL_MIN_BYTES } from './storage-monitor.js';
 export type { StorageCapacity, StorageMonitorOptions } from './storage-monitor.js';
+export { RetentionScheduler } from './retention-scheduler.js';
+export type { RetentionSchedulerOptions, RetentionRunResult } from './retention-scheduler.js';
