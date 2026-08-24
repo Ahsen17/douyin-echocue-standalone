@@ -226,6 +226,7 @@ export class SuggestionAttemptOrchestrator {
         this.snap('DECISION_JSON', 'FILTER_DECISION', safety),
         this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: safety.reason }),
       ]);
+      this.deps.onCommentFiltered?.(safety.reason);
       this.deps.onSuggestionResult?.('filtered');
       return;
     }
@@ -321,6 +322,7 @@ export class SuggestionAttemptOrchestrator {
       this.restoreListening();
       return;
     }
+    const retrievalStartedAt = this.deps.nowMonotonic();
     let raw;
     try {
       raw = await this.deps.retriever.search({
@@ -341,9 +343,11 @@ export class SuggestionAttemptOrchestrator {
       this.restoreListening();
       return;
     }
+    this.deps.onRetrievalCompleted?.(this.deps.nowMonotonic() - retrievalStartedAt);
     const calibrated = evaluateRetrieval(raw, {
       artifact: this.deps.calibrationArtifact ?? DEFAULT_CALIBRATION_ARTIFACT_V1,
     });
+    this.deps.onSemanticType?.(calibrated.semanticDecision.topSemanticType);
     // Retrieval evidence is attached to the transition that leaves RETRIEVING
     // (DIRECT_READY / PROMPT_RENDERED / DISCARDED), never a self-edge.
     const querySnapshots = [
@@ -537,6 +541,8 @@ export class SuggestionAttemptOrchestrator {
     ]);
 
     const provider = this.deps.createProvider(config.adapterType);
+    this.deps.onLlmRequest?.();
+    const llmStartedAt = this.deps.nowMonotonic();
     const result = await provider.generateReply({
       sessionId: candidate.processingComment.sessionId,
       traceId: candidate.processingComment.traceId,
@@ -554,6 +560,11 @@ export class SuggestionAttemptOrchestrator {
       freshnessDeadlineMonotonicMs: candidate.processingComment.freshnessDeadlineMonotonicMs,
       abortSignal: attempt.abortController.signal,
     });
+    this.deps.onLlmCompleted?.(
+      this.deps.nowMonotonic() - llmStartedAt,
+      result.ok,
+      result.ok ? undefined : result.error.code,
+    );
     attempt.providerAuditRecord = provider.getAuditRecord();
     const responseCompletedAtMonotonicMs = this.deps.nowMonotonic();
     const postProvider = this.commentCancelled(candidate.processingComment);

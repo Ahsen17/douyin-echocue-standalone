@@ -297,6 +297,34 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(results[0][1]).toBe(1000);
   });
 
+  it('feeds the WP-1 observability hooks from the real-time path', async () => {
+    const filtered: string[] = [];
+    const semanticTypes: string[] = [];
+    const retrievals: number[] = [];
+    const llmRequests: number[] = [];
+    const llmCompletions: Array<[number, boolean]> = [];
+    const { orchestrator } = harness({
+      retriever: makeRetriever([]) as never,
+      onCommentFiltered: (c) => filtered.push(c),
+      onSemanticType: (t) => semanticTypes.push(t),
+      onRetrievalCompleted: (ms) => retrievals.push(ms),
+      onLlmRequest: () => llmRequests.push(llmRequests.length),
+      onLlmCompleted: (ms, ok) => llmCompletions.push([ms, ok]),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f1', normalizedText: '想加微信私聊' }));
+    expect(filtered).toContain('TEAM_FORBIDDEN');
+
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-s1' }));
+    await waitFor(() => llmRequests.length > 0);
+    expect(retrievals.length).toBeGreaterThan(0);
+    expect(llmCompletions.length).toBe(1);
+    expect(llmCompletions[0][1]).toBe(true);
+    // Empty mergedTopK → semanticDecision.topSemanticType falls back to low_value.
+    expect(semanticTypes).toContain('low_value');
+  });
+
   it('feeds the filtered outcome when input safety filters', async () => {
     const received: number[] = [];
     const results: string[] = [];

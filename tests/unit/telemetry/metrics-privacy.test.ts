@@ -21,12 +21,39 @@ describe('EchocueMetrics privacy constraints', () => {
     expect(text).not.toContain('nickname')
   })
 
-  it('provider errors counter uses error_type label only', async () => {
+  it('LLM errors counter uses error_type label only', async () => {
     const m = new EchocueMetrics()
-    m.providerErrors.inc({ error_type: 'TIMEOUT' })
+    m.llmErrors.inc({ error_type: 'TIMEOUT' })
     const text = await m.metricsText()
     expect(text).toContain('error_type="TIMEOUT"')
     expect(text).not.toContain('provider_id')
     expect(text).not.toContain('model_id')
+  })
+
+  it('semantic type counter uses enum category labels only', async () => {
+    const m = new EchocueMetrics()
+    m.commentSemanticType.inc({ semantic_type: 'persona_relevant' })
+    m.commentDiscarded.inc({ reason: 'LOW_VALUE' })
+    const text = await m.metricsText()
+    expect(text).toContain('semantic_type="persona_relevant"')
+    expect(text).toContain('reason="LOW_VALUE"')
+    expect(text).not.toContain('弹幕')
+  })
+
+  it('exposes the WP-1 business + latency metric names', async () => {
+    const m = new EchocueMetrics()
+    m.commentReceived.inc()
+    m.suggestionResult.inc({ result: 'displayed' })
+    m.overlayDisplayed.inc()
+    m.llmRequests.inc()
+    m.llmLatencyMs.observe(1000)
+    m.retrievalLatencyMs.observe(80)
+    const text = await m.metricsText()
+    expect(text).toContain('echocue_comment_received_total')
+    expect(text).toContain('echocue_suggestion_result_total')
+    expect(text).toContain('echocue_overlay_display_total')
+    expect(text).toContain('echocue_llm_requests_total')
+    expect(text).toContain('echocue_llm_latency_ms')
+    expect(text).toContain('echocue_retrieval_latency_ms')
   })
 })

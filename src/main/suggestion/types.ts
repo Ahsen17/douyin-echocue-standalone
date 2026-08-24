@@ -112,4 +112,10 @@ export interface SuggestionOrchestratorDeps {
     result: 'displayed' | 'filtered' | 'discarded' | 'failed',
     e2eLatencyMs?: number,
   ) => void;
+  /** WP-1 observability hooks: enum-category labels only, never content. */
+  onCommentFiltered?: (category: string) => void;
+  onSemanticType?: (type: string) => void;
+  onRetrievalCompleted?: (latencyMs: number) => void;
+  onLlmRequest?: () => void;
+  onLlmCompleted?: (latencyMs: number, ok: boolean, errorType?: string) => void;
 }

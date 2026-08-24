@@ -17,7 +17,14 @@ import { SuggestionOutputValidator } from '../validation/index.js';
 import { SuggestionAttemptOrchestrator } from '../suggestion/index.js';
 import type { SuggestionDisplaySink } from '../suggestion/index.js';
 import type { CancelTraceReason } from '../validation/index.js';
-import { DiagnosticsSource, type Logger } from '../telemetry/index.js';
+import {
+  DiagnosticsSource,
+  EchocueMetrics,
+  MetricsHub,
+  SessionMetrics,
+  createMetricsServer,
+  type Logger,
+} from '../telemetry/index.js';
 import { ServiceController } from './ServiceController.js';
 import type { ServiceControllerOptions } from './ServiceController.js';
 import { createLiveSessionWriter, createServiceGateChecks } from './service-gate.js';
@@ -52,6 +59,8 @@ export interface CreatedServiceController {
   readonly safety: SafetyPolicyStore;
   readonly audit: AuditStoreWorker;
   readonly diagnostics: DiagnosticsSource;
+  /** WP-1 observability facade (Prometheus + per-session counters + /metrics). */
+  readonly metricsHub: MetricsHub;
   /** Transactional outbox consumer (M7-02); started by main/index.ts. */
   readonly goldenSync: GoldenSyncWorker;
   /** Retrieval-init IPC (retrieval.getStatus/importPreSet) and boot-sidecar start. */
@@ -129,6 +138,20 @@ export async function createServiceController(
     }
   };
   const diagnostics = new DiagnosticsSource({ readStorage });
+  // WP-1 observability (TD-03): Prometheus registry + per-session counters + a
+  // loopback /metrics server. Port from settings.metrics (default 9100); when
+  // disabled the in-app monitoring section still works, just no HTTP endpoint.
+  const metricsConfig = (await settings.get())?.metrics ?? { enabled: true, port: 9100 };
+  const metrics = new EchocueMetrics();
+  const sessionMetrics = new SessionMetrics();
+  const metricsServer = metricsConfig.enabled
+    ? createMetricsServer({
+        metrics,
+        port: metricsConfig.port,
+        log: (message) => options.logger?.info('telemetry', message),
+      })
+    : null;
+  const metricsHub = new MetricsHub({ metrics, session: sessionMetrics, server: metricsServer });
   const stateMachine = new ServiceStateMachine();
   const checks = createServiceGateChecks({
     settings,
@@ -192,13 +215,26 @@ export async function createServiceController(
       // Audit down ⇒ stop producing suggestions; service must not continue.
       void controller.stop('AUDIT_UNAVAILABLE');
     },
-    // Diagnostics (M6-02): feed the anonymous run summary from the real-time path.
-    onCommentReceived: () => diagnostics.recordCommentReceived(),
-    onSuggestionResult: (result, e2eLatencyMs) => diagnostics.recordSuggestion(result, e2eLatencyMs),
+    // Diagnostics (M6-02) + metrics (WP-1): feed the anonymous run summary and
+    // the Prometheus/per-session counters from the same real-time path.
+    onCommentReceived: () => {
+      diagnostics.recordCommentReceived();
+      metricsHub.recordCommentReceived();
+    },
+    onCommentFiltered: (category) => metricsHub.recordCommentFiltered(category),
+    onSemanticType: (type) => metricsHub.recordSemanticType(type),
+    onRetrievalCompleted: (latencyMs) => metricsHub.recordRetrievalCompleted(latencyMs),
+    onLlmRequest: () => metricsHub.recordLlmRequest(),
+    onLlmCompleted: (latencyMs, ok, errorType) => metricsHub.recordLlmCompleted(latencyMs, ok, errorType),
+    onSuggestionResult: (result, e2eLatencyMs) => {
+      diagnostics.recordSuggestion(result, e2eLatencyMs);
+      metricsHub.recordSuggestionResult(result, e2eLatencyMs);
+    },
   });
 
   const createLiveSession = async (params: { roomReference: string; platformRoomId?: string }) => {
     const sessionId = await createLiveSessionWriter({ audit, settings })(params);
+    metricsHub.resetSession(sessionId);
     await orchestrator.startSession({ sessionId });
     return sessionId;
   };
@@ -223,6 +259,7 @@ export async function createServiceController(
     cleanupOnStop: (reason: NonNullable<ServiceViewState['stopReason']>) => {
       orchestrator.abortAll(stopReasonToCancelReason(reason));
       orchestrator.endSession();
+      metricsHub.freezeSession();
       options.cleanupOnStop();
     },
     storageMonitor,
@@ -248,6 +285,7 @@ export async function createServiceController(
     safety,
     audit,
     diagnostics,
+    metricsHub,
     goldenSync,
     qdrant: qdrantSidecar,
     qdrantClient,
