@@ -45,7 +45,7 @@ MVP 部署形态已经冻结为随包受控 sidecar，不支持外部共享/甲�
 
 ### 2.3 本机数据布局
 
-以下为安装器应使用的逻辑布局。根目录以 `%LOCALAPPDATA%\\Echocue` 为推荐位置；不得写入安装目录或共享网络路径。实际根路径需在诊断页以脱敏方式可定位。
+以下为安装器应使用的逻辑布局。根目录默认 `%LOCALAPPDATA%\\Echocue`，可在安装向导中选择，也可在应用内「系统设置 → 运行机制 → 数据保存位置」迁移（迁移要求服务已停止，复制完成后应用自动重启，重启后从固定指针 `%LOCALAPPDATA%\\Echocue\\data-location.json` 读取新根）。不得写入安装目录或共享网络路径。实际根路径需在诊断页以脱敏方式可定位。
 
 ```text
 <app-data>/
@@ -218,3 +218,16 @@ MVP **不提供用户可操作的审计导出或备份/恢复 UI**，也不支�
 开发方交付安装包校验清单、版本兼容矩阵、migration/profile 变更记录、POC 脱敏结果和发布前检查记录。甲方提供真实测试直播间、合规的 `pre_set`、API 账户配置与真实人设/弹幕样本，并确认运行主机的权限、磁盘和本机数据保留责任。
 
 任何与本文冲突的“自动恢复、后台重连、删库释放空间、把审计上传云端或绕过审计生成”的实现，均视为不符合 MVP 设计，必须先回到上游需求和架构文档进行变更评审。
+
+## 11. 本地构建安装包（迭代用，非发布门禁）
+
+正式发布仍走 `release.md` 的 `PUBLISH <版本>` 信号与 `release-windows.yml`（tag 触发重建并验证）。本地构建仅用于迭代：
+
+| 路径 | 命令 | 前置 |
+| --- | --- | --- |
+| WSL2 + Docker | `npm run package:win:local` | Docker daemon 已启动；`node_modules` 就绪（缺失则容器内 `npm ci`）；首次拉取 `electronuserland/builder:wine` 并下载 Windows electron/NSIS（**构建期下载**，符合 A-09 运行期不下载） |
+| Windows 主机 | `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-local.ps1` | Windows 侧可访问仓库（建议 `C:\` 下 `git clone` 副本）、Node 22+ |
+
+产物：`release/Echocue Setup <ver>.exe` + `manifest.json`/`hashes.json`（`release:manifest`）+ `licenses.json`/`sbom.cdx.json`（`compliance`）。本地验证安装/启动/卸载：`npm run verify:local`（`win-install-verify.ps1`，支持 `ECHOCUE_INSTALLER` 覆盖安装包路径、`ECHOCUE_VERIFY_CLEAN_DATA=1` 触发卸载清理分支）。
+
+**常见错误**：`wine is required`（Linux/WSL2 直接 `package:win` 缺 Wine）→ 用 Docker 镜像或先启动 Docker daemon；构建期下载 Windows 二进制属正常，不是运行时下载。

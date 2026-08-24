@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | TD-01 | 运行页门禁展示与真实门禁不一致 | 用户误判「门禁均已通过」，启动失败原因在运行页不可见 | 待排期 |
 | TD-02 | 启动失败具体错误在 UI 不可见 | 诊断页 `lastDomainError` 从未填充；运行页仅「未启动；可手动重试」 | 待排期 |
-| TD-03 | Prometheus / OTel 指标未实际启用 | `EchocueMetrics` 与 `initOtel` 仅定义未接线；无 `/metrics` 端点 | 待排期 |
+| TD-03 | Prometheus / OTel 指标未实际启用 | `EchocueMetrics` 与 `initOtel` 仅定义未接线；无 `/metrics` 端点 | ✅ 已完成（WP-1，PR #64，2026-08-24） |
 | TD-04 | 主进程日志无保留策略 | 每日一份日志无限增长，长期占用磁盘 | 待排期 |
 | TD-05 | 关键位置补充日志，方便问题排查 | 部分关键路径（边车输出、Provider 生成链路）仍无明细日志，排障慢 | 待排期 |
 | TD-06 | UI 界面优化 | 运行页/配置页体验待优化，后续排期，有参考页面样式 | ✅ 已完成（PR #49，2026-08-23） |
@@ -36,6 +36,18 @@
 - **影响**：无法用标准监控工具观察运行指标；「日志、Prometheus、OTel」任务（M1-07）仅完成了定义层。
 - **修复方向**：如需开放，新增本地回环 HTTP `/metrics` 端点（仅 `127.0.0.1`）或接通 OTLP 导出；严格遵循指标匿名化红线（弹幕原文、`trace_id`、密钥不得进入指标）。
 - **关联**：M1-07。
+- **✅ 完成（WP-1，PR #64，2026-08-24）**：`EchocueMetrics` 重写为业务/性能指标集；`SessionMetrics` 按会话累计；`MetricsHub` 聚合 + 回环 `/metrics` 服务器（默认 127.0.0.1:9100，可配置，EADDRINUSE 非致命）；orchestrator/controller 接线 hooks；监控诊断页新增「直播监控数据」区块（中文标签）。`OtelSetup.initOtel` 保持未启用（无 OTLP 导出需求）。
+
+## 综合实施计划实现登记（2026-08-24，分支 feat/batch-rest → PR #65）
+
+- WP-4：五页重构（服务运行/直播设置/系统设置/监控诊断/审计追溯）+ 运行页检索阈值配置 + 导航图标 + 审计页去门禁。
+- WP-8：修复 pre_set 导入误清空 golden_set（仅首 boot 创建 golden；后续导入只重建 pre_set）。
+- WP-11：AI 服务表单必填/选填 + DeepSeek 内置 Base URL。
+- WP-10：风险过滤类型与关键词配置化（未配置默认不过滤，替代原内置保护词）。
+- WP-5：安装位置/数据保存位置（NSIS assisted + 应用内迁移 relaunch）。
+- WP-6：卸载可选清理用户数据（customUnInstall 宏 + /cleanData）。
+- WP-9：本地 Windows 安装包构建脚本（WSL2+Docker / Windows PowerShell）。
+- WP-7：文档同步与全量回归（本记录）。
 
 ## TD-04 主进程日志无保留策略
 

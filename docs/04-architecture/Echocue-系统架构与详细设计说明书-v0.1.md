@@ -58,7 +58,7 @@ stateDiagram-v2
 | `GATE_CONNECTING` | `ROOM_ONLINE` | 记录会话开始，转 `RUNNING`。 |
 | `GATE_CONNECTING` | `ROOM_OFFLINE`、超时、错误 | 关闭 WS，显示“未开播/连接失败，可手动重试”，回 `STOPPED`。 |
 | `RUNNING` + activity 非 `DISPLAYING` | `COMMENT` | 审计可用时进入单条弹幕状态机；activity 可为 `LISTENING/RETRIEVING/GENERATING`。 |
-| `RUNNING` + activity=`DISPLAYING` | 任意 `COMMENT` | 仍创建加密审计 trace，记录 `RECEIVED → NORMALIZED → DISCARDED`，原因 `DISPLAY_WINDOW_ACTIVE`；不进入候选、不调用检索/LLM、不排队。 |
+| `RUNNING` + activity=`DISPLAYING` | 任意 `COMMENT` | 默认：仍创建加密审计 trace，记录 `RECEIVED → NORMALIZED → DISCARDED`，原因 `DISPLAY_WINDOW_ACTIVE`；不进入候选、不调用检索/LLM、不排队。开启「弹幕排队」（系统设置→运行机制）后：入 FIFO 队列，展示结束补发；排队超时丢弃记 `QUEUE_TIMEOUT`（WP-2）。 |
 | 任意非停止状态 | `STOP`、`ROOM_ENDED`、WS 异常、审计故障 | 取消 in-flight 任务，关闭 WS，隐藏浮窗，清空最新窗口，回 `STOPPED`。 |
 
 唯一生命周期枚举为 `STOPPED/GATE_CONNECTING/RUNNING`；唯一活动枚举为 `IDLE/GATE_CHECKING/LISTENING/RETRIEVING/GENERATING/DISPLAYING`。服务状态和每一次状态转换必须广播给主界面；UI 不得自行推断运行状态。
@@ -227,7 +227,7 @@ interface SuggestionOutput {
 | 人设 | SQLite `persona_version` 自然语言文本 + metadata | 不限文本格式；draft/published 不可变版本；运行期固定 published snapshot。 |
 | 禁忌规则/关键词 | 本机配置 | 修改形成版本并审计引用。 |
 | Qdrant 案例库 | 独立 `pre_set` 与 `golden_set` collection | `pre_set` 按《pre_set 初始案例数据标准》由甲方初始化；两路并行召回；打标合格/修正答案即时 upsert 至 golden set。 |
-| 审计库 | `audit/audit.sqlite` 及 WAL 文件 | 用户应用数据目录、字段加密、永久保留、完全禁用导出；不可写即停止 AI 服务。 |
+| 审计库 | `audit/audit.sqlite` 及 WAL 文件 | 用户应用数据目录、字段加密、按保留期自动清理（默认 30 天、可调 7–180 天，当天首次运行清理过期完整 trace）、完全禁用导出；不可写即停止 AI 服务。 |
 
 ## 8. 安全与 IPC
 
