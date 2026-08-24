@@ -213,7 +213,9 @@ app.whenReady().then(async () => {
           join(dirname(app.getPath('appData')), 'Local', 'Echocue', 'data-location.json'),
         ),
         dataDir: app.getPath('userData'),
-        installDir: app.getAppPath(),
+        // Packaged: getAppPath() is <install>\resources\app.asar, which would not
+        // reject the real install root; the exe's dir is the true install base.
+        installDir: dirname(app.getPath('exe')),
         isServiceStopped: () =>
           services?.stateMachine.getViewState().lifecycle === 'STOPPED' &&
           !services?.controller.isStarting(),

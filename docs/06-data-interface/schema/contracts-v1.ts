@@ -52,6 +52,9 @@ export const ServiceActivitySchema = z.enum([
 
 // Fixed Bm25 zh pipeline identity (CONTRACT §4). Write and query share the same
 // tokenizer/normalization; changing either requires a new profile/collection.
+/** Built-in DeepSeek OpenAI-compatible endpoint (RESEARCH §5.4); empty form base URL falls back here. */
+export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com';
+
 export const BM25_TOKENIZER_VERSION_V1 = 'zh_jieba_search_v1';
 export const BM25_NORMALIZATION_VERSION_V1 = 'zh_bm25_normalize_v1';
 export const BM25_VECTOR_NAME_V1 = 'bm25_zh_jieba_v1';

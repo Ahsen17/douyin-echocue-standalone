@@ -14,6 +14,7 @@
 
 Var EchocueDataDir
 Var EchocueDataDialog
+Var EchocueDataDirFwd
 
 !macro customHeader
   !include "LogicLib.nsh"
@@ -59,14 +60,18 @@ Function EchocueDataPageLeave
 FunctionEnd
 
 !macro customInstall
-  ; Persist the chosen data root as the boot pointer. The file lives at a fixed
-  ; location so the app can read it before deciding the userData path. The path
+  ; Persist the chosen data root as the boot pointer. The files live at a fixed
+  ; location so the app can read them before deciding the userData path. The path
   ; is written with forward slashes so the JSON stays valid (no backslash escape
-  ; ambiguity) and Node/NSIS both accept it on Windows.
+  ; ambiguity) and Node/NSIS both accept it on Windows. data-location.txt is a
+  ; plain copy the uninstaller reads without JSON parsing.
   CreateDirectory "$LOCALAPPDATA\Echocue"
   ${WordReplace} "$EchocueDataDir" "\" "/" "+" $EchocueDataDirFwd
   FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.json" w
   FileWrite $0 '{"schemaVersion":1,"dataRoot":"$EchocueDataDirFwd"}'
+  FileClose $0
+  FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.txt" w
+  FileWrite $0 "$EchocueDataDirFwd$\r$\n"
   FileClose $0
 !macroend
 

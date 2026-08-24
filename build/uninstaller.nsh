@@ -11,26 +11,23 @@
 
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
-!include "WordFunc.nsh"
+!include "TextFunc.nsh"
 
-; Resolve the data root into $R2. Reads data-location.json next to the default
-; root; the path is stored forward-slash (see installer.nsh), so extracting the
-; JSON string needs no backslash unescaping. Any read/parse failure falls back
-; to %LOCALAPPDATA%\Echocue.
+; Resolve the data root into $R2. Reads the plain-text pointer
+; (data-location.txt, written by installer.nsh with a forward-slash path), falls
+; back to %LOCALAPPDATA%\Echocue when absent. No JSON parsing — avoids WordFind
+; index ambiguity entirely.
 Function EchocueResolveDataRoot
   Push $R0
   Push $R1
   StrCpy $R2 "$LOCALAPPDATA\Echocue"
-  ${If} ${FileExists} "$LOCALAPPDATA\Echocue\data-location.json"
+  ${If} ${FileExists} "$LOCALAPPDATA\Echocue\data-location.txt"
     ClearErrors
-    FileOpen $R0 "$LOCALAPPDATA\Echocue\data-location.json" r
+    FileOpen $R0 "$LOCALAPPDATA\Echocue\data-location.txt" r
     FileRead $R0 $R1
     FileClose $R0
     ${IfNot} ${Errors}
-      ${WordFind} $R1 '"dataRoot":"' 'E+1' $R2
-      ${If} $R2 != ""
-        ${WordFind} $R2 '"' '1' $R2
-      ${EndIf}
+      ${TrimNewlines} $R1 $R2
     ${EndIf}
     ${If} $R2 == ""
       StrCpy $R2 "$LOCALAPPDATA\Echocue"
@@ -43,24 +40,26 @@ FunctionEnd
 !macro customUnInstall
   Push $R2
   Push $R3
+  Push $R4
   Call EchocueResolveDataRoot
 
-  StrCpy $R3 "$LOCALAPPDATA\Echocue\data-location.json"
+  StrCpy $R3 "$LOCALAPPDATA\Echocue"
+  StrCpy $R4 "0"
   ${IfNot} ${Silent}
     ${Unless} ${isUpdated}
-      MessageBox MB_YESNO|MB_ICONQUESTION "是否一并清理所有用户数据？将删除审计、人设、配置与案例库。" IDYES +2 IDNO done
-      Goto clean
+      MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否一并清理所有用户数据？将删除审计、人设、配置与案例库。" /SD IDNO IDYES clean0 IDNO done0
     ${EndUnless}
   ${EndIf}
   FindCmdLineSwitch "/cleanData"
-  IfErrors done
-  Goto clean
-
-clean:
-  RMDir /r "$R2"
-  RMDir /r "$R3"
-
-done:
+  IfErrors done0
+clean0:
+  StrCpy $R4 "1"
+done0:
+  ${If} $R4 == "1"
+    RMDir /r "$R2"
+    RMDir /r "$R3"
+  ${EndIf}
+  Pop $R4
   Pop $R3
   Pop $R2
 !macroend

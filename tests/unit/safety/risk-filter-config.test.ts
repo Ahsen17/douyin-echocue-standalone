@@ -34,4 +34,15 @@ describe('risk-filter-config (WP-10)', () => {
     expect(detectConfiguredRisk([], '手机号是多少')).toBeNull();
     expect(detectConfiguredRisk(compileRiskFilter([]), '手机号是多少')).toBeNull();
   });
+
+  it('lowercases keywords at compile and the text at match (case-insensitive)', () => {
+    const compiled = compileRiskFilter([{ typeId: 'brand', label: '品牌', keywords: ['ID Card'] }]);
+    expect(compiled[0].terms).toEqual(['id card']);
+    expect(detectConfiguredRisk(compiled, 'my ID Card number is 123')).toEqual({
+      typeId: 'brand',
+      label: '品牌',
+      term: 'id card',
+    });
+    expect(detectConfiguredRisk(compiled, 'no id card here')).not.toBeNull();
+  });
 });

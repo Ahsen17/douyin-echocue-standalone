@@ -3,6 +3,8 @@ name: Package on Windows
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
 
 # M7-08 / T-PKG-001 / A-09: build the real NSIS installer on a Windows runner,
 # then install / upgrade / exit / uninstall it and assert no sidecar residue.

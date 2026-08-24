@@ -17,7 +17,9 @@ export function compileRiskFilter(types: readonly RiskFilterTypeV1[]): CompiledR
   return types.map((type) => ({
     typeId: type.typeId,
     label: type.label,
-    terms: type.keywords,
+    // Lowercase at compile so uppercase user keywords match the lowercased
+    // danmaku/import text (the output path passes un-lowercased fields).
+    terms: type.keywords.map((keyword) => keyword.toLowerCase()),
   }));
 }
 
@@ -32,9 +34,10 @@ export function detectConfiguredRisk(
   compiled: CompiledRiskFilter,
   normalizedText: string,
 ): ConfiguredRiskHit | null {
+  const haystack = normalizedText.toLowerCase();
   for (const type of compiled) {
     for (const term of type.terms) {
-      if (normalizedText.includes(term)) {
+      if (haystack.includes(term)) {
         return { typeId: type.typeId, label: type.label, term };
       }
     }
