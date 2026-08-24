@@ -103,6 +103,9 @@ export interface SuggestionOrchestratorDeps {
   getDisplayDurationMs?: () => Promise<number>;
   directPushThreshold: number;
   calibrationArtifact?: CalibrationArtifactV1;
+  /** WP-4: live reads of the run-page thresholds; frozen per session. */
+  getDirectPushThreshold?: () => Promise<number>;
+  getSemanticDiscardConfidence?: () => Promise<number>;
   maxContextBudget?: number;
   /** TD-08: live read of the user-configured system prompt (null → code default). */
   getSystemPrompt?: () => Promise<SystemPromptConfig | null>;

@@ -12,11 +12,89 @@ import {
   type RunAction,
 } from '../run/run-state'
 import { formatRecentActivity } from '../run/recent-activity'
+import {
+  thresholdFormFromConfig,
+  validateThresholdForm,
+  buildThresholdUpdate,
+  type ThresholdForm,
+} from '../run/thresholds'
 
 const MISSING_CONFIG: Record<MissingConfigItem, { label: string; nav: PageName }> = {
-  room: { label: '直播间', nav: '直播间' },
-  ai: { label: 'AI 服务配置', nav: '直播间' },
-  principal: { label: '主要出镜人设', nav: '团队与人设' },
+  room: { label: '直播间', nav: '直播设置' },
+  ai: { label: 'AI 服务配置', nav: '系统设置' },
+  principal: { label: '主要出镜人设', nav: '直播设置' },
+}
+
+function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
+  const [form, setForm] = useState<ThresholdForm>(() => thresholdFormFromConfig(config))
+  const [message, setMessage] = useState<string | null>(null)
+  const [fieldError, setFieldError] = useState<string | null>(null)
+
+  const save = useAsyncAction(async () => {
+    const validation = validateThresholdForm(form)
+    if (!validation.ok) {
+      setFieldError(validation.message)
+      setMessage(null)
+      return false
+    }
+    const updated = await window.echocue.config.update(
+      buildThresholdUpdate(validation.directPush, validation.semanticDiscard),
+    )
+    setForm(thresholdFormFromConfig(updated))
+    setFieldError(null)
+    setMessage('已保存；将在下次启动服务时生效')
+    return true
+  })
+
+  return (
+    <div className="card">
+      <h2>检索置信度阈值</h2>
+      <p>golden_set 命中达到直出阈值时跳过 LLM 直接展示；语义丢弃阈值之上的低置信结果直接丢弃。范围 0–1。</p>
+      <div className="form-grid">
+        <label>
+          golden 直出阈值（默认 0.85）
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.01"
+            value={form.directPush}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, directPush: e.target.value }))
+              setFieldError(null)
+            }}
+          />
+        </label>
+        <label>
+          语义丢弃阈值（默认 0.9）
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.01"
+            value={form.semanticDiscard}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, semanticDiscard: e.target.value }))
+              setFieldError(null)
+            }}
+          />
+        </label>
+      </div>
+      {fieldError ? <p className="danger-text">{fieldError}</p> : null}
+      {message ? <p className="inline-message">{message}</p> : null}
+      {save.error ? <p className="danger-text">{save.error}</p> : null}
+      <div className="button-row">
+        <button
+          type="button"
+          className="secondary"
+          disabled={save.running}
+          onClick={() => void save.run()}
+        >
+          {save.running ? '正在保存…' : '保存阈值'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function RunPage({ onNavigate }: PageProps) {
@@ -59,7 +137,7 @@ export default function RunPage({ onNavigate }: PageProps) {
         void stopAction.run()
         break
       case 'view-diagnostics':
-        onNavigate('诊断')
+        onNavigate('监控诊断')
         break
     }
   }
@@ -75,7 +153,7 @@ export default function RunPage({ onNavigate }: PageProps) {
   return (
     <section>
       <div className="page-heading">
-        <h2>运行</h2>
+        <h2>服务运行</h2>
         <p>当前直播间 {config?.roomReference ?? '未设置'} · 团队 {personas.length} 人 · 主要出镜{' '}
           {principal?.displayName ?? '未设置'}</p>
       </div>
@@ -99,11 +177,13 @@ export default function RunPage({ onNavigate }: PageProps) {
           {runView.primaryLabel}
         </button>
         {runView.showPreferencesLink ? (
-          <button type="button" className="secondary" onClick={() => onNavigate('浮窗偏好')}>
+          <button type="button" className="secondary" onClick={() => onNavigate('系统设置')}>
             浮窗偏好
           </button>
         ) : null}
       </div>
+
+      {config !== null ? <ThresholdsCard config={config} /> : null}
 
       <RetrievalCard serviceLifecycle={serviceState.lifecycle} onNavigate={onNavigate} />
 

@@ -1,28 +1,23 @@
 import { useState, useEffect, type KeyboardEvent, type ComponentType } from 'react'
 import { NAV_ITEMS, type PageName, type PageProps } from './nav'
+import { NavIcon } from './components/NavIcon'
 import RunPage from './pages/RunPage'
-import RoomAiPage from './pages/RoomAiPage'
-import PersonaPage from './pages/PersonaPage'
-import SafetyPage from './pages/SafetyPage'
-import PromptPage from './pages/PromptPage'
-import PreferencesPage from './pages/PreferencesPage'
+import LiveSettingsPage from './pages/LiveSettingsPage'
+import SystemSettingsPage from './pages/SystemSettingsPage'
 import DiagnosticsPage from './pages/DiagnosticsPage'
 import AuditPage from './pages/AuditPage'
 import WelcomePage from './pages/WelcomePage'
 
 const pages: Record<PageName, ComponentType<PageProps>> = {
-  运行: RunPage,
-  直播间: RoomAiPage,
-  团队与人设: PersonaPage,
-  安全与禁忌: SafetyPage,
-  提示词设置: PromptPage,
-  浮窗偏好: PreferencesPage,
-  诊断: DiagnosticsPage,
+  服务运行: RunPage,
+  直播设置: LiveSettingsPage,
+  系统设置: SystemSettingsPage,
+  监控诊断: DiagnosticsPage,
   审计追溯: AuditPage,
 }
 
 function App() {
-  const [page, setPage] = useState<PageName>('运行')
+  const [page, setPage] = useState<PageName>('服务运行')
   const [isMaximized, setIsMaximized] = useState(false)
   // Mock entry screen (TD-06): standalone app, no real account validation.
   const [screen, setScreen] = useState<'welcome' | 'workspace'>('welcome')
@@ -97,6 +92,7 @@ function App() {
             onClick={() => setPage(item)}
             onKeyDown={handleKeyActivate(() => setPage(item))}
           >
+            <NavIcon name={item} />
             {item}
           </button>
         ))}

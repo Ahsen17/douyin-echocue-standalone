@@ -1,13 +1,10 @@
 // Main-window navigation entries (UI §2). The overlay is an independent Electron
 // window, never a main-nav entry.
 export const NAV_ITEMS = [
-  '运行',
-  '直播间',
-  '团队与人设',
-  '安全与禁忌',
-  '提示词设置',
-  '浮窗偏好',
-  '诊断',
+  '服务运行',
+  '直播设置',
+  '系统设置',
+  '监控诊断',
   '审计追溯',
 ] as const
 

@@ -31,11 +31,11 @@ export function initialForm(view: ConfigViewV1): ProviderForm {
 }
 
 export function buildConfigUpdate(input: {
-  roomReference: string
+  roomReference?: string
   form: ProviderForm
 }): ConfigUpdateRequestV1 {
   const { roomReference, form } = input
-  const trimmedRoom = roomReference.trim()
+  const trimmedRoom = (roomReference ?? '').trim()
   return {
     ...(trimmedRoom.length > 0 ? { roomReference: trimmedRoom } : {}),
     provider: {

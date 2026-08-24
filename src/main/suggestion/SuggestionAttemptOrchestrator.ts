@@ -11,7 +11,7 @@ import type {
 import type { PersonaRoute } from '../persona/index.js';
 import { evaluateInputSafety } from '../safety/index.js';
 import { evaluateRetrieval } from '../retrieval/index.js';
-import { DEFAULT_CALIBRATION_ARTIFACT_V1 } from '../retrieval/calibration.js';
+import { DEFAULT_CALIBRATION_ARTIFACT_V1, type CalibrationArtifactV1 } from '../retrieval/calibration.js';
 import { evaluateDirectPush } from '../retrieval/direct-push.js';
 import { renderPrompt, type SystemPromptConfig } from '../prompt/index.js';
 import { CredentialStore } from '../credentials/index.js';
@@ -88,6 +88,9 @@ export class SuggestionAttemptOrchestrator {
   private frozenSystemPrompt: SystemPromptConfig | null = null;
   /** WP-2: frozen display-window queueing config (null = disabled). */
   private frozenQueueing: { enabled: boolean; timeoutMs: number } | null = null;
+  /** WP-4: run-page retrieval thresholds, frozen per session like safety/prompt. */
+  private frozenDirectPushThreshold: number | null = null;
+  private frozenSemanticDiscardConfidence: number | null = null;
   /** WP-2: FIFO backlog of comments audited RECEIVED→NORMALIZED while DISPLAYING. */
   private pendingQueue: ProcessingComment[] = [];
   /** Last written trace state per traceId, so async error paths close the chain. */
@@ -140,6 +143,10 @@ export class SuggestionAttemptOrchestrator {
     // from a previous session (their traces would otherwise dangle in NORMALIZED).
     this.frozenQueueing = (await this.deps.getQueueing?.()) ?? null;
     this.closePendingQueue('STALE_SESSION');
+    // WP-4: freeze the run-page thresholds (deps value / calibration default is
+    // the fallback when the getter is absent or settings are unreadable).
+    this.frozenDirectPushThreshold = (await this.deps.getDirectPushThreshold?.()) ?? null;
+    this.frozenSemanticDiscardConfidence = (await this.deps.getSemanticDiscardConfidence?.()) ?? null;
     this.session = { sessionId: input.sessionId, seen: new Set() };
     this.attempt = null;
     this.abortRequested = false;
@@ -376,9 +383,7 @@ export class SuggestionAttemptOrchestrator {
       return;
     }
     this.deps.onRetrievalCompleted?.(this.deps.nowMonotonic() - retrievalStartedAt);
-    const calibrated = evaluateRetrieval(raw, {
-      artifact: this.deps.calibrationArtifact ?? DEFAULT_CALIBRATION_ARTIFACT_V1,
-    });
+    const calibrated = evaluateRetrieval(raw, { artifact: this.effectiveCalibrationArtifact() });
     this.deps.onSemanticType?.(calibrated.semanticDecision.topSemanticType);
     // Retrieval evidence is attached to the transition that leaves RETRIEVING
     // (DIRECT_READY / PROMPT_RENDERED / DISCARDED), never a self-edge.
@@ -460,7 +465,7 @@ export class SuggestionAttemptOrchestrator {
     const direct = evaluateDirectPush(candidate.calibrated.mergedTopK, {
       personaId: candidate.personaSnapshot.personaId,
       personaVersion: candidate.personaSnapshot.personaVersion,
-      directPushThreshold: this.deps.directPushThreshold,
+      directPushThreshold: this.frozenDirectPushThreshold ?? this.deps.directPushThreshold,
     });
 
     // Direct path (ARCH §4.3): only after the shared output validator passes.
@@ -959,6 +964,15 @@ export class SuggestionAttemptOrchestrator {
           keywords: this.frozenSafety.keywords,
         }
       : { version: 'unknown', policyText: '', keywords: [] };
+  }
+
+  // WP-4: the run-page semantic-discard threshold overrides only the confidence
+  // field; the rest of the calibration artifact keeps its code/default weights.
+  private effectiveCalibrationArtifact(): CalibrationArtifactV1 {
+    const base = this.deps.calibrationArtifact ?? DEFAULT_CALIBRATION_ARTIFACT_V1;
+    return this.frozenSemanticDiscardConfidence === null
+      ? base
+      : { ...base, semanticDiscardConfidence: this.frozenSemanticDiscardConfidence };
   }
 
   /**

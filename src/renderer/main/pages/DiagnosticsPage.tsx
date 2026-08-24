@@ -79,8 +79,8 @@ export default function DiagnosticsPage() {
     <>
       <div className="page-heading">
         <div>
-          <h1>诊断</h1>
-          <p>只显示脱敏健康信息。</p>
+          <h1>监控诊断</h1>
+          <p>只显示脱敏健康信息与直播会话统计。</p>
         </div>
         <div className="button-row">
           <button type="button" onClick={copySummary}>
