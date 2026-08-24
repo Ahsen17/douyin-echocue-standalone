@@ -3,6 +3,7 @@ import type { PageProps } from '../nav'
 import RoomSection from '../components/RoomSection'
 import PersonaPage from './PersonaPage'
 import SafetyPage from './SafetyPage'
+import RiskFilterSection from '../components/RiskFilterSection'
 import { LIVE_SETTINGS_TABS, type LiveSettingsTab } from './settings-tabs'
 
 function initialTab(hint?: string): LiveSettingsTab {
@@ -35,6 +36,7 @@ export default function LiveSettingsPage({ initialTab: hint }: PageProps) {
       {tab === '直播间' ? <RoomSection /> : null}
       {tab === '团队与人设' ? <PersonaPage /> : null}
       {tab === '安全与禁忌' ? <SafetyPage /> : null}
+      {tab === '风险过滤' ? <RiskFilterSection /> : null}
     </section>
   )
 }

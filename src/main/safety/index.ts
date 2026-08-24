@@ -17,6 +17,13 @@ export {
   type BuiltinRiskCategory,
 } from './builtin-detectors.js';
 export {
+  compileRiskFilter,
+  detectConfiguredRisk,
+  type CompiledRiskFilter,
+  type CompiledRiskType,
+  type ConfiguredRiskHit,
+} from './risk-filter-config.js';
+export {
   evaluateInputSafety,
   type InputSafetyDecision,
   type InputSafetyFilterInput,

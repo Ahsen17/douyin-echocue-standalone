@@ -17,6 +17,7 @@ import {
   computeAvgDocLenBaseline,
 } from './bm25-weights.js';
 import { importPreSet } from './pre-set-importer.js';
+import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import type { Bm25Analysis, PreSetEntryV1 } from './types.js';
 import { uuidv5 } from '../util/uuidv5.js';
 import { uuidv7 } from '../util/uuidv7.js';
@@ -188,13 +189,15 @@ export interface BootstrapPreSetOptions {
   content: Buffer | string;
   profile?: Bm25ZhJiebaProfileV1;
   pipeline?: Bm25TextPipeline;
+  /** WP-10: configured risk filter (empty ⇒ no risk filtering on import). */
+  riskFilter?: CompiledRiskFilter | null;
 }
 
 export async function bootstrapPreSet(
   client: QdrantClient,
   options: BootstrapPreSetOptions,
 ): Promise<Bm25ZhJiebaProfileV1> {
-  const imported = importPreSet({ content: options.content });
+  const imported = importPreSet({ content: options.content }, { riskFilter: options.riskFilter });
   if (!imported.ok) {
     throw new Error(`pre_set import failed: ${JSON.stringify(imported.errors)}`);
   }

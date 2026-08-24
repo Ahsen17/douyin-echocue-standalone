@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { loadJsonFixture, FIXTURES } from '../fixtures/index.js';
 import {
   compilePolicy,
+  compileRiskFilter,
   SAFETY_COMPILER_VERSION,
   normalizeComment,
   evaluateInputSafety,
@@ -27,11 +28,18 @@ interface RuntimeRuleFixture {
   text: string;
 }
 
+interface RuntimeRiskTypeFixture {
+  typeId: string;
+  label: string;
+  keywords: string[];
+}
+
 interface RuntimeCaseFixture {
   id: string;
   stage: 'INPUT' | 'OUTPUT';
   text?: string;
   compiledRules?: RuntimeRuleFixture[];
+  riskFilter?: RuntimeRiskTypeFixture[];
   simulateEngineFailure?: boolean;
   expected: { allow: boolean; reason?: string; traceFinalState: string };
 }
@@ -96,6 +104,7 @@ describe('T-SAFE-001: Safety Policy Fixtures', () => {
       const decision = evaluateInputSafety({
         normalizedText: c.text === undefined ? '' : normalizeComment(c.text),
         compiledRules,
+        riskFilter: c.riskFilter === undefined ? undefined : compileRiskFilter(c.riskFilter),
       });
       expect(decision.allow).toBe(c.expected.allow);
       if (c.expected.allow) {
@@ -119,7 +128,10 @@ describe('T-SAFE-001: Safety Policy Fixtures', () => {
       { personaId: 'p-1', displayName: '主播A', enabledAliases: [] },
     ];
 
-    function outputContext(compiledRules: CompiledSafetyRuleV1[] | null): OutputValidationContext {
+    function outputContext(
+      compiledRules: CompiledSafetyRuleV1[] | null,
+      riskFilter?: RuntimeRiskTypeFixture[],
+    ): OutputValidationContext {
       return {
         source: 'llm',
         personaSnapshot: {
@@ -130,6 +142,7 @@ describe('T-SAFE-001: Safety Policy Fixtures', () => {
         },
         safetySnapshot: { version: 'pol-v1', policyText: '', keywords: [] },
         compiledRules,
+        riskFilter: riskFilter === undefined ? undefined : compileRiskFilter(riskFilter),
         memberNames: members,
         currentPersonaId: 'p-1',
         forbiddenPromiseTerms: [],
@@ -147,8 +160,10 @@ describe('T-SAFE-001: Safety Policy Fixtures', () => {
         quick_reply: normalizeComment(outputCase.text),
         cues: ['接住夸奖', '继续互动'],
       };
-      // The OUTPUT case carries no compiledRules; the built-in PII detector runs.
-      const result = validator.validate(candidate, outputContext(outputCase.compiledRules ?? []));
+      // WP-10: the OUTPUT case carries a configured risk filter (was the built-in
+      // PII detector); its typeId is literally 'PII', which the validator maps to
+      // PERSONAL_INFO_HIT.
+      const result = validator.validate(candidate, outputContext(outputCase.compiledRules ?? [], outputCase.riskFilter));
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.kind).toBe('REJECTED');

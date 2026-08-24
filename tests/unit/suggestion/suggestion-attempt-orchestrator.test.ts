@@ -277,6 +277,18 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(reasons).toContain('INPUT_SAFETY_FILTERED');
   });
 
+  it('WP-10: freezes the configured risk filter and filters by user typeId', async () => {
+    const { audit, orchestrator } = harness({
+      getRiskFilter: async () => [{ typeId: 'privacy', label: '隐私', terms: ['住址'] }],
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment({ normalizedText: '你家具体住址是哪里' }));
+    const reasons = audit.transitions.map((t) => t.reason);
+    expect(reasons).toContain('INPUT_SAFETY_FILTERED');
+    const snap = audit.snapshots.find((s) => s.role === 'FINAL_REASON');
+    expect(snap?.payload).toEqual({ reason: 'privacy' });
+  });
+
   it('feeds the diagnostics hooks from the real-time path (display)', async () => {
     const received: number[] = [];
     const results: Array<[string, number | undefined]> = [];

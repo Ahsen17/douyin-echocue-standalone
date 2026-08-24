@@ -18,6 +18,7 @@ import { wireConfigControl } from './config/index.js'
 import { wirePersonaControl } from './persona/index.js'
 import { wireSafetyControl } from './safety/index.js'
 import { wireRetrievalControl } from './retrieval/index.js'
+import { compileRiskFilter } from './safety/risk-filter-config.js'
 import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
 import { resolveResourcePath } from './util/index.js'
 import { SIDECAR_PINS, sidecarSha256 } from './sidecar-pins.js'
@@ -225,6 +226,14 @@ app.whenReady().then(async () => {
       isServiceStopped: () =>
         services?.stateMachine.getViewState().lifecycle === 'STOPPED' &&
         !services?.controller.isStarting(),
+      // WP-10: reject pre_set entries containing configured risk keywords.
+      getRiskFilter: async () => {
+        try {
+          return compileRiskFilter((await services?.settings.get())?.riskFilter?.types ?? [])
+        } catch {
+          return null
+        }
+      },
     })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble

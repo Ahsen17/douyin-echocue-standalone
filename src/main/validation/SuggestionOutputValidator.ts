@@ -1,4 +1,3 @@
-import type { SafetyReasonCodeV1 } from '@echocue/contracts';
 import { evaluateInputSafety } from '../safety/index.js';
 import { countHanCharacters, isOnlyPunctuationOrWhitespace } from '../util/count-han.js';
 import { OUTPUT_SAFETY_MAPPING_VERSION_V1 } from './types.js';
@@ -88,8 +87,9 @@ function checkStructureAndLength(candidate: CandidateSuggestion): {
 
 // Map an input-safety decision to output validation reason codes (versioned in
 // OUTPUT_SAFETY_MAPPING_VERSION_V1). SAFETY_ENGINE_ERROR fails closed; a hit on
-// a team-configured PII rule still belongs to PERSONAL_INFO_HIT.
-function mapSafetyReason(reason: SafetyReasonCodeV1, matchedRule: boolean): Array<'RISK_RULE_HIT' | 'PERSONAL_INFO_HIT' | 'FORBIDDEN_POLICY_HIT'> {
+// a team-configured PII rule still belongs to PERSONAL_INFO_HIT. A user-defined
+// risk typeId (WP-10) is neither PII nor a policy category → RISK_RULE_HIT.
+function mapSafetyReason(reason: string, matchedRule: boolean): Array<'RISK_RULE_HIT' | 'PERSONAL_INFO_HIT' | 'FORBIDDEN_POLICY_HIT'> {
   if (reason === 'PII') return ['PERSONAL_INFO_HIT'];
   if (reason === 'TEAM_FORBIDDEN' || matchedRule) return ['FORBIDDEN_POLICY_HIT'];
   return ['RISK_RULE_HIT'];
@@ -98,10 +98,11 @@ function mapSafetyReason(reason: SafetyReasonCodeV1, matchedRule: boolean): Arra
 function checkOutputSafety(
   texts: readonly string[],
   compiledRules: OutputValidationContext['compiledRules'],
+  riskFilter: OutputValidationContext['riskFilter'],
 ): Array<'RISK_RULE_HIT' | 'PERSONAL_INFO_HIT' | 'FORBIDDEN_POLICY_HIT'> {
   const hits: Array<'RISK_RULE_HIT' | 'PERSONAL_INFO_HIT' | 'FORBIDDEN_POLICY_HIT'> = [];
   for (const text of texts) {
-    const decision = evaluateInputSafety({ normalizedText: text, compiledRules });
+    const decision = evaluateInputSafety({ normalizedText: text, compiledRules, riskFilter });
     if (!decision.allow) {
       const mapped = mapSafetyReason(decision.reason, decision.matchedRule !== null);
       for (const code of mapped) {
@@ -191,8 +192,8 @@ export class SuggestionOutputValidator {
     if (structural.reasonCodes.length > 0) {
       return { ok: false, kind: 'REJECTED', reasonCodes: structural.reasonCodes };
     }
-    // Step 5 safety & taboo against the frozen compiled rules.
-    const safety = checkOutputSafety([reply, ...cues], context.compiledRules);
+    // Step 5 safety & taboo against the frozen compiled rules + configured risk filter.
+    const safety = checkOutputSafety([reply, ...cues], context.compiledRules, context.riskFilter);
     if (safety.length > 0) {
       return { ok: false, kind: 'REJECTED', reasonCodes: safety };
     }

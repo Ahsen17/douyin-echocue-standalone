@@ -10,6 +10,7 @@ import type {
 } from '@echocue/contracts';
 import type { PersonaRoute } from '../persona/index.js';
 import { evaluateInputSafety } from '../safety/index.js';
+import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import { evaluateRetrieval } from '../retrieval/index.js';
 import { DEFAULT_CALIBRATION_ARTIFACT_V1, type CalibrationArtifactV1 } from '../retrieval/calibration.js';
 import { evaluateDirectPush } from '../retrieval/direct-push.js';
@@ -91,6 +92,8 @@ export class SuggestionAttemptOrchestrator {
   /** WP-4: run-page retrieval thresholds, frozen per session like safety/prompt. */
   private frozenDirectPushThreshold: number | null = null;
   private frozenSemanticDiscardConfidence: number | null = null;
+  /** WP-10: frozen configured risk filter (empty ⇒ no risk filtering). */
+  private frozenRiskFilter: CompiledRiskFilter | null = null;
   /** WP-2: FIFO backlog of comments audited RECEIVED→NORMALIZED while DISPLAYING. */
   private pendingQueue: ProcessingComment[] = [];
   /** Last written trace state per traceId, so async error paths close the chain. */
@@ -147,6 +150,8 @@ export class SuggestionAttemptOrchestrator {
     // the fallback when the getter is absent or settings are unreadable).
     this.frozenDirectPushThreshold = (await this.deps.getDirectPushThreshold?.()) ?? null;
     this.frozenSemanticDiscardConfidence = (await this.deps.getSemanticDiscardConfidence?.()) ?? null;
+    // WP-10: freeze the configured risk filter for the whole session.
+    this.frozenRiskFilter = (await this.deps.getRiskFilter?.()) ?? null;
     this.session = { sessionId: input.sessionId, seen: new Set() };
     this.attempt = null;
     this.abortRequested = false;
@@ -251,10 +256,11 @@ export class SuggestionAttemptOrchestrator {
    * routing, then retrieval. Used by the live path and by queue promotion (WP-2).
    */
   private continueFromNormalized(processingComment: ProcessingComment): void {
-    // Input safety against the frozen compiled rules (ARCH §4.4).
+    // Input safety against the frozen compiled rules + configured risk filter (ARCH §4.4).
     const safety = evaluateInputSafety({
       normalizedText: processingComment.normalizedText,
       compiledRules: this.frozenSafety?.compiledRules ?? null,
+      riskFilter: this.frozenRiskFilter,
     });
     if (!safety.allow) {
       this.transition(processingComment, 'NORMALIZED', 'FILTERED', 'INPUT_SAFETY_FILTERED', [
@@ -897,6 +903,7 @@ export class SuggestionAttemptOrchestrator {
       personaSnapshot: candidate.personaSnapshot,
       safetySnapshot: candidate.safetySnapshot,
       compiledRules: this.frozenSafety?.compiledRules ?? null,
+      riskFilter: this.frozenRiskFilter,
       memberNames: this.frozenMembers,
       currentPersonaId: candidate.personaSnapshot.personaId,
       forbiddenPromiseTerms: [],

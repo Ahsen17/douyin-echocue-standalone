@@ -9,6 +9,7 @@ import type { QdrantClient } from '@qdrant/js-client-rest';
 import type { QdrantSidecarManager } from '../qdrant/index.js';
 import { importPreSet as importPreSetStrict } from './pre-set-importer.js';
 import { QDRANT_ALIAS_GOLDEN_SET, QDRANT_ALIAS_PRE_SET, bootstrapPreSet } from './bootstrap.js';
+import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 
 export interface RetrievalControlDeps {
   qdrant: QdrantSidecarManager;
@@ -17,6 +18,8 @@ export interface RetrievalControlDeps {
   isServiceStopped: () => boolean;
   /** Injectable for unit tests; defaults to the real atomic bootstrap. */
   bootstrap?: typeof bootstrapPreSet;
+  /** WP-10: live read of the compiled risk filter for import rejection. */
+  getRiskFilter?: () => Promise<CompiledRiskFilter | null>;
 }
 
 export interface RetrievalControlHandlers {
@@ -103,7 +106,8 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
         throw new Error('服务运行中，请先停止服务后再导入检索数据');
       }
       await ensureQdrant();
-      const imported = importPreSetStrict({ content });
+      const riskFilter = (await deps.getRiskFilter?.()) ?? null;
+      const imported = importPreSetStrict({ content }, { riskFilter });
       if (!imported.ok) {
         return {
           ok: false,
@@ -111,7 +115,7 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
           truncated: imported.errors.length > MAX_REPORTED_ERRORS,
         };
       }
-      const profile = await doBootstrap(deps.client, { content });
+      const profile = await doBootstrap(deps.client, { content, riskFilter });
       return { ok: true, profile, entryCount: imported.entries.length };
     })();
     chain = task.catch(() => undefined);

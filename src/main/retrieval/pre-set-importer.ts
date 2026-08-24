@@ -1,6 +1,6 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 import type { PreSetImportErrorCodeV1 } from '@echocue/contracts';
-import { detectBuiltinRisk } from '../safety/index.js';
+import { detectConfiguredRisk, type CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import preSetSchemaV1 from '../../../docs/05-data-interface/schema/pre-set-v1.schema.json';
 import type { PreSetEntryV1 } from './types.js';
 
@@ -28,14 +28,20 @@ export type PreSetImportResult =
 export interface PreSetImportOptions {
   maxBytes?: number;
   maxRows?: number;
+  /** WP-10: configured risk filter; absent ⇒ no risk filtering on import. */
+  riskFilter?: CompiledRiskFilter | null;
 }
 
 const SECURITY_FIELDS = ['text', 'description', 'reference_reply'] as const;
 
-function isUnsafeField(entry: PreSetEntryV1): string | null {
+function unsafeField(
+  entry: PreSetEntryV1,
+  riskFilter: CompiledRiskFilter | null,
+): string | null {
+  if (riskFilter === null) return null;
   for (const field of SECURITY_FIELDS) {
     const value = entry[field];
-    if (typeof value === 'string' && detectBuiltinRisk(value.normalize('NFKC').toLowerCase()) !== null) {
+    if (typeof value === 'string' && detectConfiguredRisk(riskFilter, value.normalize('NFKC').toLowerCase()) !== null) {
       return field;
     }
   }
@@ -112,9 +118,9 @@ export function importPreSet(
       errors.push({ line: lineNo, id: entry.id, errorCode: 'PRE_SET_DUPLICATE_ID' });
       return;
     }
-    const unsafeField = isUnsafeField(entry);
-    if (unsafeField !== null) {
-      errors.push({ line: lineNo, id: entry.id, path: `/${unsafeField}`, errorCode: 'PRE_SET_UNSAFE_CONTENT' });
+    const riskField = unsafeField(entry, options.riskFilter ?? null);
+    if (riskField !== null) {
+      errors.push({ line: lineNo, id: entry.id, path: `/${riskField}`, errorCode: 'PRE_SET_UNSAFE_CONTENT' });
       return;
     }
     seenIds.add(entry.id);
