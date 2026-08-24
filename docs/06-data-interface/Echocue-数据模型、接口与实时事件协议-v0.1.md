@@ -513,7 +513,7 @@ interface GenerateSuggestionRequest {
   adapterType: ProviderConfigV1['adapterType'];
   baseUrl: string;
   modelId: string;
-  timeoutMs: 5000;
+  timeoutMs: 10000;
   selectedAtMonotonicMs: number;
   freshnessDeadlineMonotonicMs: number;
   abortSignal: AbortSignal;
@@ -557,7 +557,7 @@ interface CorrectionPayloadV1 {
 
 Provider 到领域错误映射固定为：`AUTH→E_PROVIDER_AUTH`、`BILLING→E_PROVIDER_BILLING`、`RATE_LIMIT→E_PROVIDER_RATE_LIMIT`、`NETWORK→E_PROVIDER_NETWORK`、`SERVER→E_PROVIDER_SERVER`、`TIMEOUT→E_PROVIDER_TIMEOUT`、`PROTOCOL/VALIDATION→E_PROVIDER_PROTOCOL`、`OUTPUT_INVALID→E_PROVIDER_OUTPUT_INVALID`；`ABORTED` 若由用户停止/窗口变化触发则不是用户错误，workflow 进入 `DISCARDED` 并写具体 reason。不得把 provider HTTP 状态码直接作为领域错误码。
 
-`ProcessingComment` 由 Service Orchestrator 在适配器输出 `SourceComment` 后创建；它分配 `traceId` 并绑定当前 session/window。`SourceComment.receivedMonotonicMs` 必须在 client 收到原始 WS frame 时立即采样，是统一 `t0`，不得在解析/规范化后重置。`freshnessDeadlineMonotonicMs = min(t0 + 3000ms, candidateSelectedAt + 2500ms, windowOpenedAt + windowMaxAgeMs)`；`windowMaxAgeMs` 为内部配置/POC 校准值。`SuggestionAttempt` 在检索、生成和浮窗调用前后都必须二次比对 `sessionId + traceId + windowVersion + freshnessDeadlineMonotonicMs`；任一不符写 `DISCARDED`，reason code 为 `STALE_SESSION`、`STALE_WINDOW` 或 `DEADLINE_EXCEEDED`。`t1=筛选完成`，`t2=本地输出校验完成`，`t_end=浮窗首帧确认`，全部写入对应审计快照；上游 `createTime` 只做旁路观测。
+`ProcessingComment` 由 Service Orchestrator 在适配器输出 `SourceComment` 后创建；它分配 `traceId` 并绑定当前 session/window。`SourceComment.receivedMonotonicMs` 必须在 client 收到原始 WS frame 时立即采样，是统一 `t0`，不得在解析/规范化后重置。`freshnessDeadlineMonotonicMs = min(t0 + 10000ms, candidateSelectedAt + 10000ms, windowOpenedAt + windowMaxAgeMs)`（2026-08-25：LLM 时间窗口放宽到 10s，四项预算同步；`windowMaxAgeMs` 默认 10000，为内部配置/POC 校准值）。`SuggestionAttempt` 在检索、生成和浮窗调用前后都必须二次比对 `sessionId + traceId + windowVersion + freshnessDeadlineMonotonicMs`；任一不符写 `DISCARDED`，reason code 为 `STALE_SESSION`、`STALE_WINDOW` 或 `DEADLINE_EXCEEDED`。`t1=筛选完成`，`t2=本地输出校验完成`，`t_end=浮窗首帧确认`，全部写入对应审计快照；上游 `createTime` 只做旁路观测。
 
 模型必须返回 JSON：
 

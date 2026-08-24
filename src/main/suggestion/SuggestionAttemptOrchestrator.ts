@@ -24,25 +24,22 @@ import type { SuggestionOrchestratorDeps } from './types.js';
 import type { PendingCandidate, ProcessingComment, SuggestionAttempt } from './types.js';
 import type { CancelTraceReason, OutputValidationContext, TeamMemberNameV1 } from '../validation/types.js';
 
-// Full freshness deadline (CONTRACT §6): min(t0+5000, selectedAt+2500,
+// Full freshness deadline (CONTRACT §6): min(t0+10000, selectedAt+10000,
 // t0+windowMaxAgeMs). The windowOpenedAt term is the candidate's own entry time
 // (receivedMonotonicMs), so its budget is t0 + windowMaxAgeMs.
 //
-// 2026-08 校准：DeepSeek 一次 JSON 生成真实延迟 1~3s；原 T0=3000 且
-// windowMaxAgeMs=1500 使 min 恒取 t0+1500，LLM 实际预算仅约 1s，导致几乎
-// 每条 LLM 建议 DEADLINE_EXCEEDED 被丢弃。临时将 t0 上限与窗口驻留放宽到
-// 5s（整个过期时间上限 5s；LLM 选中后预算仍由 selectedAt+2500 决定，约
-// 2.5s，从原 ~1.5s 提升）。
-// TODO(优化): 应将窗口驻留与 attempt 寿命预算解耦——窗口驻留只作淘汰线，
-// attempt 截止改用 min(t0+5s, selectedAt+2.5s)，避免 5s 窗口候选驻留过久。
-const T0_FRESHNESS_BUDGET_MS = 5000;
-const SELECTED_BUDGET_MS = 2500;
+// 2026-08-24 校准：LLM 调用时间窗口放宽到 10s——Provider 硬超时、t0 上限、
+// 选中后预算与窗口驻留四者同步从 5s/2.5s 提到 10s（min 中任一项偏小都会把
+// 截止截在更短处）。DeepSeek 一次 JSON 生成真实延迟 1~3s，10s 上限提供充足
+// 余量；这是安全上限，不是目标时延（E2E P95 ≤3s 目标不变）。
+const T0_FRESHNESS_BUDGET_MS = 10_000;
+const SELECTED_BUDGET_MS = 10_000;
 // Overlay display-window duration (PRD: default 10s, user-configurable).
 const DISPLAY_DURATION_MS = 10_000;
-// Provider hard timeout (CONTRACT §6): 5s, superseded by an earlier freshness deadline.
-const PROVIDER_TIMEOUT_MS = 5000;
+// Provider hard timeout (CONTRACT §6): 10s, superseded by an earlier freshness deadline.
+const PROVIDER_TIMEOUT_MS = 10_000;
 // Latest-window defaults (ARCH §4.1); overridden by settings.internalRetrieval.
-const WINDOW_MAX_AGE_MS = 5000;
+const WINDOW_MAX_AGE_MS = 10_000;
 const WINDOW_CANDIDATE_MAX_COUNT = 50;
 // Bounded session dedup (ARCH §4.1): cap the seen-set to bound memory in a long
 // stream; a fresh window resets it via startSession.
@@ -197,7 +194,7 @@ export class SuggestionAttemptOrchestrator {
       traceId,
       windowVersion,
       // Pre-attempt bound: the tightest t0-anchored term before selection
-      // (窗口驻留, 与 5s 窗口淘汰一致；2026-08 校准)。The full min formula is
+      // (窗口驻留, 与 10s 窗口淘汰一致；2026-08-25 校准)。The full min formula is
       // applied when the attempt is created (M5-08, CONTRACT §6).
       freshnessDeadlineMonotonicMs:
         comment.receivedMonotonicMs +

@@ -300,4 +300,4 @@ Electron 运行期 `nativeImage` 跨平台只支持 PNG/JPEG，Windows 另支持
 3. 页面信息架构、窗口/托盘、审计追溯与打标入口、用户可见错误和隐私边界见《UI 信息架构与交互设计》；
 4. 研发工作包、测试用例层级、POC 证据和验收门禁见《研发任务拆分、测试计划与验收标准》。
 
-Provider 的最终 prompt 模板、JSON schema、首个 DeepSeek 适配器与 Windows 安装运行方式分别由《LLM 提示词与输出校验设计》《Windows 部署、运行与故障处理手册》维护；任何变更均必须保持本章的单次调用、5 秒保险上限、新鲜度取消、审计快照和不重试约束。
+Provider 的最终 prompt 模板、JSON schema、首个 DeepSeek 适配器与 Windows 安装运行方式分别由《LLM 提示词与输出校验设计》《Windows 部署、运行与故障处理手册》维护；任何变更均必须保持本章的单次调用、10 秒保险上限、新鲜度取消、审计快照和不重试约束。

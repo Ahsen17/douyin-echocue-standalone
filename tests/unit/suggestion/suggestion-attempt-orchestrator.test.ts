@@ -219,7 +219,7 @@ function harness(overrides: Partial<SuggestionOrchestratorDeps> = {}) {
     createProvider: () => makeProvider() as never,
     validator: new SuggestionOutputValidator(),
     displaySink: sink,
-    // Comment deadline = receivedMonotonicMs(1000) + 5000 = 6000; keep the clock
+    // Comment deadline = receivedMonotonicMs(1000) + 10000 = 11000; keep the clock
     // below it so candidates stay fresh through retrieval and generation.
     nowMonotonic: () => 2000,
     windowMaxAgeMs: 100000,
@@ -623,8 +623,9 @@ describe('SuggestionAttemptOrchestrator', () => {
     await orchestrator.startSession({ sessionId: 's1' });
     orchestrator.handleComment(makeComment());
     await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-    // Advance past the freshness deadline while the provider call is in flight.
-    now = 5000;
+    // Advance past the freshness deadline (10s budget) while the provider call
+    // is in flight.
+    now = 12_000;
     releaseGeneration();
     // The stale attempt must be discarded (not left in-flight forever).
     await waitFor(() => orchestrator.getCurrentAttempt() === null);
@@ -797,12 +798,12 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(t0+5000, selectedAt+2500, t0+windowMaxAge) = min(6000, 6500, 101000) = 6000.
-      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(6000);
+      // min(t0+10000, selectedAt+10000, t0+windowMaxAge) = min(11000, 14000, 101000) = 11000.
+      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(11000);
       release();
     });
 
-    it('lets the selection budget bind when the candidate waited in the window', async () => {
+    it('applies the 10s t0 cap when the candidate waited (equal 10s budgets)', async () => {
       let now = 1200;
       const { orchestrator } = harness({
         retriever: makeRetriever([preHit(0.9)]) as never,
@@ -813,8 +814,9 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(1000+5000, 1200+2500, 1000+100000) = 3700 (selection budget binds).
-      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(3700);
+      // min(1000+10000, 1200+10000, 1000+100000) = 11000 (t0 cap binds; with equal
+      // 10s budgets and now >= t0 the t0 term is always the tighter of the two).
+      expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(11000);
     });
 
     it('binds to the window residency (t0 + windowMaxAgeMs) and discards via DEADLINE_EXCEEDED', async () => {
@@ -829,7 +831,7 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(6000, 4500, 2500) = 2500: the window residency binds.
+      // min(11000, 12000, 2500) = 2500: the window residency binds.
       expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(2500);
       now = 2600; // past 2500 while the provider call is in flight
       release();
