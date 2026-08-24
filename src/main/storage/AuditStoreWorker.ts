@@ -189,6 +189,55 @@ export class AuditStoreWorker {
   }
 
   /**
+   * WP-3 audit retention: delete every trace completed before the cutoff (with
+   * its transitions, snapshots, references, feedback and outbox jobs) plus
+   * now-empty ended sessions, in one transaction. Whole traces are removed so
+   * the per-trace HMAC chain stays valid; a trace still in flight
+   * (completed_at NULL) is never pruned. Subqueries avoid huge IN placeholder
+   * lists for long-running streams.
+   */
+  pruneTracesOlderThan(cutoffIso: string): {
+    deletedTraces: number;
+    deletedSnapshots: number;
+    deletedSessions: number;
+  } {
+    try {
+      this.db.exec('BEGIN');
+      const oldTraces =
+        'SELECT trace_id FROM audit_trace WHERE completed_at IS NOT NULL AND completed_at < ?';
+      // FK order: references → snapshots → transitions → jobs → feedback → traces.
+      this.db.prepare(`DELETE FROM audit_reference WHERE trace_id IN (${oldTraces})`).run(cutoffIso);
+      // Every snapshot is created with a reference, so any now-unreferenced
+      // snapshot belongs to a pruned trace and can be dropped safely.
+      const delSnap = this.db.prepare(
+        'DELETE FROM audit_snapshot WHERE snapshot_id NOT IN (SELECT snapshot_id FROM audit_reference)',
+      ).run();
+      this.db.prepare(`DELETE FROM audit_transition WHERE trace_id IN (${oldTraces})`).run(cutoffIso);
+      this.db.prepare(
+        `DELETE FROM qdrant_sync_job
+         WHERE feedback_id IN (
+           SELECT feedback_id FROM suggestion_feedback WHERE trace_id IN (${oldTraces}))`,
+      ).run(cutoffIso);
+      this.db.prepare(`DELETE FROM suggestion_feedback WHERE trace_id IN (${oldTraces})`).run(cutoffIso);
+      const delTrace = this.db.prepare(`DELETE FROM audit_trace WHERE trace_id IN (${oldTraces})`).run(cutoffIso);
+      const delSession = this.db.prepare(
+        `DELETE FROM live_session
+         WHERE ended_at IS NOT NULL AND ended_at < ?
+           AND session_id NOT IN (SELECT DISTINCT session_id FROM audit_trace)`,
+      ).run(cutoffIso);
+      this.db.exec('COMMIT');
+      return {
+        deletedTraces: Number(delTrace.changes),
+        deletedSnapshots: Number(delSnap.changes),
+        deletedSessions: Number(delSession.changes),
+      };
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      throw new AuditUnavailableError(`prune failed: ${String(err)}`);
+    }
+  }
+
+  /**
    * Full integrity verification (RUNBOOK §5.3 crash recovery; DELIVERY A-12):
    * structural integrity_check, the applied migration version, and a recompute
    * of every transition's entry_hmac + the previous_hmac chain. A mismatch

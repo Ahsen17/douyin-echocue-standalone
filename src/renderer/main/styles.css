@@ -94,6 +94,8 @@ textarea{height:115px}
 .metrics.compact div{padding:12px;background:#f5f8fc;border-radius:8px}
 .metrics.two{grid-template-columns:repeat(2,1fr)}
 .metrics strong,.metrics small{display:block}
+.semantic-type-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.semantic-chip{padding:4px 10px;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--ink);font-size:13px}
 .split{display:flex;gap:20px;align-items:flex-start}
 .grow{flex:1;min-width:0}
 .section-title{margin-top:24px}

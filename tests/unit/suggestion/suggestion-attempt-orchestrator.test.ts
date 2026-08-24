@@ -297,6 +297,105 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(results[0][1]).toBe(1000);
   });
 
+  it('feeds the WP-1 observability hooks from the real-time path', async () => {
+    const filtered: string[] = [];
+    const semanticTypes: string[] = [];
+    const retrievals: number[] = [];
+    const llmRequests: number[] = [];
+    const llmCompletions: Array<[number, boolean]> = [];
+    const { orchestrator } = harness({
+      retriever: makeRetriever([]) as never,
+      onCommentFiltered: (c) => filtered.push(c),
+      onSemanticType: (t) => semanticTypes.push(t),
+      onRetrievalCompleted: (ms) => retrievals.push(ms),
+      onLlmRequest: () => llmRequests.push(llmRequests.length),
+      onLlmCompleted: (ms, ok) => llmCompletions.push([ms, ok]),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f1', normalizedText: '想加微信私聊' }));
+    expect(filtered).toContain('TEAM_FORBIDDEN');
+
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-s1' }));
+    await waitFor(() => llmRequests.length > 0);
+    expect(retrievals.length).toBeGreaterThan(0);
+    expect(llmCompletions.length).toBe(1);
+    expect(llmCompletions[0][1]).toBe(true);
+    // Empty mergedTopK → semanticDecision.topSemanticType falls back to low_value.
+    expect(semanticTypes).toContain('low_value');
+  });
+
+  it('queues a comment during DISPLAYING and promotes it on display end', async () => {
+    const { audit, machine, sink, orchestrator } = harness({
+      getQueueing: async () => ({ enabled: true, timeoutMs: 30000 }),
+      retriever: makeRetriever([]) as never,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    machine.setActivity('RETRIEVING');
+    machine.setActivity('GENERATING');
+    machine.setActivity('DISPLAYING');
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-q1' }));
+    await flush();
+    // Queued: audited RECEIVED→NORMALIZED but not discarded/routed yet.
+    expect(audit.transitions.some((t) => t.reason === 'DISPLAY_WINDOW_ACTIVE')).toBe(false);
+    expect(audit.transitions.some((t) => t.reason === 'PERSONA_ROUTED')).toBe(false);
+
+    orchestrator.finishDisplay();
+    await waitFor(() => sink.shown.length > 0);
+    const reasons = audit.transitions.map((t) => t.reason);
+    expect(reasons).toContain('PERSONA_ROUTED');
+    expect(reasons).toContain('OVERLAY_RENDERED');
+    expect(reasons).not.toContain('DISPLAY_WINDOW_ACTIVE');
+  });
+
+  it('expires a stale queued comment as QUEUE_TIMEOUT on display end', async () => {
+    const { audit, machine, orchestrator } = harness({
+      getQueueing: async () => ({ enabled: true, timeoutMs: 30000 }),
+      nowMonotonic: () => 40000,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    machine.setActivity('RETRIEVING');
+    machine.setActivity('GENERATING');
+    machine.setActivity('DISPLAYING');
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-q2' }));
+    await flush();
+    orchestrator.finishDisplay();
+    const reasons = audit.transitions.map((t) => t.reason);
+    expect(reasons).toContain('QUEUE_TIMEOUT');
+    expect(reasons).not.toContain('PERSONA_ROUTED');
+  });
+
+  it('promotes the oldest fresh comment first (FIFO)', async () => {
+    const { machine, sink, orchestrator } = harness({
+      getQueueing: async () => ({ enabled: true, timeoutMs: 30000 }),
+      retriever: makeRetriever([]) as never,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    machine.setActivity('RETRIEVING');
+    machine.setActivity('GENERATING');
+    machine.setActivity('DISPLAYING');
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f1', normalizedText: '第一条' }));
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f2', normalizedText: '第二条' }));
+    orchestrator.finishDisplay();
+    await waitFor(() => sink.shown.length > 0);
+    expect(sink.shown[0].comment.text).toBe('第一条');
+  });
+
+  it('discards queued comments when the FIFO queue is full', async () => {
+    const { audit, machine, orchestrator } = harness({
+      getQueueing: async () => ({ enabled: true, timeoutMs: 30000 }),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    machine.setActivity('RETRIEVING');
+    machine.setActivity('GENERATING');
+    machine.setActivity('DISPLAYING');
+    for (let i = 0; i < 51; i += 1) {
+      orchestrator.handleComment(makeComment({ sourceMessageId: `msg-full-${i}` }));
+    }
+    await flush();
+    expect(audit.transitions.some((t) => t.reason === 'DISPLAY_WINDOW_ACTIVE')).toBe(true);
+  });
+
   it('feeds the filtered outcome when input safety filters', async () => {
     const received: number[] = [];
     const results: string[] = [];

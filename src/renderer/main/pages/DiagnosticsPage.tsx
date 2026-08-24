@@ -1,28 +1,39 @@
 import { useEffect, useState } from 'react'
-import type { CollectionCountsV1, DiagnosticSummaryV1 } from '@echocue/contracts'
+import type {
+  CollectionCountsV1,
+  DiagnosticSummaryV1,
+  SessionMetricsSnapshotV1,
+} from '@echocue/contracts'
 import { useAsyncAction } from '../hooks/useAsyncAction'
 import { ErrorState, LoadingState } from '../components/StateViews'
 import {
   buildCopyableSummary,
+  buildMonitoringRows,
   formatBytes,
   formatDateTime,
   formatE2eMs,
+  formatSessionRange,
   localizeDomainError,
+  localizeSemanticType,
   localizeSuggestionResult,
+  semanticTypeEntries,
 } from '../diagnostics/diagnostics-logic'
 
 export default function DiagnosticsPage() {
   const [summary, setSummary] = useState<DiagnosticSummaryV1 | null>(null)
   const [counts, setCounts] = useState<CollectionCountsV1 | null>(null)
+  const [session, setSession] = useState<SessionMetricsSnapshotV1 | null>(null)
   const [copied, setCopied] = useState(false)
 
   const load = useAsyncAction(async () => {
-    const [next, nextCounts] = await Promise.all([
+    const [next, nextCounts, nextSession] = await Promise.all([
       window.echocue.diagnostics.getSummary(),
       window.echocue.retrieval.getCollectionCounts(),
+      window.echocue.monitoring.getSessionMetrics(),
     ])
     setSummary(next)
     setCounts(nextCounts)
+    setSession(nextSession)
     setCopied(false)
     return true
   })
@@ -118,6 +129,38 @@ export default function DiagnosticsPage() {
           <h2>{counts === null ? '…' : `${counts.goldenSetPointCount} 条`}</h2>
         </section>
       </div>
+      <section className="card">
+        <b>● 直播监控数据</b>
+        <p>
+          {session === null
+            ? '最近一次直播会话的匿名业务统计；运行中实时累计，结束后固定为最近一次。'
+            : `${formatSessionRange(session)}。仅统计枚举类别与耗时，不含弹幕原文。`}
+        </p>
+      </section>
+      {session !== null ? (
+        <>
+          <div className="metrics">
+            {buildMonitoringRows(session).map((row) => (
+              <section className="card" key={row.label}>
+                <small>{row.label}</small>
+                <h2>{row.value}</h2>
+              </section>
+            ))}
+          </div>
+          {semanticTypeEntries(session).length > 0 ? (
+            <section className="card">
+              <small>语义类型分布</small>
+              <div className="semantic-type-grid">
+                {semanticTypeEntries(session).map(([type, count]) => (
+                  <span key={type} className="semantic-chip">
+                    {localizeSemanticType(type)} · {count}
+                  </span>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : null}
     </>
   )
 }

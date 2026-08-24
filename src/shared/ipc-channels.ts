@@ -33,6 +33,8 @@ export const IpcChannel = {
   RetrievalImportPreSet: 'retrieval.importPreSet',
   RetrievalGetCollectionCounts: 'retrieval.getCollectionCounts',
   DiagnosticsGetSummary: 'diagnostics.getSummary',
+  MonitoringGetSessionMetrics: 'monitoring.getSessionMetrics',
+  SettingsMoveDataRoot: 'settings.moveDataRoot',
   AuditSearch: 'audit.search',
   AuditGetWorkflow: 'audit.getWorkflow',
   AuditSubmitLabel: 'audit.submitLabel',

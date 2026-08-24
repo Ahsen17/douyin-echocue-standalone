@@ -89,9 +89,21 @@ export class SettingsStore {
         theme: 'dark',
         clickThrough: false,
       },
+      // Runtime mechanism defaults: FIFO danmaku queueing is off by default
+      // (preserves the "no queue during display" behavior); 30s queue timeout.
+      queueing: { enabled: false, timeoutMs: 30000 },
+      // Audit playback retention: 30 days, bounded 7..180 by the contract.
+      audit: { retentionDays: 30 },
+      // Loopback /metrics endpoint (127.0.0.1 only), default port 9100.
+      metrics: { enabled: true, port: 9100 },
+      // User-configured risk filter: empty by default = no risk filtering.
+      riskFilter: { types: [] },
       internalRetrieval: {
         calibrationVersion: 'v1.0',
         directPushThreshold: 0.85,
+        // 2026-08 校准：语义丢弃阈值（low_value/filter_risk 明确丢弃），与
+        // DEFAULT_CALIBRATION_ARTIFACT_V1 保持一致；运行页可调。
+        semanticDiscardConfidence: 0.9,
         // 2026-08 校准：默认放宽到 5s，与编排器常量保持一致（当前未接线进运行时）。
         windowMaxAgeMs: 5000,
         candidateMaxCount: 50,

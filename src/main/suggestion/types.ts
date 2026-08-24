@@ -1,6 +1,7 @@
 import type {
   OverlayDisplayPayloadV1,
   ProviderConfigV1,
+  QueueingConfigV1,
   SourceComment,
   ValidatedSuggestionV1,
 } from '@echocue/contracts';
@@ -105,6 +106,8 @@ export interface SuggestionOrchestratorDeps {
   maxContextBudget?: number;
   /** TD-08: live read of the user-configured system prompt (null → code default). */
   getSystemPrompt?: () => Promise<SystemPromptConfig | null>;
+  /** WP-2: FIFO danmaku queueing during the display window (null → disabled). */
+  getQueueing?: () => Promise<QueueingConfigV1 | null>;
   onAuditFailure: () => void;
   /** Diagnostics hooks (M6-02): feed the anonymous run summary. */
   onCommentReceived?: () => void;
@@ -112,4 +115,10 @@ export interface SuggestionOrchestratorDeps {
     result: 'displayed' | 'filtered' | 'discarded' | 'failed',
     e2eLatencyMs?: number,
   ) => void;
+  /** WP-1 observability hooks: enum-category labels only, never content. */
+  onCommentFiltered?: (category: string) => void;
+  onSemanticType?: (type: string) => void;
+  onRetrievalCompleted?: (latencyMs: number) => void;
+  onLlmRequest?: () => void;
+  onLlmCompleted?: (latencyMs: number, ok: boolean, errorType?: string) => void;
 }

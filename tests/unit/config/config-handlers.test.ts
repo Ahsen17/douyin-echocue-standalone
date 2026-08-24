@@ -52,6 +52,47 @@ describe('Config IPC handlers', () => {
     expect('internalRetrieval' in view).toBe(false);
   });
 
+  it('get returns the WP-0 view defaults (thresholds, queueing, audit, metrics, riskFilter)', async () => {
+    const view = await handlers.get();
+    expect(view.directPushThreshold).toBe(0.85);
+    expect(view.semanticDiscardConfidence).toBe(0.9);
+    expect(view.queueing).toEqual({ enabled: false, timeoutMs: 30000 });
+    expect(view.audit).toEqual({ retentionDays: 30 });
+    expect(view.metrics).toEqual({ enabled: true, port: 9100 });
+    expect(view.riskFilter).toEqual({ types: [] });
+  });
+
+  it('update persists the two retrieval thresholds merged into internalRetrieval', async () => {
+    const view = await handlers.update({ directPushThreshold: 0.9, semanticDiscardConfidence: 0.85 });
+    expect(view.directPushThreshold).toBe(0.9);
+    expect(view.semanticDiscardConfidence).toBe(0.85);
+    const stored = await settings.get();
+    expect(stored?.internalRetrieval.directPushThreshold).toBe(0.9);
+    expect(stored?.internalRetrieval.semanticDiscardConfidence).toBe(0.85);
+    expect(stored?.internalRetrieval.calibrationVersion).toBe('v1.0'); // untouched
+  });
+
+  it('update persists queueing, audit retention, metrics port and risk filter', async () => {
+    const view = await handlers.update({
+      queueing: { enabled: true, timeoutMs: 30000 },
+      auditRetentionDays: 60,
+      metricsPort: 9200,
+      riskFilter: {
+        types: [
+          { typeId: '01932a3b-4c5d-7000-8000-0000000000aa', label: '违禁词', keywords: ['赌博'] },
+        ],
+      },
+    });
+    expect(view.queueing).toEqual({ enabled: true, timeoutMs: 30000 });
+    expect(view.audit).toEqual({ retentionDays: 60 });
+    expect(view.metrics).toEqual({ enabled: true, port: 9200 });
+    expect(view.riskFilter.types).toHaveLength(1);
+  });
+
+  it('update rejects a metrics port out of range', async () => {
+    await expect(handlers.update({ metricsPort: 80 })).rejects.toThrow('配置内容不合法');
+  });
+
   it('get surfaces apiKeyConfigured true after a key is stored, never the key value', async () => {
     await providerConfig.updateProviderConfig(VALID_PROVIDER_CONFIG);
     await providerConfig.setApiKey('deepseek-primary', 'sk-top-secret');

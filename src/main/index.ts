@@ -10,7 +10,8 @@ import {
   wireStateBroadcast,
   type CreatedServiceController,
 } from './service/index.js'
-import { Logger, wireDiagnosticsControl } from './telemetry/index.js'
+import { Logger, wireDiagnosticsControl, wireMonitoringControl } from './telemetry/index.js'
+import { RetentionScheduler } from './storage/index.js'
 import { wireAuditControl } from './audit/index.js'
 import { wireProviderControl } from './provider/index.js'
 import { wireConfigControl } from './config/index.js'
@@ -71,6 +72,8 @@ async function doQuit(): Promise<void> {
   } catch {
     /* best-effort sidecar stop before exit */
   }
+  // WP-1: close the loopback /metrics endpoint on exit.
+  await services?.metricsHub?.stopServer()
   services?.shutdown()
   overlayWindowInstance?.destroy()
   const win = mainWindowInstance?.getWindow()
@@ -113,7 +116,16 @@ app.whenReady().then(async () => {
       safeStorage,
       douyinLiveBinaryPath: resolveAssetBinary('douyinLive'),
       qdrantBinaryPath: resolveAssetBinary('qdrant'),
-      migrationPath: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '001_initial_schema.sql')),
+      migrations: [
+        {
+          version: 1,
+          path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '001_initial_schema.sql')),
+        },
+        {
+          version: 2,
+          path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '002_queue_timeout_reason.sql')),
+        },
+      ],
       qdrantConfigTemplatePath: resolveResourcePath(join('resources', 'qdrant-config.yaml')),
       sidecarPins: {
         qdrant: {
@@ -134,6 +146,23 @@ app.whenReady().then(async () => {
     })
     logger.info('lifecycle', 'service controller ready')
     services.goldenSync.start()
+    // WP-1 observability (TD-03): loopback /metrics endpoint + monitoring IPC.
+    services.metricsHub.startServer()
+    wireMonitoringControl({ metricsHub: services.metricsHub, isTrustedSender })
+    // WP-3 audit retention: prune once per day, on the day's first run (service
+    // is STOPPED at boot, so isStopped() is true). Best-effort, never fatal.
+    const retention = new RetentionScheduler({
+      audit: services.audit,
+      settings: services.settings,
+      statePath: join(app.getPath('userData'), 'config', 'retention-state.json'),
+      isStopped: () =>
+        services?.stateMachine.getViewState().lifecycle === 'STOPPED' &&
+        !services?.controller.isStarting(),
+      log: (message) => logger.info('storage', message),
+    })
+    void retention.runOnce().catch((err) => {
+      logger.error('storage', `retention prune failed: ${err instanceof Error ? err.message : String(err)}`)
+    })
     // RUNBOOK §3.2: the Qdrant loopback sidecar is a boot-time init step. A start
     // failure is non-fatal here — the gate stays fail-closed and retrieval
     // getStatus reports the sidecar as unavailable instead of crashing the app.

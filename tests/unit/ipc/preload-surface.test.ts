@@ -31,7 +31,7 @@ async function loadPreload(modulePath: string): Promise<Api> {
   return calls[0][1] as unknown as Api;
 }
 
-const MAIN_TOP_LEVEL = ['audit', 'config', 'diagnostics', 'overlay', 'persona', 'provider', 'retrieval', 'safety', 'service', 'window'];
+const MAIN_TOP_LEVEL = ['audit', 'config', 'diagnostics', 'monitoring', 'overlay', 'persona', 'provider', 'retrieval', 'safety', 'service', 'window'];
 
 describe('preload surfaces (M6-11 / CONTRACT §7)', () => {
   beforeEach(() => {
@@ -53,6 +53,7 @@ describe('preload surfaces (M6-11 / CONTRACT §7)', () => {
     );
     expect(Object.keys(api.safety).sort()).toEqual(['get', 'saveDraft', 'publish'].sort());
     expect(Object.keys(api.diagnostics).sort()).toEqual(['getSummary'].sort());
+    expect(Object.keys(api.monitoring).sort()).toEqual(['getSessionMetrics'].sort());
     expect(Object.keys(api.retrieval).sort()).toEqual(['getStatus', 'importPreSet', 'getCollectionCounts'].sort());
     expect(Object.keys(api.audit).sort()).toEqual(['search', 'getWorkflow', 'submitLabel'].sort());
     expect(Object.keys(api.overlay).sort()).toEqual(['updatePreferences'].sort());

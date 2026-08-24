@@ -24,6 +24,7 @@ import type {
   SafetySaveDraftRequestV1,
   SafetySaveDraftResultV1,
   ServiceViewState,
+  SessionMetricsSnapshotV1,
   VersionComparisonV1,
 } from '@echocue/contracts'
 import { IpcChannel } from '../shared/ipc-channels.js'
@@ -113,6 +114,10 @@ const echocueApi = {
   diagnostics: {
     getSummary: () =>
       ipcRenderer.invoke(IpcChannel.DiagnosticsGetSummary) as Promise<DiagnosticSummaryV1>,
+  },
+  monitoring: {
+    getSessionMetrics: () =>
+      ipcRenderer.invoke(IpcChannel.MonitoringGetSessionMetrics) as Promise<SessionMetricsSnapshotV1>,
   },
   audit: {
     search: (req: AuditSearchRequestV1) =>

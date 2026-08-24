@@ -204,7 +204,7 @@ export const TraceReasonCodeV1Schema = z.enum([
   'OUTPUT_INVALID', 'OVERLAY_RENDERED', 'DISPLAY_DURATION_ELAPSED',
   'DISPLAY_WINDOW_ACTIVE', 'LOW_VALUE', 'PERSONA_REVIEW_UNCERTAIN',
   'STALE_SESSION', 'STALE_WINDOW', 'DEADLINE_EXCEEDED',
-  'AUDIT_FAILURE', 'SOURCE_ERROR', 'ROOM_ENDED', 'USER_STOPPED',
+  'QUEUE_TIMEOUT', 'AUDIT_FAILURE', 'SOURCE_ERROR', 'ROOM_ENDED', 'USER_STOPPED',
 ]);
 
 export const OutboxJobStateV1Schema = z.enum(['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED']);
@@ -318,6 +318,59 @@ export const SystemPromptV1Schema = z.strictObject({
   updatedAt: z.string().datetime({ offset: true }),
 });
 
+// Display-window danmaku queueing (FIFO). Absent means the current behavior:
+// comments arriving while DISPLAYING are discarded (DISPLAY_WINDOW_ACTIVE).
+export const QueueingConfigV1Schema = z.strictObject({
+  enabled: z.boolean(),
+  timeoutMs: z.number().int().min(1000).max(120000),
+});
+
+// Audit playback retention (days). Default 30, bounded 7..180.
+export const AuditRetentionV1Schema = z.strictObject({
+  retentionDays: z.number().int().min(7).max(180),
+});
+
+// Loopback /metrics endpoint config (127.0.0.1 only).
+export const MetricsConfigV1Schema = z.strictObject({
+  enabled: z.boolean(),
+  port: z.number().int().min(1024).max(65535),
+});
+
+// A user-defined risk-filter type: label + substring keywords. An empty type
+// (no keywords) is inert at runtime but allowed so the editor can stage edits.
+export const RiskFilterTypeV1Schema = z.strictObject({
+  typeId: uuidV7,
+  label: z.string().trim().min(1).max(40),
+  keywords: z.array(z.string().trim().min(1).max(40)).max(50),
+});
+
+export const RiskFilterConfigV1Schema = z.strictObject({
+  types: z.array(RiskFilterTypeV1Schema).max(100),
+});
+
+// Anonymous per-session run counters for the monitoring section (UI §8.1). No
+// comment text, persona text, keys, or trace ids cross this boundary.
+export const SessionMetricsSnapshotV1Schema = z.strictObject({
+  sessionId: uuidV7.optional(),
+  startedAt: z.string().datetime({ offset: true }).optional(),
+  endedAt: z.string().datetime({ offset: true }).optional(),
+  commentReceived: z.number().int().nonnegative(),
+  commentFiltered: z.number().int().nonnegative(),
+  semanticTypeCounts: z.record(z.string().min(1).max(64), z.number().int().nonnegative()),
+  llmRequests: z.number().int().nonnegative(),
+  llmAvgLatencyMs: z.number().nonnegative().optional(),
+  displayed: z.number().int().nonnegative(),
+  filtered: z.number().int().nonnegative(),
+  discarded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  e2eP95Ms: z.number().nonnegative().optional(),
+});
+
+// settings.moveDataRoot: relocate the whole user-data root, then relaunch.
+export const MoveDataRootRequestV1Schema = z.strictObject({
+  targetDir: z.string().trim().min(1).max(1024),
+});
+
 export const SettingsV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
   roomReference: z.string().min(1).max(128).optional(),
@@ -325,22 +378,36 @@ export const SettingsV1Schema = z.strictObject({
   activeSafetyPolicyVersion: uuidV7.optional(),
   overlay: OverlayPreferenceV1Schema,
   prompt: SystemPromptV1Schema.optional(),
+  queueing: QueueingConfigV1Schema.optional(),
+  audit: AuditRetentionV1Schema.optional(),
+  metrics: MetricsConfigV1Schema.optional(),
+  riskFilter: RiskFilterConfigV1Schema.optional(),
   internalRetrieval: z.strictObject({
     calibrationVersion: z.string().min(1).max(64),
     directPushThreshold: z.number().min(0).max(1),
+    // Optional so pre-existing settings.json (without the field) still parse;
+    // getDefaults / runtime fall back to DEFAULT_CALIBRATION_ARTIFACT_V1 (0.9).
+    semanticDiscardConfidence: z.number().min(0).max(1).optional(),
     windowMaxAgeMs: z.number().int().min(100).max(30000),
     candidateMaxCount: z.number().int().min(1).max(1000),
   }),
 });
 
-// Renderer-facing config view (UI §7.1): internalRetrieval never crosses IPC,
-// the API key surfaces only as a boolean, never its value.
+// Renderer-facing config view (UI §7.1): internalRetrieval crosses IPC only as
+// the two user-tunable thresholds (Run page); the API key surfaces only as a
+// boolean, never its value.
 export const ConfigViewV1Schema = z.strictObject({
   roomReference: z.string().min(1).max(128).optional(),
   provider: ProviderConfigV1Schema.optional(),
   activeSafetyPolicyVersion: uuidV7.optional(),
   overlay: OverlayPreferenceV1Schema,
   prompt: SystemPromptV1Schema.optional(),
+  directPushThreshold: z.number().min(0).max(1),
+  semanticDiscardConfidence: z.number().min(0).max(1),
+  queueing: QueueingConfigV1Schema,
+  audit: AuditRetentionV1Schema,
+  metrics: MetricsConfigV1Schema,
+  riskFilter: RiskFilterConfigV1Schema,
   apiKeyConfigured: z.boolean(),
 });
 
@@ -363,13 +430,27 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
   provider: ProviderConfigInputV1Schema.optional(),
   // TD-08: empty string clears the custom template back to the code default.
   systemPrompt: z.string().trim().max(20000).optional(),
+  // Run page retrieval thresholds; applied on the next service start.
+  directPushThreshold: z.number().min(0).max(1).optional(),
+  semanticDiscardConfidence: z.number().min(0).max(1).optional(),
+  // System-settings runtime mechanism controls.
+  queueing: QueueingConfigV1Schema.optional(),
+  auditRetentionDays: z.number().int().min(7).max(180).optional(),
+  metricsPort: z.number().int().min(1024).max(65535).optional(),
+  riskFilter: RiskFilterConfigV1Schema.optional(),
 }).superRefine((value, ctx) => {
   if (
     value.roomReference === undefined &&
     value.provider === undefined &&
-    value.systemPrompt === undefined
+    value.systemPrompt === undefined &&
+    value.directPushThreshold === undefined &&
+    value.semanticDiscardConfidence === undefined &&
+    value.queueing === undefined &&
+    value.auditRetentionDays === undefined &&
+    value.metricsPort === undefined &&
+    value.riskFilter === undefined
   ) {
-    ctx.addIssue({ code: 'custom', message: 'at least one of roomReference, provider, or systemPrompt is required' });
+    ctx.addIssue({ code: 'custom', message: 'at least one config field is required' });
   }
 });
 
@@ -742,6 +823,13 @@ export type ProviderFixtureExpectedV1 = z.infer<typeof ProviderFixtureExpectedV1
 export type ProviderFixtureCaseV1 = z.infer<typeof ProviderFixtureCaseV1Schema>;
 export type OverlayPreferenceV1 = z.infer<typeof OverlayPreferenceV1Schema>;
 export type SystemPromptV1 = z.infer<typeof SystemPromptV1Schema>;
+export type QueueingConfigV1 = z.infer<typeof QueueingConfigV1Schema>;
+export type AuditRetentionV1 = z.infer<typeof AuditRetentionV1Schema>;
+export type MetricsConfigV1 = z.infer<typeof MetricsConfigV1Schema>;
+export type RiskFilterTypeV1 = z.infer<typeof RiskFilterTypeV1Schema>;
+export type RiskFilterConfigV1 = z.infer<typeof RiskFilterConfigV1Schema>;
+export type SessionMetricsSnapshotV1 = z.infer<typeof SessionMetricsSnapshotV1Schema>;
+export type MoveDataRootRequestV1 = z.infer<typeof MoveDataRootRequestV1Schema>;
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 export type ServiceViewState = z.infer<typeof ServiceViewStateSchema>;
 export type SuggestionOutputV1 = z.infer<typeof SuggestionOutputV1Schema>;

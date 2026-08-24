@@ -11,6 +11,12 @@ import {
   ConfigViewV1Schema,
   ConfigUpdateRequestV1Schema,
   ProviderConfigInputV1Schema,
+  QueueingConfigV1Schema,
+  AuditRetentionV1Schema,
+  MetricsConfigV1Schema,
+  RiskFilterTypeV1Schema,
+  SessionMetricsSnapshotV1Schema,
+  MoveDataRootRequestV1Schema,
   PersonaSummaryV1Schema,
   AliasInputV1Schema,
   AliasRowV1Schema,
@@ -129,6 +135,16 @@ const VALID_PROMPT: object = {
   updatedAt: '2026-08-23T00:00:00.000Z',
 };
 
+// New WP-0 settings fields, all required in the renderer ConfigViewV1.
+const VALID_VIEW_EXTRAS: object = {
+  directPushThreshold: 0.85,
+  semanticDiscardConfidence: 0.9,
+  queueing: { enabled: false, timeoutMs: 30000 },
+  audit: { retentionDays: 30 },
+  metrics: { enabled: true, port: 9100 },
+  riskFilter: { types: [] },
+};
+
 // SystemPromptV1 (TD-08)
 console.log('\nSystemPromptV1Schema');
 test('valid system prompt override', () => expectValid(SystemPromptV1Schema, VALID_PROMPT, 'valid'));
@@ -147,27 +163,93 @@ test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SET
 console.log('\nConfigViewV1Schema');
 test('valid config view', () => expectValid(ConfigViewV1Schema, {
   overlay: VALID_OVERLAY,
+  ...VALID_VIEW_EXTRAS,
   apiKeyConfigured: false,
 }, 'valid'));
 test('valid config view with provider', () => expectValid(ConfigViewV1Schema, {
   roomReference: 'room-1',
   provider: VALID_PROVIDER,
   overlay: VALID_OVERLAY,
+  ...VALID_VIEW_EXTRAS,
   apiKeyConfigured: true,
 }, 'with provider'));
 test('valid config view with prompt override', () => expectValid(ConfigViewV1Schema, {
   overlay: VALID_OVERLAY,
   prompt: VALID_PROMPT,
+  ...VALID_VIEW_EXTRAS,
   apiKeyConfigured: false,
 }, 'with prompt'));
 test('rejects internalRetrieval in config view', () => expectInvalid(ConfigViewV1Schema, {
   overlay: VALID_OVERLAY,
+  ...VALID_VIEW_EXTRAS,
   apiKeyConfigured: false,
   internalRetrieval: { calibrationVersion: 'v1', directPushThreshold: 0.85, windowMaxAgeMs: 5000, candidateMaxCount: 10 },
 }, 'internalRetrieval leaks'));
 test('rejects missing apiKeyConfigured', () => expectInvalid(ConfigViewV1Schema, {
   overlay: VALID_OVERLAY,
+  ...VALID_VIEW_EXTRAS,
 }, 'missing apiKeyConfigured'));
+
+// WP-0 new setting schemas
+console.log('\nQueueingConfigV1Schema');
+test('valid queueing config', () => expectValid(QueueingConfigV1Schema, { enabled: true, timeoutMs: 30000 }, 'enabled'));
+test('rejects timeout out of range', () => expectInvalid(QueueingConfigV1Schema, { enabled: true, timeoutMs: 100 }, 'too small'));
+
+console.log('\nAuditRetentionV1Schema');
+test('valid retention', () => expectValid(AuditRetentionV1Schema, { retentionDays: 30 }, '30 days'));
+test('rejects retention out of range', () => expectInvalid(AuditRetentionV1Schema, { retentionDays: 365 }, 'too large'));
+
+console.log('\nMetricsConfigV1Schema');
+test('valid metrics config', () => expectValid(MetricsConfigV1Schema, { enabled: true, port: 9100 }, '9100'));
+test('rejects port out of range', () => expectInvalid(MetricsConfigV1Schema, { enabled: true, port: 80 }, 'privileged'));
+
+console.log('\nRiskFilterTypeV1Schema');
+test('valid risk filter type', () => expectValid(RiskFilterTypeV1Schema, {
+  typeId: '01932a3b-4c5d-7000-8000-0000000000aa',
+  label: '违禁词',
+  keywords: ['赌博', '诈骗'],
+}, 'two keywords'));
+test('rejects empty label', () => expectInvalid(RiskFilterTypeV1Schema, {
+  typeId: '01932a3b-4c5d-7000-8000-0000000000aa',
+  label: '',
+  keywords: ['赌博'],
+}, 'empty label'));
+test('rejects keyword too long', () => expectInvalid(RiskFilterTypeV1Schema, {
+  typeId: '01932a3b-4c5d-7000-8000-0000000000aa',
+  label: '违禁词',
+  keywords: ['x'.repeat(41)],
+}, 'keyword > 40'));
+
+console.log('\nSessionMetricsSnapshotV1Schema');
+test('valid empty session snapshot', () => expectValid(SessionMetricsSnapshotV1Schema, {
+  commentReceived: 0,
+  commentFiltered: 0,
+  semanticTypeCounts: {},
+  llmRequests: 0,
+  displayed: 0,
+  filtered: 0,
+  discarded: 0,
+  failed: 0,
+}, 'empty'));
+test('valid populated session snapshot', () => expectValid(SessionMetricsSnapshotV1Schema, {
+  sessionId: '01932a3b-4c5d-7000-8000-0000000000aa',
+  startedAt: '2026-08-24T01:00:00.000Z',
+  endedAt: '2026-08-24T02:00:00.000Z',
+  commentReceived: 120,
+  commentFiltered: 5,
+  semanticTypeCounts: { persona_relevant: 10, low_value: 2 },
+  llmRequests: 8,
+  llmAvgLatencyMs: 1840.5,
+  displayed: 6,
+  filtered: 5,
+  discarded: 3,
+  failed: 1,
+  e2eP95Ms: 2710,
+}, 'populated'));
+
+console.log('\nMoveDataRootRequestV1Schema');
+test('valid move data root request', () => expectValid(MoveDataRootRequestV1Schema, { targetDir: 'D:\\echocue-data' }, 'valid'));
+test('rejects empty target dir', () => expectInvalid(MoveDataRootRequestV1Schema, { targetDir: '   ' }, 'empty'));
 
 // ProviderConfigInputV1 (user-submitted provider fields)
 console.log('\nProviderConfigInputV1Schema');

@@ -8,6 +8,7 @@ import { wirePersonaControl } from '../../../src/main/persona/persona-control-ip
 import { wireSafetyControl } from '../../../src/main/safety/safety-control-ipc.js';
 import { wireAuditControl } from '../../../src/main/audit/audit-control-ipc.js';
 import { wireDiagnosticsControl } from '../../../src/main/telemetry/diagnostics-control-ipc.js';
+import { wireMonitoringControl } from '../../../src/main/telemetry/monitoring-control-ipc.js';
 import { wireRetrievalControl } from '../../../src/main/retrieval/index.js';
 import { wireOverlayControl } from '../../../src/main/overlay/overlay-control-ipc.js';
 
@@ -39,6 +40,7 @@ function registerMainWires(isTrustedSender: (contents: unknown) => boolean): voi
   wireSafetyControl({ safety: {}, isTrustedSender: isTrustedSender as never });
   wireAuditControl({ audit: {}, isTrustedSender: isTrustedSender as never });
   wireDiagnosticsControl({ diagnostics: {}, isTrustedSender: isTrustedSender as never });
+  wireMonitoringControl({ metricsHub: {} as never, isTrustedSender: isTrustedSender as never });
   wireRetrievalControl({
     qdrant: {} as never,
     qdrantClient: {} as never,
@@ -82,6 +84,7 @@ const HANDLE_CHANNELS = [
   IpcChannel.SafetySaveDraft,
   IpcChannel.SafetyPublish,
   IpcChannel.DiagnosticsGetSummary,
+  IpcChannel.MonitoringGetSessionMetrics,
   IpcChannel.RetrievalGetStatus,
   IpcChannel.RetrievalImportPreSet,
   IpcChannel.RetrievalGetCollectionCounts,
@@ -105,7 +108,7 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     vi.clearAllMocks();
   });
 
-  it('registers exactly the 31 request channels and no broadcast/send-only channel', () => {
+  it('registers exactly the 32 request channels and no broadcast/send-only channel', () => {
     registerMainWires(() => true);
     registerOverlayWire(() => true);
     const registered = [...mocks.registered.keys()].sort();
