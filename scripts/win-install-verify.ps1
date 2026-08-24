@@ -145,6 +145,13 @@ try {
   # data root, then uninstall with /cleanData and assert the root is removed.
   if ($env:ECHOCUE_VERIFY_CLEAN_DATA -eq '1') {
     Write-Host 'STEP 7/8: clean-data reinstall'
+    # A prior uninstall can leave a non-empty install-root residue (NSIS uninstaller
+    # self-copy); reinstalling over it intermittently crashes the installer with
+    # 0xC0000005. Remove the root so the reinstall starts from a clean slate.
+    if (Test-Path $installRoot) {
+      Remove-Item -Path $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+      Start-Sleep -Milliseconds 500
+    }
     Run-Silent $installer.FullName @('/S')
     New-Item -ItemType Directory -Path (Split-Path -Parent $auditDb) -Force | Out-Null
     Set-Content -Path (Join-Path $dataRoot 'clean-me.txt') -Value 'sentinel' -Encoding utf8
