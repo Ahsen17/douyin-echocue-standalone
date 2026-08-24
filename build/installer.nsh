@@ -1,6 +1,8 @@
 ; WP-5: writes the data-save-location boot pointer on install (defaults to
 ; %LOCALAPPDATA%\Echocue). In-app migration (系统设置 → 数据保存位置) relocates
-; later. WP-6: optional user-data cleanup on uninstall.
+; later. The installer is one-click (see electron-builder.yml); the assisted page
+; flow was reverted after it crashed the Windows runner with 0xC0000005. WP-6:
+; optional user-data cleanup on uninstall.
 ;
 ; electron-builder includes this file in BOTH the installer and the uninstaller
 ; build (BUILD_UNINSTALLER is defined for the latter). Installer-only macros are

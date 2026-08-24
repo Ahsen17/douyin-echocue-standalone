@@ -12,12 +12,14 @@ const CONFIG = 'electron-builder.yml';
 describe('electron-builder packaging config (M7-08 / T-PKG-001)', () => {
   const text = readFileSync(join(process.cwd(), CONFIG), 'utf8');
 
-  it('installs per-user assisted with a changeable directory and data-dir page', () => {
-    expect(text).toMatch(/oneClick:\s*false/);
-    expect(text).toMatch(/allowToChangeInstallationDirectory:\s*true/);
+  it('installs per-user one-click with a data-location pointer include', () => {
+    expect(text).toMatch(/oneClick:\s*true/);
     expect(text).toMatch(/perMachine:\s*false/);
     expect(text).toMatch(/deleteAppDataOnUninstall:\s*false/);
+    // WP-5: the include writes the data-location boot pointer (assisted installer
+    // was reverted — the assisted page flow crashed with 0xC0000005 on Windows).
     expect(text).toMatch(/include:\s*build\/installer\.nsh/);
+    expect(text).not.toMatch(/allowToChangeInstallationDirectory:\s*true/);
   });
 
   it('carries the WP-5 data pointer and the WP-6 optional-cleanup uninstaller', () => {
