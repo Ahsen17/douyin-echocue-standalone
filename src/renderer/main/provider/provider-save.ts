@@ -12,7 +12,7 @@ export interface ProviderSaveApi {
 // (it reflects the key before it was stored).
 export async function saveProviderConfig(
   api: ProviderSaveApi,
-  input: { roomReference: string; form: ProviderForm },
+  input: { roomReference?: string; form: ProviderForm },
 ): Promise<ConfigViewV1> {
   const updated = await api.configUpdate(buildConfigUpdate(input))
   const apiKey = input.form.apiKey.trim()

@@ -488,6 +488,48 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(audit.transitions.map((t) => t.to)).toContain('DISPLAY_READY');
   });
 
+  it('WP-4: freezes getDirectPushThreshold at session start for direct push', async () => {
+    // sigmoid(4/2) ≈ 0.881: above the deps default 0.85 but below the frozen 0.95.
+    const borderline = { ...goldenHit(0.98), rawScore: 4 };
+    const provider = makeProvider();
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([borderline]) as never,
+      createProvider: () => provider as never,
+      getDirectPushThreshold: async () => 0.95,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    expect(provider.calls).toBe(1);
+    expect(audit.transitions.map((t) => t.to)).toContain('PROMPT_RENDERED');
+    expect(audit.transitions.map((t) => t.to)).not.toContain('DIRECT_READY');
+  });
+
+  it('WP-4: freezes getSemanticDiscardConfidence at session start for semantic discard', async () => {
+    // sigmoid(3/2) ≈ 0.818: below the default discard 0.9 but above the frozen 0.7.
+    const lowValue = {
+      pointId: 'pre-low',
+      caseId: 'pre-low',
+      collection: 'pre_set',
+      rawScore: 3,
+      rank: 1,
+      payload: { ...PRE_PAYLOAD, case_id: 'pre-low', semantic_type: 'low_value' },
+    } satisfies RetrievalRawHit;
+    const provider = makeProvider();
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([lowValue]) as never,
+      createProvider: () => provider as never,
+      getSemanticDiscardConfidence: async () => 0.7,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    expect(provider.calls).toBe(0);
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.from).toBe('RETRIEVING');
+    expect(discard?.reason).toBe('LOW_VALUE');
+  });
+
   it('aborts the in-flight attempt on abortAll(USER_STOP)', async () => {
     const provider = makeProvider({ ok: false, error: { code: 'ABORTED' } });
     const { audit, orchestrator } = harness({

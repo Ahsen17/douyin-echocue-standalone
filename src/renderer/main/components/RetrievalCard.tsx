@@ -85,7 +85,7 @@ export default function RetrievalCard({ serviceLifecycle, onNavigate }: Retrieva
       {block.kind === 'unavailable' ? (
         <>
           <p className="danger-text">检索服务不可用，导入与启动前请先检查 Qdrant 状态。</p>
-          <button type="button" className="secondary" onClick={() => onNavigate('诊断')}>
+          <button type="button" className="secondary" onClick={() => onNavigate('监控诊断')}>
             查看诊断
           </button>
         </>

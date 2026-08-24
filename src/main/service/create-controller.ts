@@ -220,6 +220,22 @@ export async function createServiceController(
         return null;
       }
     },
+    // WP-4: run-page retrieval thresholds from settings.internalRetrieval, frozen
+    // per session; the deps-level values remain the fallback.
+    getDirectPushThreshold: async () => {
+      try {
+        return (await settings.get())?.internalRetrieval.directPushThreshold ?? 0.85;
+      } catch {
+        return 0.85;
+      }
+    },
+    getSemanticDiscardConfidence: async () => {
+      try {
+        return (await settings.get())?.internalRetrieval.semanticDiscardConfidence ?? 0.9;
+      } catch {
+        return 0.9;
+      }
+    },
     onAuditFailure: () => {
       // Audit down ⇒ stop producing suggestions; service must not continue.
       void controller.stop('AUDIT_UNAVAILABLE');

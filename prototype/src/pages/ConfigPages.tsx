@@ -13,7 +13,7 @@ export function RoomAi() {
       <div><h1>直播间与 AI</h1><p>字段不绑定具体服务商；API Key 永不回显。</p></div>
       <label className="fixture">审查状态<select value={fixture} onChange={event => setFixture(event.target.value as RoomAiFixture)}><option>READY</option><option>EMPTY</option><option>TESTING</option><option>AUTH_ERROR</option></select></label>
     </div>
-    <section className="card"><h2>直播间</h2><label>直播间标识<input defaultValue={empty ? '' : '516466932480'} key={`room-${fixture}`} placeholder="请输入直播间标识" /></label><small>服务启动时确认直播间已开播；失败后关闭连接，只能手动重试。</small></section>
+    <section className="card"><h2>直播间</h2><label>直播间标识<input defaultValue={empty ? '' : '516466932480'} key={`room-${fixture}`} placeholder="输入抖音直播间ID，可通过网页版抖音查看获取。" /></label><small>服务启动时确认直播间已开播；失败后关闭连接，只能手动重试。</small></section>
     <section className="card"><h2>AI 服务</h2>
       <div className="form-grid">
         <label>服务商名称<input defaultValue={empty ? '' : '主用低延迟服务'} key={`name-${fixture}`} placeholder="例如：主用模型服务" /></label>

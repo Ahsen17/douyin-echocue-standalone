@@ -22,7 +22,6 @@ import {
 const PAGE_SIZE = 20
 
 export default function AuditPage() {
-  const [authorized, setAuthorized] = useState(false)
   const [result, setResult] = useState<AuditSearchResponseV1 | null>(null)
   const [page, setPage] = useState(1)
   const [finalState, setFinalState] = useState<TraceFinalState | ''>('')
@@ -52,27 +51,9 @@ export default function AuditPage() {
   })
 
   useEffect(() => {
-    if (authorized) void search.run(1, '', '')
+    void search.run(1, '', '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorized])
-
-  if (!authorized) {
-    return (
-      <div className="audit-page">
-        <div className="page-heading">
-          <h1>审计追溯</h1>
-          <span className="badge">本机加密 · 永久保存 · 不可导出</span>
-        </div>
-        <section className="card privacy-notice">
-          <h2>本机审计访问提示</h2>
-          <p>此处包含直播审计原文，请仅由获授权配置人员在本机查看。MVP 不提供导出或清空。</p>
-          <button type="button" onClick={() => setAuthorized(true)}>
-            我已获授权，进入审计
-          </button>
-        </section>
-      </div>
-    )
-  }
+  }, [])
 
   if (search.error !== null) {
     return (
@@ -124,7 +105,7 @@ export default function AuditPage() {
           <h1>审计追溯</h1>
           <p>完整 workflow 与主观打标是同一工作区的两个入口。</p>
         </div>
-        <span className="badge">本机加密 · 永久保存 · 不可导出</span>
+        <span className="badge">本机加密 · 按保留期自动清理 · 不可导出</span>
       </div>
 
       <section className="card filters">
