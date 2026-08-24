@@ -105,7 +105,7 @@ export default function AuditPage() {
           <h1>审计追溯</h1>
           <p>完整 workflow 与主观打标是同一工作区的两个入口。</p>
         </div>
-        <span className="badge">本机加密 · 永久保存 · 不可导出</span>
+        <span className="badge">本机加密 · 按保留期自动清理 · 不可导出</span>
       </div>
 
       <section className="card filters">

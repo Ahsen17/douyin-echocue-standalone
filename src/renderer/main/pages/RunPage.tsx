@@ -49,7 +49,7 @@ function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
   return (
     <div className="card">
       <h2>检索置信度阈值</h2>
-      <p>golden_set 命中达到直出阈值时跳过 LLM 直接展示；语义丢弃阈值之上的低置信结果直接丢弃。范围 0–1。</p>
+      <p>golden_set 命中达到直出阈值时跳过 LLM 直接展示；low_value / filter_risk 分类置信度达到语义丢弃阈值时直接丢弃（调高阈值更不易丢弃）。范围 0–1。</p>
       <div className="form-grid">
         <label>
           golden 直出阈值（默认 0.85）
@@ -177,7 +177,7 @@ export default function RunPage({ onNavigate }: PageProps) {
           {runView.primaryLabel}
         </button>
         {runView.showPreferencesLink ? (
-          <button type="button" className="secondary" onClick={() => onNavigate('系统设置')}>
+          <button type="button" className="secondary" onClick={() => onNavigate('系统设置', '浮窗偏好')}>
             浮窗偏好
           </button>
         ) : null}
