@@ -234,13 +234,13 @@ type OutputValidationReason =
 
 ## 6. 超时、取消、错误与状态迁移
 
-请求启动前，编排器确认 attempt 仍属于当前 `session_id`、`trace_id`、`window_version`，并将同一个 `AbortSignal` 传给 HTTP/SDK 调用。单次 provider 硬超时为 **5 秒**；若外层 attempt 已无新鲜度预算，必须更早取消，不能为了等待模型而延后浮窗或展示旧弹幕。
+请求启动前，编排器确认 attempt 仍属于当前 `session_id`、`trace_id`、`window_version`，并将同一个 `AbortSignal` 传给 HTTP/SDK 调用。单次 provider 硬超时为 **10 秒**；若外层 attempt 已无新鲜度预算，必须更早取消，不能为了等待模型而延后浮窗或展示旧弹幕。
 
 | 触发 | Main Process 动作 | 审计状态/原因 | UI 行为 |
 | --- | --- | --- | --- |
 | 用户停止、下播、WS 断开、审计不可写 | `abort()`，不等待 provider 返回；关闭服务链路。 | `LLM_PENDING → DISCARDED`，分别写 `USER_STOPPED`、`ROOM_ENDED`、`SOURCE_ERROR` 或 `AUDIT_FAILURE`。 | 隐藏浮窗；显示既有服务状态。 |
 | 展示窗口版本变化、候选过期 | `abort()`；晚到响应丢弃。 | `LLM_PENDING → DISCARDED`，写 `STALE_WINDOW`、`STALE_SESSION` 或 `DEADLINE_EXCEEDED`。 | 不展示、不排队。 |
-| 5 秒保险上限（或更早的新鲜度 deadline） | `abort()` HTTP 请求。 | Provider 保险超时：`LLM_PENDING → FAILED` + `PROVIDER_FAILED`；新鲜度先耗尽：`LLM_PENDING → DISCARDED` + `DEADLINE_EXCEEDED`。 | 回监听；不向浮窗显示技术错误。 |
+| 10 秒保险上限（或更早的新鲜度 deadline） | `abort()` HTTP 请求。 | Provider 保险超时：`LLM_PENDING → FAILED` + `PROVIDER_FAILED`；新鲜度先耗尽：`LLM_PENDING → DISCARDED` + `DEADLINE_EXCEEDED`。 | 回监听；不向浮窗显示技术错误。 |
 | 401 / 402 | 映射 `AUTH` / `BILLING`，不重试。 | `FAILED`，保留脱敏错误元数据。 | 主窗口提示检查 AI 配置/账户。 |
 | 400 / 422 | 映射 `VALIDATION`，不重试。 | `FAILED`。 | 主窗口可诊断，不泄露 prompt。 |
 | 429、5xx、网络错误 | 映射 `RATE_LIMIT` / `SERVER` / `NETWORK`，本 attempt 不重试。 | `FAILED`。 | 回监听；诊断显示可理解摘要。 |

@@ -206,7 +206,7 @@ MVP **不提供用户可操作的审计导出或备份/恢复 UI**，也不支�
 | 安装与离线性 | Windows x64 空机安装；所有 sidecar/词典资源随包且校验通过；首次运行无静默二进制下载。 |
 | 初始化 | SQLite WAL/migration/加密/HMAC 可用；`pre_set` 导入校验和平均文档长度冻结成功；双 collection 与 metadata 健康。 |
 | 真实直播 POC | 甲方真实已开播房间连续 30 分钟；验证 `ROOM_ONLINE` 门禁、评论事件、`ROOM_ENDED/OFFLINE` 立即关闭 WS、断连后无自动重连。 |
-| 性能 | `t0` 为 client 收到原始 WS frame 的单调时钟、`t_end` 为浮窗首帧确认；真实网络/人设/Provider 下测量 P95，持续优化目标不超过 3 秒，Provider 5 秒为保险上限且服从新鲜度 deadline。 |
+| 性能 | `t0` 为 client 收到原始 WS frame 的单调时钟、`t_end` 为浮窗首帧确认；真实网络/人设/Provider 下测量 P95，持续优化目标不超过 3 秒，Provider 10 秒为保险上限且服从新鲜度 deadline。 |
 | 审计 | 每条弹幕均有 trace；展示期弹幕审计但不排队；完整工作流、版本快照、TopK、输出与反馈可回放；不可写即停服。 |
 | 安全 | Key 不进入 SQLite/Qdrant/日志/IPC；Qdrant/指标仅 loopback；日志与指标无原文、昵称、trace ID 或凭证。 |
 | 桌面行为 | 三个窗口按钮正确；关闭隐藏托盘且服务不变；只有托盘显式退出停止服务、关闭 WS/sidecar、flush 审计。 |

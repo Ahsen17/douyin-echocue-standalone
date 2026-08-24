@@ -105,7 +105,7 @@ export class SettingsStore {
         // DEFAULT_CALIBRATION_ARTIFACT_V1 保持一致；运行页可调。
         semanticDiscardConfidence: 0.9,
         // 2026-08 校准：默认放宽到 5s，与编排器常量保持一致（当前未接线进运行时）。
-        windowMaxAgeMs: 5000,
+        windowMaxAgeMs: 10_000,
         candidateMaxCount: 50,
       },
     };
