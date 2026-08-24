@@ -88,10 +88,11 @@ textarea{height:115px}
 .tag{padding:6px 10px;border-radius:4px;background:#eef5ff;color:var(--blue);font-size:12px}
 .checkbox,.choice{display:flex;align-items:center;gap:8px}
 .checkbox input,.choice input{width:auto;margin:0}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
 .metrics .card{margin:0}
 .metrics.compact{margin:16px 0}
 .metrics.compact div{padding:12px;background:#f5f8fc;border-radius:8px}
+.metrics.two{grid-template-columns:repeat(2,1fr)}
 .metrics strong,.metrics small{display:block}
 .split{display:flex;gap:20px;align-items:flex-start}
 .grow{flex:1;min-width:0}

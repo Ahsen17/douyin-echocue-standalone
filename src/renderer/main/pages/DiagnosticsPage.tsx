@@ -107,17 +107,17 @@ export default function DiagnosticsPage() {
       <section className="card">
         <b>● 检索库样本</b>
         <p>只显示两个本地集合的样本数量，用于确认 golden_set 回流是否成功，不展示案例内容。</p>
-        <div className="metrics compact">
-          <div>
-            <small>pre_set 样本</small>
-            <strong>{counts === null ? '…' : `${counts.preSetPointCount} 条`}</strong>
-          </div>
-          <div>
-            <small>golden_set 样本</small>
-            <strong>{counts === null ? '…' : `${counts.goldenSetPointCount} 条`}</strong>
-          </div>
-        </div>
       </section>
+      <div className="metrics two">
+        <section className="card">
+          <small>pre_set 样本</small>
+          <h2>{counts === null ? '…' : `${counts.preSetPointCount} 条`}</h2>
+        </section>
+        <section className="card">
+          <small>golden_set 样本</small>
+          <h2>{counts === null ? '…' : `${counts.goldenSetPointCount} 条`}</h2>
+        </section>
+      </div>
     </>
   )
 }
