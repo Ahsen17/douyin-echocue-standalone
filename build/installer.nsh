@@ -1,28 +1,31 @@
 ; WP-5: assisted-install data-save-directory selection.
+; WP-6: optional user-data cleanup on uninstall.
 ;
-; Adds a custom installer page asking where user data (audit/personas/config/
-; case library) should live, then writes a boot pointer file so the app can
-; set its data root accordingly. Defaults to %LOCALAPPDATA%\Echocue and always
-; writes the pointer even on the silent path, so packaged mode keeps a stable
-; root. NSIS reserves an unused identifier space (custom pages only).
+; electron-builder includes this file in BOTH the installer and the uninstaller
+; build (BUILD_UNINSTALLER is defined for the latter). Installer-only functions
+; and macros are guarded so the uninstaller build does not compile unreferenced
+; install functions (NSIS warning 6010, which electron-builder promotes to an
+; error).
 
 !ifndef ECHOCUE_INSTALLER_NSH
 !define ECHOCUE_INSTALLER_NSH
 
 ; Libraries are included at the top so the function bodies below (compiled at
-; include time) can resolve ${WordReplace}/${FindCmdLineSwitch}/${FileExists}
-; macros; electron-builder includes installer.nsh during the header phase.
+; include time) can resolve ${WordReplace}/${GetParameters}/${GetOptions} macros;
+; electron-builder includes installer.nsh during the header phase.
 !include "LogicLib.nsh"
 !include "nsDialogs.nsh"
 !include "WordFunc.nsh"
 !include "FileFunc.nsh"
 
+!macro customHeader
+!macroend
+
+!ifndef BUILD_UNINSTALLER
+
 Var EchocueDataDir
 Var EchocueDataDialog
 Var EchocueDataDirFwd
-
-!macro customHeader
-!macroend
 
 !macro customInit
   StrCpy $EchocueDataDir "$LOCALAPPDATA\Echocue"
@@ -86,11 +89,13 @@ FunctionEnd
   FileClose $0
 !macroend
 
+!endif ; !ifndef BUILD_UNINSTALLER
+
 ; -----------------------------------------------------------------------------
 ; WP-6: optional user-data cleanup on uninstall. deleteAppDataOnUninstall stays
 ; false (see electron-builder.yml); instead this macro asks once (default No)
 ; whether to also remove all user data. /cleanData skips the prompt (install
-; verify). Reinstall/upgrade (isUpdated) never asks, so upgrades never wipe data.
+; verify). Reinstall/upgrade (--updated) never asks, so upgrades never wipe data.
 ; -----------------------------------------------------------------------------
 
 ; customUnInstall runs in the uninstaller, where a Call to a non-un. function is

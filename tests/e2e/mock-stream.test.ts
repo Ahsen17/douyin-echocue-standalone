@@ -180,13 +180,13 @@ describe('M7-05 模拟 E2E 实时流 (A-02～A-08)', () => {
   it('drops a candidate that outlives its freshness deadline (A-06)', async () => {
     const h = await buildMockStreamHarness({
       hits: [preHit()],
-      providerDelayMs: 400,
-      // 250ms freshness window: the mock retrieval+prompt complete in a few ms,
-      // while the 400ms provider delay reliably exceeds it, so the
-      // DEADLINE_EXCEEDED discard deterministically lands at LLM_PENDING. Kept
-      // well under the provider delay with headroom for slow CI runners (150ms
-      // occasionally discarded before the provider call under parallel load).
-      windowMaxAgeMs: 250,
+      providerDelayMs: 1000,
+      // 600ms freshness window: mock retrieval+prompt complete in a few ms even
+      // on a loaded CI runner, so the provider is reached before the deadline,
+      // while the 1000ms provider delay still exceeds it — the DEADLINE_EXCEEDED
+      // discard deterministically lands at LLM_PENDING (tighter windows fired
+      // before the provider call under parallel Windows load).
+      windowMaxAgeMs: 600,
     });
     try {
       await h.startService();
