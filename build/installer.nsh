@@ -9,16 +9,19 @@
 !ifndef ECHOCUE_INSTALLER_NSH
 !define ECHOCUE_INSTALLER_NSH
 
+; Libraries are included at the top so the function bodies below (compiled at
+; include time) can resolve ${WordReplace}/${FindCmdLineSwitch}/${FileExists}
+; macros; electron-builder includes installer.nsh during the header phase.
+!include "LogicLib.nsh"
+!include "nsDialogs.nsh"
+!include "WordFunc.nsh"
+!include "FileFunc.nsh"
+
 Var EchocueDataDir
 Var EchocueDataDialog
 Var EchocueDataDirFwd
 
 !macro customHeader
-  !include "LogicLib.nsh"
-  !include "nsDialogs.nsh"
-  !include "WordFunc.nsh"
-  !include "FileFunc.nsh"
-  !include "TextFunc.nsh"
 !macroend
 
 !macro customInit
@@ -87,12 +90,12 @@ FunctionEnd
 ; verify). Reinstall/upgrade (isUpdated) never asks, so upgrades never wipe data.
 ; -----------------------------------------------------------------------------
 
-; Resolve the data root into $R2. Reads the plain-text pointer (data-location.txt,
-; written above with a forward-slash path), falls back to %LOCALAPPDATA%\Echocue.
-; No JSON parsing — avoids WordFind index ambiguity entirely.
-Function EchocueResolveDataRoot
-  Push $R0
-  Push $R1
+; customUnInstall runs in the uninstaller, where a Call to a non-un. function is
+; illegal, so the data-root resolution is inlined (no separate helper).
+!macro customUnInstall
+  Push $R2
+  Push $R3
+  Push $R4
   StrCpy $R2 "$LOCALAPPDATA\Echocue"
   ${If} ${FileExists} "$LOCALAPPDATA\Echocue\data-location.txt"
     ClearErrors
@@ -100,32 +103,28 @@ Function EchocueResolveDataRoot
     FileRead $R0 $R1
     FileClose $R0
     ${IfNot} ${Errors}
-      ${TrimNewlines} $R1 $R2
-    ${EndIf}
-    ${If} $R2 == ""
-      StrCpy $R2 "$LOCALAPPDATA\Echocue"
+      ; Strip the trailing CRLF (WordFunc ships with all NSIS builds).
+      ${WordReplace} "$R1" "$\r$\n" "" "+" $R2
     ${EndIf}
   ${EndIf}
-  Pop $R1
-  Pop $R0
-FunctionEnd
-
-!macro customUnInstall
-  Push $R2
-  Push $R3
-  Push $R4
-  Call EchocueResolveDataRoot
 
   StrCpy $R3 "$LOCALAPPDATA\Echocue"
   StrCpy $R4 "0"
+  ${GetParameters} $R0
   ; /cleanData always cleans without asking (verify script / silent automation).
-  FindCmdLineSwitch "/cleanData"
-  IfErrors +2
-  Goto clean0
+  ClearErrors
+  ${GetOptions} $R0 "/cleanData" $R1
+  ${IfNot} ${Errors}
+    Goto clean0
+  ${EndIf}
+  ; Upgrade uninstaller runs with --updated; an upgrade must never wipe data.
+  ClearErrors
+  ${GetOptions} $R0 "--updated" $R1
+  ${IfNot} ${Errors}
+    Goto done0
+  ${EndIf}
   ${IfNot} ${Silent}
-    ${Unless} ${isUpdated}
-      MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否一并清理所有用户数据？将删除审计、人设、配置与案例库。" IDYES clean0 IDNO done0
-    ${EndUnless}
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否一并清理所有用户数据？将删除审计、人设、配置与案例库。" IDYES clean0 IDNO done0
   ${EndIf}
   Goto done0
 clean0:
