@@ -27,7 +27,7 @@
 
 - `npm run typecheck` ✅
 - `npm run test:contracts` ✅ 183 passed
-- `npm run test` ✅ 1155 passed / 5 skipped（既有 skip）
+- `npm run test` ✅ 1156 passed / 5 skipped（既有 skip）
 - `npm run build` ✅
 - 受影响的契约 fixtures 已同步（T-SAFE/T-PROV/T-RET 配置化风险过滤）；IPC allowlist/preload-surface/打包配置测试已更新
 

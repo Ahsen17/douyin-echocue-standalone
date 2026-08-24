@@ -26,6 +26,12 @@ Var EchocueDataDirFwd
   StrCpy $EchocueDataDir "$LOCALAPPDATA\Echocue"
 !macroend
 
+; Register the data-dir selection page after the install-dir page. electron-builder
+; calls customPageAfterChangeDir inside the assisted installer's page flow.
+!macro customPageAfterChangeDir
+  Page custom EchocueDataPageCreate EchocueDataPageLeave
+!macroend
+
 Function EchocueDataPageCreate
   nsDialogs::Create /NOUNLOAD 1018
   Pop $EchocueDataDialog

@@ -24,12 +24,18 @@ describe('electron-builder packaging config (M7-08 / T-PKG-001)', () => {
     const installer = readFileSync(join(process.cwd(), 'build', 'installer.nsh'), 'utf8');
     expect(installer).toMatch(/customInstall/);
     expect(installer).toMatch(/data-location\.json/);
+    // The data-dir page must actually be registered in the assisted page flow.
+    expect(installer).toMatch(/customPageAfterChangeDir/);
+    expect(installer).toMatch(/Page custom EchocueDataPageCreate EchocueDataPageLeave/);
+    expect(installer).toMatch(/data-location\.txt/);
     expect(installer).toMatch(/include "uninstaller\.nsh"/);
 
     const uninstaller = readFileSync(join(process.cwd(), 'build', 'uninstaller.nsh'), 'utf8');
     expect(uninstaller).toMatch(/customUnInstall/);
     expect(uninstaller).toMatch(/cleanData/);
+    expect(uninstaller).toMatch(/data-location\.txt/);
     expect(uninstaller).toMatch(/RMDir \/r/);
+    expect(uninstaller).toMatch(/MB_DEFBUTTON2/);
   });
 
   it('bundles every required runtime resource', () => {

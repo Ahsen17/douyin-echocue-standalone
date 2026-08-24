@@ -38,7 +38,7 @@
 - **关联**：M1-07。
 - **✅ 完成（WP-1，PR #64，2026-08-24）**：`EchocueMetrics` 重写为业务/性能指标集；`SessionMetrics` 按会话累计；`MetricsHub` 聚合 + 回环 `/metrics` 服务器（默认 127.0.0.1:9100，可配置，EADDRINUSE 非致命）；orchestrator/controller 接线 hooks；监控诊断页新增「直播监控数据」区块（中文标签）。`OtelSetup.initOtel` 保持未启用（无 OTLP 导出需求）。
 
-## 综合实施计划实现登记（2026-08-24，分支 feat/batch-rest → PR #65）
+## 综合实施计划实现登记（2026-08-24，分支 feat/batch-rest，PR 待创建）
 
 - WP-4：五页重构（服务运行/直播设置/系统设置/监控诊断/审计追溯）+ 运行页检索阈值配置 + 导航图标 + 审计页去门禁。
 - WP-8：修复 pre_set 导入误清空 golden_set（仅首 boot 创建 golden；后续导入只重建 pre_set）。

@@ -42,6 +42,17 @@ describe('DataLocationStore (WP-5)', () => {
     expect(store().readSync()).toBe(dataDir);
   });
 
+  it('write also mirrors the plain-text pointer for the uninstaller (WP-6), forward-slashed', async () => {
+    const target = join(testDir, 'migrated', 'data dir');
+    await mkdir(target, { recursive: true });
+    await store().write(target);
+    // txt lives next to the json pointer (pointer/pointer.txt).
+    const txtPath = join(testDir, 'pointer', 'pointer.txt');
+    const raw = await readFile(txtPath, 'utf8');
+    expect(raw).toBe(`${join(testDir, 'migrated', 'data dir').replaceAll('\\', '/')}\r\n`);
+    expect(await store().read()).toBe(join(testDir, 'migrated', 'data dir').replaceAll('\\', '/'));
+  });
+
   it('read ignores a pointer whose target directory no longer exists', async () => {
     const dataDir = join(testDir, 'gone');
     await store().write(dataDir);

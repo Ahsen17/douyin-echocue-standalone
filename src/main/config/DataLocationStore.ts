@@ -10,7 +10,12 @@ export interface DataLocationFileV1 {
 }
 
 export class DataLocationStore {
-  constructor(private readonly pointerPath: string) {}
+  private readonly txtPath: string;
+
+  constructor(private readonly pointerPath: string) {
+    // WP-6 uninstaller reads the plain-text pointer; keep both in sync.
+    this.txtPath = pointerPath.replace(/\.json$/, '.txt');
+  }
 
   /** Reads a valid pointer; null when absent, corrupt, or pointing at a removed dir. */
   async read(): Promise<string | null> {
@@ -31,9 +36,16 @@ export class DataLocationStore {
   }
 
   async write(dataRoot: string): Promise<void> {
-    await mkdir(dirname(this.pointerPath), { recursive: true });
-    const body = JSON.stringify({ schemaVersion: 1, dataRoot } satisfies DataLocationFileV1);
+    const dir = dirname(this.pointerPath);
+    await mkdir(dir, { recursive: true });
+    // Forward-slash normalize: Windows user input with backslashes would make the
+    // JSON invalid (unescaped \x escapes), and both Node and NSIS accept '/'.
+    const fwd = dataRoot.replaceAll('\\', '/');
+    const body = JSON.stringify({ schemaVersion: 1, dataRoot: fwd } satisfies DataLocationFileV1);
     await writeFile(this.pointerPath, body, 'utf8');
+    // Mirror into the plain-text pointer the NSIS uninstaller reads (WP-6), so
+    // /cleanData removes the real (migrated) root, not a stale one.
+    await writeFile(this.txtPath, `${fwd}\r\n`, 'utf8');
   }
 }
 

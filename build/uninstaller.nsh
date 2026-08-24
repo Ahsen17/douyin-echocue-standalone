@@ -45,13 +45,16 @@ FunctionEnd
 
   StrCpy $R3 "$LOCALAPPDATA\Echocue"
   StrCpy $R4 "0"
+  ; /cleanData always cleans without asking (verify script / silent automation).
+  FindCmdLineSwitch "/cleanData"
+  IfErrors +2
+  Goto clean0
   ${IfNot} ${Silent}
     ${Unless} ${isUpdated}
-      MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否一并清理所有用户数据？将删除审计、人设、配置与案例库。" /SD IDNO IDYES clean0 IDNO done0
+      MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "是否一并清理所有用户数据？将删除审计、人设、配置与案例库。" IDYES clean0 IDNO done0
     ${EndUnless}
   ${EndIf}
-  FindCmdLineSwitch "/cleanData"
-  IfErrors done0
+  Goto done0
 clean0:
   StrCpy $R4 "1"
 done0:
