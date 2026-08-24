@@ -34,5 +34,6 @@
 ## 说明
 
 - **有意变更**（PR 描述需标注）：排队覆盖「绝不排队补发」；阈值开放配置；风险过滤未配置时不过滤（替代内置保护词）。
-- **Windows 侧验证**：NSIS 页面/卸载宏/verify 脚本依赖 Windows CI（package-windows.yml）；本机 WSL2 无法本地跑 makensis/PowerShell。
+- **Windows 侧验证**：NSIS/卸载宏/verify 脚本由 Windows CI（package-windows.yml）权威验证；本地已打通 `npm run package:win:local`（electronuserland/builder:wine 镜像 + 国内镜像加速 + node_modules 命名卷）。
+- **WP-5 安装器形态调整**：最初按计划用 assisted 安装器（oneClick:false + 可改目录 + 数据目录页），但 Windows runner 上安装器以 0xC0000005 崩溃，且与自定义 NSIS 代码无关（两种差异巨大的 customInstall 均复现，Wine 无法复现——无显示驱动下 assisted 安装器挂起）。**回退 oneClick:true**（WP-5 之前 CI 通过的形态）：保留 data-location.txt 指针 + 应用内迁移 + WP-6 卸载清理；放弃「安装时选择安装目录/数据目录」UX。若未来需要 assisted，需在真实 Windows 上单独调试该崩溃。
 - 每 WP 的详细进度见 `progress/` 下的历史记录与 `TECH-DEBT.md` 综合登记。
