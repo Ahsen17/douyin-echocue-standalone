@@ -194,7 +194,7 @@ export class SuggestionAttemptOrchestrator {
       traceId,
       windowVersion,
       // Pre-attempt bound: the tightest t0-anchored term before selection
-      // (窗口驻留, 与 5s 窗口淘汰一致；2026-08 校准)。The full min formula is
+      // (窗口驻留, 与 10s 窗口淘汰一致；2026-08-25 校准)。The full min formula is
       // applied when the attempt is created (M5-08, CONTRACT §6).
       freshnessDeadlineMonotonicMs:
         comment.receivedMonotonicMs +

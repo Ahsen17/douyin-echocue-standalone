@@ -113,7 +113,7 @@ flowchart TD
   C19 -- 是 --> C20[DIRECT_READY\n不调用 LLM]
   C19 -- 否 --> C21[渲染提示词]
   C17 -- 否 --> C21
-  C21 --> C22[调用一次选定 Provider\n5 秒保险上限且服从新鲜度 deadline]
+  C21 --> C22[调用一次选定 Provider\n10 秒保险上限且服从新鲜度 deadline]
   C22 --> C23{输出校验通过\n且 attempt 仍有效}
   C23 -- 否 --> C24[审计失败或 STALE\n回 RUNNING]
   C23 -- 是 --> C25[GENERATED DISPLAY_READY]

@@ -831,7 +831,7 @@ describe('SuggestionAttemptOrchestrator', () => {
       await orchestrator.startSession({ sessionId: 's1' });
       orchestrator.handleComment(makeComment({ receivedMonotonicMs: 1000 }));
       await waitFor(() => orchestrator.getCurrentAttempt() !== null);
-      // min(6000, 4500, 2500) = 2500: the window residency binds.
+      // min(11000, 12000, 2500) = 2500: the window residency binds.
       expect(orchestrator.getCurrentAttempt()!.freshnessDeadlineMonotonicMs).toBe(2500);
       now = 2600; // past 2500 while the provider call is in flight
       release();

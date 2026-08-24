@@ -278,7 +278,7 @@ type OutputValidationReason =
 
 | 本文内容 | 上游事实 | 下游实现 |
 | --- | --- | --- |
-| 单次 JSON Output、5 秒保险上限、禁用 MVP Tool Calls | 技术调研 5.4/5.6；数据协议 Provider 契约 | `TextGenerationProvider`、首个 DeepSeek adapter、取消器、统一错误映射。 |
+| 单次 JSON Output、10 秒保险上限、禁用 MVP Tool Calls | 技术调研 5.4/5.6；数据协议 Provider 契约 | `TextGenerationProvider`、首个 DeepSeek adapter、取消器、统一错误映射。 |
 | 当前人设/禁忌版本与双库 TopK 上下文 | 架构 4.2/4.3；数据协议 Qdrant 契约 | `PromptAssembler`、审计快照。 |
 | 80/40、2–3 条与共用校验 | PRD FR-06；UI 打标约束；数据协议 6 节 | `SuggestionOutputValidator`、golden 回流入库前校验。 |
 | 审计 role、加密与 UI 隐私边界 | PRD FR-10；数据建模；UI 设计 | `AuditStoreWorker`、受限 IPC。 |

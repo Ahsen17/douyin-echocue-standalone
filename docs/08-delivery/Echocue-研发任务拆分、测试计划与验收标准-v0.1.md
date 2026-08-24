@@ -118,7 +118,7 @@ P1 未通过不阻止 P0/P2 的本地开发，但阻止声明“可用于真实�
 
 - 实现滚动最新窗口、展示期抑制生成、deadline/cancel token 和过期候选丢弃。
 - 并行读取人设快照和双路检索；golden 高置信命中通过当前安全/长度/禁忌复验后直出，否则仅一次选定 Provider 调用。
-- 实现 `TextGenerationProvider`、`ProviderConfigV1`（服务商名称、adapter type、Base URL、Model ID、凭证引用）、首个 DeepSeek adapter、5 秒保险上限/新鲜度取消、结构化输出校验和统一错误分类；MVP 响应出现 `tool_calls` 必须按 `PROTOCOL` 失败，完整 Tool Call adapter 移入后续 backlog。
+- 实现 `TextGenerationProvider`、`ProviderConfigV1`（服务商名称、adapter type、Base URL、Model ID、凭证引用）、首个 DeepSeek adapter、10 秒保险上限/新鲜度取消、结构化输出校验和统一错误分类；MVP 响应出现 `tool_calls` 必须按 `PROTOCOL` 失败，完整 Tool Call adapter 移入后续 backlog。
 - 实现 always-on-top 浮窗：存在昵称时显示 `@昵称`，新建议出现即展示，默认 10 秒可配，窗口到期隐藏；支持拖拽、宽高、透明度、字号、深浅主题、点击穿透及偏好持久化/跨屏安全回退。
 
 **验收**
@@ -191,7 +191,7 @@ P1 未通过不阻止 P0/P2 的本地开发，但阻止声明“可用于真实�
 | `T-SAFE-001` | Unit/Contract/E2E | Safety fixtures、编译成功/失败、输入/输出复验、PII/禁忌/fail-closed 与版本快照。 |
 | `T-PER-001` | Unit/Integration | 主要出镜兜底、别名/同音错字、多人版本发布、回滚生成新草稿/版本、会话快照不热切换。 |
 | `T-RET-001` | Unit/Integration/POC | schema 全包原子导入、跨语言 hash、双库 filter/校准/rerank、直出、bad case、单点回流幂等。 |
-| `T-PROV-001` | Contract/E2E | 通用 Provider 配置、Key 不回显、DeepSeek + 替代 fixture、错误映射、5 秒 abort、Tool Call 拒绝。 |
+| `T-PROV-001` | Contract/E2E | 通用 Provider 配置、Key 不回显、DeepSeek + 替代 fixture、错误映射、10 秒 abort、Tool Call 拒绝。 |
 | `T-OVR-001` | E2E/Windows | `@昵称`、首帧 ack、置顶/隐藏、完整偏好、跨屏回退、关闭到托盘与显式退出。 |
 | `T-AUD-001` | Integration/E2E | 原文、状态、版本、TopK、prompt、Provider、输出、浮窗、反馈修订/outbox 全回溯；不可写即停服。 |
 | `T-PERF-001` | Benchmark/真实 POC | 统一 `t0` 到 `t_end` 的 P50/P95/P99；展示期不生成、不排队旧建议。 |

@@ -86,7 +86,7 @@ export class EchocueMetrics {
     this.llmLatencyMs = new Histogram({
       name: 'echocue_llm_latency_ms',
       help: 'LLM single-request latency (ms)',
-      buckets: [100, 250, 500, 1000, 2000, 3000, 5000],
+      buckets: [100, 250, 500, 1000, 2000, 3000, 5000, 10000],
       registers: [this.registry],
     })
 
