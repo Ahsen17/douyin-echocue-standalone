@@ -259,6 +259,10 @@ test('valid provider input', () => expectValid(ProviderConfigInputV1Schema, {
   baseUrl: 'https://api.deepseek.com',
   modelId: 'deepseek-chat',
 }, 'valid'));
+test('accepts DeepSeek input without displayName/baseUrl (WP-11)', () => expectValid(ProviderConfigInputV1Schema, {
+  adapterType: 'DEEPSEEK',
+  modelId: 'deepseek-chat',
+}, 'deepseek bare'));
 test('rejects ANTHROPIC_MESSAGES adapter input', () => expectInvalid(ProviderConfigInputV1Schema, {
   displayName: 'Anthropic',
   adapterType: 'ANTHROPIC_MESSAGES',

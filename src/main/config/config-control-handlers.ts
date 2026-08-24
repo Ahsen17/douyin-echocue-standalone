@@ -1,5 +1,5 @@
 import { ConfigUpdateRequestV1Schema, OverlayPreferenceV1Schema, type ConfigViewV1, type OverlayPreferenceV1, type ProviderConfigV1, type SettingsV1, type SystemPromptV1 } from '@echocue/contracts';
-import type { ProviderConfigService } from '../provider/provider-config.js';
+import { DEEPSEEK_DEFAULT_BASE_URL, type ProviderConfigService } from '../provider/index.js';
 import { CredentialStore } from '../credentials/index.js';
 import { uuidv7 } from '../util/index.js';
 import { ConfigCorruptError, SettingsStore } from './SettingsStore.js';
@@ -62,7 +62,16 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
       try {
         if (provider !== undefined) {
           const currentProvider = await deps.providerConfig.getProviderConfig();
-          const providerId = slugifyProviderId(provider.displayName);
+          // WP-11: empty displayName/baseUrl get adapter defaults; an OpenAI
+          // compatible config without a base URL is rejected.
+          const displayName = (provider.displayName ?? '').trim() || defaultProviderName(provider.adapterType);
+          const baseUrl =
+            (provider.baseUrl ?? '').trim() ||
+            (provider.adapterType === 'DEEPSEEK' ? DEEPSEEK_DEFAULT_BASE_URL : '');
+          if (baseUrl === '') {
+            throw new Error('OpenAI 兼容服务需填写 Base URL');
+          }
+          const providerId = slugifyProviderId(displayName);
           // Keep the stored credentialRef when the provider identity is unchanged;
           // a host/adapter change invalidates the old key inside updateProviderConfig.
           const credentialRef =
@@ -71,9 +80,9 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
               : CredentialStore.buildCredentialRef(providerId);
           const next: ProviderConfigV1 = {
             providerId,
-            displayName: provider.displayName,
+            displayName,
             adapterType: provider.adapterType,
-            baseUrl: provider.baseUrl,
+            baseUrl,
             modelId: provider.modelId,
             credentialRef,
           };
@@ -179,6 +188,12 @@ async function isApiKeyConfigured(
   const providerId = CredentialStore.parseCredentialRef(provider.credentialRef);
   if (!providerId) return false;
   return providerConfig.hasApiKey(providerId);
+}
+
+// WP-11: default display name when the form field is left empty; the derived
+// providerId (deepseek / openai-compatible) stays stable across saves.
+function defaultProviderName(adapterType: ProviderConfigV1['adapterType']): string {
+  return adapterType === 'DEEPSEEK' ? 'DeepSeek' : 'OpenAI Compatible';
 }
 
 // Derive a stable providerId from the display name (CredentialStore providerId
