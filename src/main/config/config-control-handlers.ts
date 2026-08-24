@@ -32,6 +32,13 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         activeSafetyPolicyVersion: settings.activeSafetyPolicyVersion,
         overlay: settings.overlay,
         prompt: settings.prompt,
+        directPushThreshold: settings.internalRetrieval.directPushThreshold,
+        semanticDiscardConfidence:
+          settings.internalRetrieval.semanticDiscardConfidence ?? 0.9,
+        queueing: settings.queueing ?? { enabled: false, timeoutMs: 30000 },
+        audit: settings.audit ?? { retentionDays: 30 },
+        metrics: settings.metrics ?? { enabled: true, port: 9100 },
+        riskFilter: settings.riskFilter ?? { types: [] },
         apiKeyConfigured,
       };
     },
@@ -41,7 +48,17 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
       if (!parsed.success) {
         throw new Error('配置内容不合法，请检查输入后再保存');
       }
-      const { roomReference, provider, systemPrompt } = parsed.data;
+      const {
+        roomReference,
+        provider,
+        systemPrompt,
+        directPushThreshold,
+        semanticDiscardConfidence,
+        queueing,
+        auditRetentionDays,
+        metricsPort,
+        riskFilter,
+      } = parsed.data;
       try {
         if (provider !== undefined) {
           const currentProvider = await deps.providerConfig.getProviderConfig();
@@ -78,6 +95,34 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
                   updatedAt: new Date().toISOString(),
                 };
           await deps.settings.update({ prompt });
+        }
+        // Retrieval thresholds: merge into internalRetrieval so the other
+        // internal fields survive the partial write. Applied on next service
+        // start (the orchestrator freezes them per session).
+        if (directPushThreshold !== undefined || semanticDiscardConfidence !== undefined) {
+          const currentSettings = await readSettings(deps.settings);
+          await deps.settings.update({
+            internalRetrieval: {
+              ...currentSettings.internalRetrieval,
+              ...(directPushThreshold !== undefined ? { directPushThreshold } : {}),
+              ...(semanticDiscardConfidence !== undefined ? { semanticDiscardConfidence } : {}),
+            },
+          });
+        }
+        if (queueing !== undefined) {
+          await deps.settings.update({ queueing });
+        }
+        if (auditRetentionDays !== undefined) {
+          await deps.settings.update({ audit: { retentionDays: auditRetentionDays } });
+        }
+        if (metricsPort !== undefined) {
+          const currentMetrics = (await readSettings(deps.settings)).metrics;
+          await deps.settings.update({
+            metrics: { ...(currentMetrics ?? { enabled: true, port: 9100 }), port: metricsPort },
+          });
+        }
+        if (riskFilter !== undefined) {
+          await deps.settings.update({ riskFilter });
         }
       } catch (err) {
         if (err instanceof ConfigCorruptError) {
