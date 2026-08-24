@@ -9,12 +9,16 @@
 !ifndef ECHOCUE_INSTALLER_NSH
 !define ECHOCUE_INSTALLER_NSH
 
+; WP-6 uninstaller macro (same include file covers installer + uninstaller).
+!include "uninstaller.nsh"
+
 Var EchocueDataDir
 Var EchocueDataDialog
 
 !macro customHeader
   !include "LogicLib.nsh"
   !include "nsDialogs.nsh"
+  !include "WordFunc.nsh"
 !macroend
 
 !macro customInit
@@ -56,10 +60,13 @@ FunctionEnd
 
 !macro customInstall
   ; Persist the chosen data root as the boot pointer. The file lives at a fixed
-  ; location so the app can read it before deciding the userData path.
+  ; location so the app can read it before deciding the userData path. The path
+  ; is written with forward slashes so the JSON stays valid (no backslash escape
+  ; ambiguity) and Node/NSIS both accept it on Windows.
   CreateDirectory "$LOCALAPPDATA\Echocue"
+  ${WordReplace} "$EchocueDataDir" "\" "/" "+" $EchocueDataDirFwd
   FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.json" w
-  FileWrite $0 '{"schemaVersion":1,"dataRoot":"$EchocueDataDir"}'
+  FileWrite $0 '{"schemaVersion":1,"dataRoot":"$EchocueDataDirFwd"}'
   FileClose $0
 !macroend
 

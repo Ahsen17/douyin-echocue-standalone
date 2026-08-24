@@ -135,6 +135,24 @@ try {
   $results.uninstalled = $true
   $results.uninstallDataPreserved = $true
 
+  # WP-6: optional data cleanup on uninstall (env-gated). Reinstall, seed the
+  # data root, then uninstall with /cleanData and assert the root is removed.
+  if ($env:ECHOCUE_VERIFY_CLEAN_DATA -eq '1') {
+    Run-Silent $installer.FullName @('/S')
+    New-Item -ItemType Directory -Path (Split-Path -Parent $auditDb) -Force | Out-Null
+    Set-Content -Path (Join-Path $dataRoot 'clean-me.txt') -Value 'sentinel' -Encoding utf8
+    if (-not (Test-Path (Join-Path $dataRoot 'clean-me.txt'))) {
+      throw 'could not seed data root for clean-data check'
+    }
+    Run-Silent $uninstaller @('/S', '/cleanData')
+    $cleanDeadline = (Get-Date).AddSeconds(60)
+    while ((Test-Path $dataRoot) -and (Get-Date) -lt $cleanDeadline) {
+      Start-Sleep -Milliseconds 500
+    }
+    if (Test-Path $dataRoot) { throw 'data root not removed after /cleanData uninstall' }
+    $results.cleanDataRemoved = $true
+  }
+
   $results.passed = $true
   Write-Host 'win-install-verify: PASSED'
 } catch {

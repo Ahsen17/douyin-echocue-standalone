@@ -20,6 +20,18 @@ describe('electron-builder packaging config (M7-08 / T-PKG-001)', () => {
     expect(text).toMatch(/include:\s*build\/installer\.nsh/);
   });
 
+  it('carries the WP-5 data-dir page and the WP-6 optional-cleanup uninstaller', () => {
+    const installer = readFileSync(join(process.cwd(), 'build', 'installer.nsh'), 'utf8');
+    expect(installer).toMatch(/customInstall/);
+    expect(installer).toMatch(/data-location\.json/);
+    expect(installer).toMatch(/include "uninstaller\.nsh"/);
+
+    const uninstaller = readFileSync(join(process.cwd(), 'build', 'uninstaller.nsh'), 'utf8');
+    expect(uninstaller).toMatch(/customUnInstall/);
+    expect(uninstaller).toMatch(/cleanData/);
+    expect(uninstaller).toMatch(/RMDir \/r/);
+  });
+
   it('bundles every required runtime resource', () => {
     const required = [
       'assets/qdrant_windows.exe',

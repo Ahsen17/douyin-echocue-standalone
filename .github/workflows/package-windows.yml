@@ -39,7 +39,10 @@ jobs:
       - name: Build Windows installer
         run: npm run package:win
 
-      - name: Verify install / upgrade / exit / no-residue
+      - name: Verify install / upgrade / exit / no-residue / clean-data uninstall
+        env:
+          # WP-6: exercise the optional user-data-cleanup uninstall branch.
+          ECHOCUE_VERIFY_CLEAN_DATA: '1'
         run: npm run package:verify
 
       - name: Run T-PKG-001 Windows install E2E
