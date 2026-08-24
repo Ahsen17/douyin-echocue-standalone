@@ -54,6 +54,20 @@ export class MigrationRunner {
           continue;
         }
 
+        // A table-rebuild migration (e.g. changing a CHECK) must toggle
+        // PRAGMA foreign_keys, which is a no-op inside a transaction — so it
+        // declares `-- self-transaction` and manages its own BEGIN/COMMIT +
+        // pragmas. Foreign-key enforcement is re-asserted afterwards.
+        const selfTransaction = /^--\s*self-transaction\s*$/m.test(sql);
+        if (selfTransaction) {
+          db.exec(sql);
+          db.prepare(
+            'INSERT INTO schema_migration (version, applied_at, checksum) VALUES (?,?,?)',
+          ).run(mig.version, new Date().toISOString(), checksum);
+          db.exec('PRAGMA foreign_keys=ON');
+          continue;
+        }
+
         db.exec('BEGIN');
         try {
           db.exec(sql);

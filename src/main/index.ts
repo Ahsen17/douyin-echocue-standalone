@@ -115,7 +115,16 @@ app.whenReady().then(async () => {
       safeStorage,
       douyinLiveBinaryPath: resolveAssetBinary('douyinLive'),
       qdrantBinaryPath: resolveAssetBinary('qdrant'),
-      migrationPath: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '001_initial_schema.sql')),
+      migrations: [
+        {
+          version: 1,
+          path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '001_initial_schema.sql')),
+        },
+        {
+          version: 2,
+          path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '002_queue_timeout_reason.sql')),
+        },
+      ],
       qdrantConfigTemplatePath: resolveResourcePath(join('resources', 'qdrant-config.yaml')),
       sidecarPins: {
         qdrant: {

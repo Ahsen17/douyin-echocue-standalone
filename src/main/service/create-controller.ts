@@ -41,7 +41,8 @@ export interface CreateServiceControllerOptions {
     qdrant: { version: string; sha256: string };
     douyinLive: { version: string; sha256: string };
   };
-  migrationPath: string;
+  /** Ordered SQLite migrations (001 initial schema, 002 queue-timeout reason …). */
+  migrations: MigrationFile[];
   keyVersion: string;
   cleanupOnStop: () => void;
   /** Optional file logger (wired by the app boot for daily logs under the data dir). */
@@ -78,7 +79,7 @@ export async function createServiceController(
   const keyManager = new CryptoKeyManager(credentials);
   await keyManager.ensureKeys(options.keyVersion);
 
-  const migrations: MigrationFile[] = [{ version: 1, path: options.migrationPath }];
+  const migrations = options.migrations;
   const dbPath = join(options.dataDir, 'audit', 'audit.sqlite');
   const audit = new AuditStoreWorker({
     dbPath,
@@ -207,6 +208,14 @@ export async function createServiceController(
         return prompt === undefined
           ? null
           : { systemPromptTemplate: prompt.systemPromptTemplate, templateVersion: prompt.templateVersion };
+      } catch {
+        return null;
+      }
+    },
+    // WP-2: FIFO danmaku queueing config, frozen per session (default off).
+    getQueueing: async () => {
+      try {
+        return (await settings.get())?.queueing ?? null;
       } catch {
         return null;
       }

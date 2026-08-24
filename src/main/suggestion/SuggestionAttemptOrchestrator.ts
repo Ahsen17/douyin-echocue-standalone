@@ -46,6 +46,9 @@ const WINDOW_CANDIDATE_MAX_COUNT = 50;
 // Bounded session dedup (ARCH §4.1): cap the seen-set to bound memory in a long
 // stream; a fresh window resets it via startSession.
 const SEEN_SET_MAX = 100_000;
+// WP-2 FIFO display-window queue: bounded backlog for comments arriving while
+// DISPLAYING. One is promoted per display end; the cap bounds memory.
+const QUEUE_MAX = 50;
 
 interface FrozenSafety {
   version: string;
@@ -83,6 +86,10 @@ export class SuggestionAttemptOrchestrator {
   private frozenSafety: FrozenSafety | null = null;
   private frozenMembers: readonly TeamMemberNameV1[] = [];
   private frozenSystemPrompt: SystemPromptConfig | null = null;
+  /** WP-2: frozen display-window queueing config (null = disabled). */
+  private frozenQueueing: { enabled: boolean; timeoutMs: number } | null = null;
+  /** WP-2: FIFO backlog of comments audited RECEIVED→NORMALIZED while DISPLAYING. */
+  private pendingQueue: ProcessingComment[] = [];
   /** Last written trace state per traceId, so async error paths close the chain. */
   private readonly traceState = new Map<string, TraceState>();
   /** Window candidates keyed by traceId, so eviction can close their chain. */
@@ -129,6 +136,10 @@ export class SuggestionAttemptOrchestrator {
     // TD-08: freeze the configured system prompt for the whole session, the same
     // way safety/members are frozen — no hot-swap mid-run.
     this.frozenSystemPrompt = (await this.deps.getSystemPrompt?.()) ?? null;
+    // WP-2: freeze queueing for the session; close any queued comments left over
+    // from a previous session (their traces would otherwise dangle in NORMALIZED).
+    this.frozenQueueing = (await this.deps.getQueueing?.()) ?? null;
+    this.closePendingQueue('STALE_SESSION');
     this.session = { sessionId: input.sessionId, seen: new Set() };
     this.attempt = null;
     this.abortRequested = false;
@@ -145,6 +156,8 @@ export class SuggestionAttemptOrchestrator {
     this.attempt = null;
     this.abortRequested = true;
     this.window.clear();
+    // Close any queued comments (their traces otherwise dangle in NORMALIZED).
+    this.closePendingQueue('STALE_SESSION');
     // traceState is NOT cleared here: an in-flight runAttempt continuation may
     // still run after the synchronous stop block and must close its chain from
     // the real last state (CRITICAL-1). It is cleared on the next startSession.
@@ -193,7 +206,9 @@ export class SuggestionAttemptOrchestrator {
       this.evictSeenHalf();
     }
 
-    // DISPLAYING guard: no retrieval, no generation, no queueing (ARCH §4.1).
+    // DISPLAYING guard: no retrieval, no generation (ARCH §4.1). WP-2: with
+    // queueing enabled, buffer the comment (audited RECEIVED→NORMALIZED) for a
+    // FIFO replay after the display window ends; otherwise discard as before.
     if (this.deps.stateMachine.getViewState().activity === 'DISPLAYING') {
       if (!this.beginTrace(processingComment)) return;
       this.transition(processingComment, null, 'RECEIVED', 'EVENT_RECEIVED', [
@@ -202,6 +217,10 @@ export class SuggestionAttemptOrchestrator {
       this.transition(processingComment, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK', [
         this.snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', comment),
       ]);
+      if (this.frozenQueueing?.enabled && this.pendingQueue.length < QUEUE_MAX) {
+        this.pendingQueue.push(processingComment);
+        return;
+      }
       this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'DISPLAY_WINDOW_ACTIVE', [
         this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'DISPLAY_WINDOW_ACTIVE' }),
       ]);
@@ -216,9 +235,18 @@ export class SuggestionAttemptOrchestrator {
       this.snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', comment),
     ]);
 
+    // Safety → routing → retrieval, shared with queued-comment promotion (WP-2).
+    this.continueFromNormalized(processingComment);
+  }
+
+  /**
+   * Continue a comment already audited RECEIVED→NORMALIZED: input safety, member
+   * routing, then retrieval. Used by the live path and by queue promotion (WP-2).
+   */
+  private continueFromNormalized(processingComment: ProcessingComment): void {
     // Input safety against the frozen compiled rules (ARCH §4.4).
     const safety = evaluateInputSafety({
-      normalizedText: comment.normalizedText,
+      normalizedText: processingComment.normalizedText,
       compiledRules: this.frozenSafety?.compiledRules ?? null,
     });
     if (!safety.allow) {
@@ -236,7 +264,7 @@ export class SuggestionAttemptOrchestrator {
     let personaRoute: PersonaRoute;
     let personaSnapshot: SuggestionAttempt['personaSnapshot'];
     try {
-      personaRoute = this.deps.router.route(comment.normalizedText);
+      personaRoute = this.deps.router.route(processingComment.normalizedText);
       const meta = this.deps.personas.getVersionMeta(personaRoute.personaVersion);
       personaSnapshot = {
         personaId: personaRoute.personaId,
@@ -275,6 +303,8 @@ export class SuggestionAttemptOrchestrator {
   /** Cancel any in-flight attempt with a concrete reason (M5-08 wires stop). */
   abortAll(reason: CancelTraceReason): void {
     this.abortRequested = true;
+    // Close the queued backlog too; traces would otherwise dangle in NORMALIZED.
+    this.closePendingQueue(reason);
     if (this.attempt === null) return;
     this.attempt.cancelReason = reason;
     this.attempt.abortController.abort();
@@ -300,6 +330,8 @@ export class SuggestionAttemptOrchestrator {
     void this.deps.displaySink.hide();
     this.resetWindowAfterDisplay();
     this.clearAttempt();
+    // WP-2: after the window closes, promote the oldest fresh queued comment.
+    this.drainQueue();
   }
 
   private async retrieve(
@@ -812,6 +844,41 @@ export class SuggestionAttemptOrchestrator {
   private resetWindowAfterDisplay(): void {
     this.window.clear();
     this.window.bumpVersion();
+  }
+
+  /**
+   * WP-2 FIFO drain on display end: expire stale queued comments (QUEUE_TIMEOUT)
+   * and promote the oldest fresh one — re-anchoring its window version and
+   * freshness at promotion time so the attempt budget starts fresh. The rest
+   * stay queued for the next display end.
+   */
+  private drainQueue(): void {
+    if (!this.frozenQueueing?.enabled || this.pendingQueue.length === 0) return;
+    const now = this.deps.nowMonotonic();
+    const remaining: ProcessingComment[] = [];
+    for (const comment of this.pendingQueue) {
+      if (now - comment.receivedMonotonicMs > this.frozenQueueing.timeoutMs) {
+        this.closeChain(comment, 'QUEUE_TIMEOUT');
+        continue;
+      }
+      remaining.push(comment);
+    }
+    this.pendingQueue = remaining;
+    const promoted = this.pendingQueue.shift();
+    if (promoted === undefined) return;
+    promoted.windowVersion = this.window.version;
+    promoted.receivedMonotonicMs = now;
+    promoted.freshnessDeadlineMonotonicMs =
+      now + Math.min(T0_FRESHNESS_BUDGET_MS, this.deps.windowMaxAgeMs ?? WINDOW_MAX_AGE_MS);
+    this.continueFromNormalized(promoted);
+  }
+
+  /** Close every queued comment's trace so none dangles in NORMALIZED. */
+  private closePendingQueue(reason: TraceReasonCodeV1): void {
+    for (const comment of this.pendingQueue) {
+      this.closeChain(comment, reason);
+    }
+    this.pendingQueue = [];
   }
 
   private validationContext(

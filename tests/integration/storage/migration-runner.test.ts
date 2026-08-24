@@ -10,6 +10,11 @@ const MIGRATION_PATH = join(
   'docs/06-data-interface/migrations/001_initial_schema.sql',
 );
 
+const MIGRATION_002_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/002_queue_timeout_reason.sql',
+);
+
 describe('MigrationRunner', () => {
   let testDir: string;
   let dbPath: string;
@@ -123,6 +128,63 @@ THIS IS NOT SQL;
     expect(() => {
       db.prepare('INSERT INTO persona VALUES (?,?,?,?,?,?)').run('p2', 'B', 1, null, now, now);
     }).toThrow();
+
+    db.close();
+  });
+
+  it('002 rebuild accepts QUEUE_TIMEOUT, preserves data, and keeps foreign_keys on', () => {
+    const runner = new MigrationRunner(dbPath, [
+      { version: 1, path: MIGRATION_PATH },
+      { version: 2, path: MIGRATION_002_PATH },
+    ]);
+    const db = runner.run();
+
+    const applied = db
+      .prepare('SELECT version FROM schema_migration ORDER BY version')
+      .all() as Array<{ version: number }>;
+    expect(applied.map((r) => r.version)).toEqual([1, 2]);
+
+    const now = '2026-08-24T00:00:00.000Z';
+    db.prepare('INSERT INTO live_session (session_id, room_reference, started_at) VALUES (?,?,?)').run(
+      's1', 'room-1', now,
+    );
+    db.prepare(
+      'INSERT INTO audit_trace (trace_id, session_id, source_message_id, received_at, created_at) VALUES (?,?,?,?,?)',
+    ).run('t1', 's1', 'm1', now, now);
+
+    // Pre-existing reason still writes after the rebuild.
+    db.prepare(
+      `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).run('t1', 1, 'NORMALIZED', 'DISCARDED', 'LOW_VALUE', now, null, 'h1');
+    // QUEUE_TIMEOUT is now an allowed reason_code.
+    db.prepare(
+      `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).run('t1', 2, 'NORMALIZED', 'DISCARDED', 'QUEUE_TIMEOUT', now, 'h1', 'h2');
+    const reasons = db
+      .prepare('SELECT reason_code FROM audit_transition WHERE trace_id=? ORDER BY sequence_no')
+      .all('t1') as Array<{ reason_code: string }>;
+    expect(reasons.map((r) => r.reason_code)).toEqual(['LOW_VALUE', 'QUEUE_TIMEOUT']);
+
+    // A reason still outside the CHECK is rejected.
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+           VALUES (?,?,?,?,?,?,?,?)`,
+        )
+        .run('t1', 3, 'NORMALIZED', 'DISCARDED', 'NOT_A_REASON', now, 'h2', 'h3'),
+    ).toThrow();
+    // foreign_keys is still ON after the rebuild (unknown trace rejected).
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+           VALUES (?,?,?,?,?,?,?,?)`,
+        )
+        .run('ghost', 1, 'NORMALIZED', 'DISCARDED', 'QUEUE_TIMEOUT', now, null, 'h'),
+    ).toThrow();
 
     db.close();
   });
