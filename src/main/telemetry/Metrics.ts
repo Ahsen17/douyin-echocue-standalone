@@ -93,7 +93,7 @@ export class EchocueMetrics {
     this.e2eLatencyMs = new Histogram({
       name: 'echocue_e2e_latency_ms',
       help: 'End-to-end latency from WS frame to overlay first render (ms)',
-      buckets: [100, 250, 500, 1000, 1500, 2000, 3000, 5000],
+      buckets: [100, 250, 500, 1000, 1500, 2000, 3000, 5000, 10000],
       registers: [this.registry],
     })
 
