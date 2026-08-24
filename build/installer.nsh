@@ -1,21 +1,18 @@
-; WP-5: assisted-install data-save-directory selection.
-; WP-6: optional user-data cleanup on uninstall.
+; WP-5: writes the data-save-location boot pointer on install (defaults to
+; %LOCALAPPDATA%\Echocue). In-app migration (系统设置 → 数据保存位置) relocates
+; later. WP-6: optional user-data cleanup on uninstall.
 ;
 ; electron-builder includes this file in BOTH the installer and the uninstaller
-; build (BUILD_UNINSTALLER is defined for the latter). Installer-only functions
-; and macros are guarded so the uninstaller build does not compile unreferenced
-; install functions (NSIS warning 6010, which electron-builder promotes to an
-; error).
+; build (BUILD_UNINSTALLER is defined for the latter). Installer-only macros are
+; guarded so the uninstaller build does not compile unreferenced install code
+; (NSIS warning 6010, which electron-builder promotes to an error).
 
 !ifndef ECHOCUE_INSTALLER_NSH
 !define ECHOCUE_INSTALLER_NSH
 
-; Libraries are included at the top so the function bodies below (compiled at
-; include time) can resolve ${WordReplace}/${GetParameters}/${GetOptions} macros;
-; electron-builder includes installer.nsh during the header phase.
+; Libraries are included at the top so the macro bodies below (compiled at
+; include time) can resolve ${GetParameters}/${GetOptions}/${FileExists}.
 !include "LogicLib.nsh"
-!include "nsDialogs.nsh"
-!include "WordFunc.nsh"
 !include "FileFunc.nsh"
 
 !macro customHeader
@@ -23,69 +20,13 @@
 
 !ifndef BUILD_UNINSTALLER
 
-Var EchocueDataDir
-Var EchocueDataDialog
-Var EchocueDataDirFwd
-
-!macro customInit
-  StrCpy $EchocueDataDir "$LOCALAPPDATA\Echocue"
-!macroend
-
-; Register the data-dir selection page after the install-dir page. electron-builder
-; calls customPageAfterChangeDir inside the assisted installer's page flow.
-!macro customPageAfterChangeDir
-  Page custom EchocueDataPageCreate EchocueDataPageLeave
-!macroend
-
-Function EchocueDataPageCreate
-  nsDialogs::Create /NOUNLOAD 1018
-  Pop $EchocueDataDialog
-  ${If} $EchocueDataDialog == error
-    Abort
-  ${EndIf}
-
-  ; Page header via plain nsDialogs labels (no MUI2 dependency: electron-builder
-  ; may compile the include before MUI2's header macros are defined).
-  ${NSD_CreateLabel} 0 0 100% 20u "数据保存位置"
-  Pop $0
-  ${NSD_CreateLabel} 0 20u 100% 24u "审计、人设、配置与案例库将保存在所选目录。之后可在应用内随时迁移。"
-  Pop $0
-  ${NSD_CreateDirRequest} 0 32u 100% 12u "$EchocueDataDir"
-  Pop $EchocueDataDir
-  ${NSD_CreateBrowseButton} 0 48u 100% 12u "浏览..."
-  Pop $0
-  ${NSD_OnClick} $0 EchocueDataBrowse
-
-  nsDialogs::Show
-FunctionEnd
-
-Function EchocueDataBrowse
-  ${NSD_GetText} $EchocueDataDir $1
-  nsDialogs::SelectFolderDialog "选择数据保存目录" $1
-  Pop $0
-  ${If} $0 != error
-    ${NSD_SetText} $EchocueDataDir "$0"
-  ${EndIf}
-FunctionEnd
-
-Function EchocueDataPageLeave
-  ${NSD_GetText} $EchocueDataDir $0
-  StrCpy $EchocueDataDir "$0"
-FunctionEnd
-
 !macro customInstall
-  ; Persist the chosen data root as the boot pointer. The files live at a fixed
-  ; location so the app can read them before deciding the userData path. The path
-  ; is written with forward slashes so the JSON stays valid (no backslash escape
-  ; ambiguity) and Node/NSIS both accept it on Windows. data-location.txt is a
-  ; plain copy the uninstaller reads without JSON parsing.
+  ; Persist the data root as the boot pointer (plain text — no JSON escaping or
+  ; string-replace macros, which are the fragile parts). The app reads this file
+  ; first and falls back to the JSON pointer written by in-app migration.
   CreateDirectory "$LOCALAPPDATA\Echocue"
-  ${WordReplace} "$EchocueDataDir" "\" "/" "+" $EchocueDataDirFwd
-  FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.json" w
-  FileWrite $0 '{"schemaVersion":1,"dataRoot":"$EchocueDataDirFwd"}'
-  FileClose $0
   FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.txt" w
-  FileWrite $0 "$EchocueDataDirFwd$\r$\n"
+  FileWrite $0 "$LOCALAPPDATA\Echocue"
   FileClose $0
 !macroend
 
@@ -98,8 +39,9 @@ FunctionEnd
 ; verify). Reinstall/upgrade (--updated) never asks, so upgrades never wipe data.
 ; -----------------------------------------------------------------------------
 
-; customUnInstall runs in the uninstaller, where a Call to a non-un. function is
-; illegal, so the data-root resolution is inlined (no separate helper).
+; customUnInstall runs in the uninstaller. The data-root resolution is inlined
+; (no un. helper function) and the pointer is plain text without a trailing
+; newline, so FileRead returns it cleanly.
 !macro customUnInstall
   Push $R2
   Push $R3
@@ -111,8 +53,7 @@ FunctionEnd
     FileRead $R0 $R1
     FileClose $R0
     ${IfNot} ${Errors}
-      ; Strip the trailing CRLF (WordFunc ships with all NSIS builds).
-      ${WordReplace} "$R1" "$\r$\n" "" "+" $R2
+      StrCpy $R2 $R1
     ${EndIf}
   ${EndIf}
 

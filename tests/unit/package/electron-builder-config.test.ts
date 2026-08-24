@@ -20,19 +20,19 @@ describe('electron-builder packaging config (M7-08 / T-PKG-001)', () => {
     expect(text).toMatch(/include:\s*build\/installer\.nsh/);
   });
 
-  it('carries the WP-5 data-dir page and the WP-6 optional-cleanup uninstaller', () => {
+  it('carries the WP-5 data pointer and the WP-6 optional-cleanup uninstaller', () => {
     const installer = readFileSync(join(process.cwd(), 'build', 'installer.nsh'), 'utf8');
     expect(installer).toMatch(/customInstall/);
-    expect(installer).toMatch(/data-location\.json/);
-    // The data-dir page must actually be registered in the assisted page flow.
-    expect(installer).toMatch(/customPageAfterChangeDir/);
-    expect(installer).toMatch(/Page custom EchocueDataPageCreate EchocueDataPageLeave/);
-    expect(installer).toMatch(/data-location\.txt/);
     // Single include file carries both the installer and the uninstaller macro.
     expect(installer).toMatch(/customUnInstall/);
     expect(installer).toMatch(/cleanData/);
     expect(installer).toMatch(/RMDir \/r/);
     expect(installer).toMatch(/MB_DEFBUTTON2/);
+    expect(installer).toMatch(/data-location\.txt/);
+    // No interactive custom page (removed after Windows-installer crash); the
+    // data root is the default + in-app migration. No fragile WordReplace/JSON.
+    expect(installer).not.toMatch(/customPageAfterChangeDir/);
+    expect(installer).not.toMatch(/WordReplace/);
     // No separate include that makensis cannot resolve.
     expect(installer).not.toMatch(/include "uninstaller\.nsh"/);
   });

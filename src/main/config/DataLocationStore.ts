@@ -20,7 +20,7 @@ export class DataLocationStore {
   /** Reads a valid pointer; null when absent, corrupt, or pointing at a removed dir. */
   async read(): Promise<string | null> {
     try {
-      return readValidPointer(this.pointerPath);
+      return readValidPointer(this.pointerPath, this.txtPath);
     } catch {
       return null;
     }
@@ -29,7 +29,7 @@ export class DataLocationStore {
   /** Synchronous boot-time read; the pointer is read before app ready. */
   readSync(): string | null {
     try {
-      return readValidPointer(this.pointerPath);
+      return readValidPointer(this.pointerPath, this.txtPath);
     } catch {
       return null;
     }
@@ -50,7 +50,17 @@ export class DataLocationStore {
 }
 
 // Shared sync validator; throws on any corrupt/absent/missing-target pointer.
-function readValidPointer(pointerPath: string): string {
+// The plain-text pointer (installer + in-app migration write it) is primary; the
+// JSON pointer is the legacy fallback. Whitespace is trimmed (the installer file
+// has no trailing newline, but a leftover one must not corrupt the path).
+function readValidPointer(pointerPath: string, txtPath: string): string {
+  if (existsSync(txtPath)) {
+    const raw = readFileSync(txtPath, 'utf8').trim();
+    if (raw !== '') {
+      accessSync(raw);
+      return raw;
+    }
+  }
   if (!existsSync(pointerPath)) throw new Error('pointer missing');
   const raw = readFileSync(pointerPath, 'utf8');
   const parsed = JSON.parse(raw) as Partial<DataLocationFileV1>;
