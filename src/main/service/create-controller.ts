@@ -8,6 +8,7 @@ import { CryptoKeyManager } from '../crypto/index.js';
 import { AuditStoreWorker, StorageMonitor, type MigrationFile } from '../storage/index.js';
 import { PersonaRouter, PersonaStore } from '../persona/index.js';
 import { SafetyPolicyStore } from '../safety/index.js';
+import { compileRiskFilter } from '../safety/risk-filter-config.js';
 import { QDRANT_HTTP_PORT, QDRANT_LOOPBACK_HOST, QdrantSidecarManager } from '../qdrant/index.js';
 import { DouyinLiveSidecarManager, DouyinLiveWsAdapter } from '../douyin/index.js';
 import { DeepSeekProvider, OpenAiCompatibleProvider, ProviderConfigService } from '../provider/index.js';
@@ -234,6 +235,15 @@ export async function createServiceController(
         return (await settings.get())?.internalRetrieval.semanticDiscardConfidence ?? 0.9;
       } catch {
         return 0.9;
+      }
+    },
+    // WP-10: compile the configured risk filter once per session (empty → none).
+    getRiskFilter: async () => {
+      try {
+        const types = (await settings.get())?.riskFilter?.types ?? [];
+        return compileRiskFilter(types);
+      } catch {
+        return null;
       }
     },
     onAuditFailure: () => {

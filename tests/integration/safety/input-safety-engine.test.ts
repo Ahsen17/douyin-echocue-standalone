@@ -55,9 +55,9 @@ describe('SafetyEngine (T-SAFE-001)', () => {
     await store.activatePublishedVersion(meta.safetyPolicyVersion);
   }
 
-  it('filters built-in PII against the frozen policy', async () => {
+  it('filters a configured PII risk type against the frozen policy', async () => {
     await withActivePolicy();
-    const engine = new SafetyEngine(store);
+    const engine = new SafetyEngine(store, [{ typeId: 'PII', label: '隐私', terms: ['住址', '手机号'] }]);
     const d = await engine.checkInput('你家具体住址和手机号是多少');
     expect(d.allow).toBe(false);
     if (!d.allow) {

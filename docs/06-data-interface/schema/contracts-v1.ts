@@ -52,6 +52,9 @@ export const ServiceActivitySchema = z.enum([
 
 // Fixed Bm25 zh pipeline identity (CONTRACT §4). Write and query share the same
 // tokenizer/normalization; changing either requires a new profile/collection.
+/** Built-in DeepSeek OpenAI-compatible endpoint (RESEARCH §5.4); empty form base URL falls back here. */
+export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com';
+
 export const BM25_TOKENIZER_VERSION_V1 = 'zh_jieba_search_v1';
 export const BM25_NORMALIZATION_VERSION_V1 = 'zh_bm25_normalize_v1';
 export const BM25_VECTOR_NAME_V1 = 'bm25_zh_jieba_v1';
@@ -413,16 +416,26 @@ export const ConfigViewV1Schema = z.strictObject({
 
 // Provider fields a user submits; providerId/credentialRef are derived by the
 // handler. ANTHROPIC_MESSAGES has no adapter (M5-04), so it is not offerable.
+// WP-11: displayName/baseUrl are optional at the form boundary — the handler
+// fills adapter defaults (DEEPSEEK gets its built-in base URL) and rejects an
+// OPENAI_COMPATIBLE config with no base URL. Storage keeps them required.
 export const ProviderConfigInputV1Schema = z.strictObject({
-  displayName: z.string().min(1).max(80),
+  displayName: z.string().trim().max(80).optional(),
   adapterType: z.enum(['DEEPSEEK', 'OPENAI_COMPATIBLE']),
-  baseUrl: z.string().url().superRefine((value, ctx) => {
-    const url = new URL(value);
+  baseUrl: z.string().trim().max(512).optional().superRefine((value, ctx) => {
+    if (value === undefined || value === '') return;
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      ctx.addIssue({ code: 'custom', message: 'Base URL must be a valid URL' });
+      return;
+    }
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
       ctx.addIssue({ code: 'custom', message: 'Base URL must be HTTPS without userinfo, query, or fragment' });
     }
   }),
-  modelId: z.string().min(1).max(128),
+  modelId: z.string().trim().min(1).max(128),
 });
 
 export const ConfigUpdateRequestV1Schema = z.strictObject({

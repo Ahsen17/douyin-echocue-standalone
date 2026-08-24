@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  BUILTIN_CATEGORY_TERMS,
-  BUILTIN_ORDER,
   evaluateInputSafety,
+  type CompiledRiskType,
   type CompiledSafetyRuleV1,
 } from '../../../src/main/safety/index.js';
 
@@ -10,15 +9,27 @@ function rules(...rs: CompiledSafetyRuleV1[]): CompiledSafetyRuleV1[] {
   return rs;
 }
 
+function risk(...types: CompiledRiskType[]): readonly CompiledRiskType[] {
+  return types;
+}
+
 describe('evaluateInputSafety', () => {
-  it('filters built-in PII', () => {
-    const d = evaluateInputSafety({ normalizedText: '你家具体住址和手机号是多少', compiledRules: [] });
-    expect(d).toEqual({ allow: false, reason: 'PII', matchedRule: null });
+  it('filters a configured PII-type risk keyword', () => {
+    const d = evaluateInputSafety({
+      normalizedText: '你家具体住址和手机号是多少',
+      compiledRules: [],
+      riskFilter: risk({ typeId: 'privacy', label: '隐私', terms: ['住址', '手机号'] }),
+    });
+    expect(d).toEqual({ allow: false, reason: 'privacy', matchedRule: null });
   });
 
-  it('filters built-in ABUSE', () => {
-    const d = evaluateInputSafety({ normalizedText: '带有侮辱谩骂的测试占位文本', compiledRules: [] });
-    expect(d).toEqual({ allow: false, reason: 'ABUSE', matchedRule: null });
+  it('filters the first matching configured type by keyword order', () => {
+    const d = evaluateInputSafety({
+      normalizedText: '带有侮辱谩骂的测试占位文本',
+      compiledRules: [],
+      riskFilter: risk({ typeId: 'abuse-cfg', label: '辱骂', terms: ['侮辱', '谩骂'] }),
+    });
+    expect(d).toEqual({ allow: false, reason: 'abuse-cfg', matchedRule: null });
   });
 
   it('allows safe content', () => {
@@ -26,15 +37,29 @@ describe('evaluateInputSafety', () => {
     expect(d).toEqual({ allow: true, reason: null, matchedRule: null });
   });
 
-  it('detects every built-in category from its term list', () => {
-    for (const category of BUILTIN_ORDER) {
-      const term = BUILTIN_CATEGORY_TERMS[category][0];
-      const d = evaluateInputSafety({ normalizedText: `前缀${term}后缀`, compiledRules: [] });
-      expect(d.allow).toBe(false);
-      if (!d.allow) {
-        expect(d.reason).toBe(category);
-      }
-    }
+  it('matches the first type and first keyword in configuration order', () => {
+    const filter = risk(
+      { typeId: 'a', label: 'A', terms: ['甲'] },
+      { typeId: 'b', label: 'B', terms: ['乙', '甲'] },
+    );
+    // '甲' hits both types; configuration order picks type a.
+    expect(evaluateInputSafety({ normalizedText: '前缀甲后缀', compiledRules: [], riskFilter: filter })).toEqual({
+      allow: false,
+      reason: 'a',
+      matchedRule: null,
+    });
+    // '乙' only exists in type b.
+    expect(evaluateInputSafety({ normalizedText: '前缀乙后缀', compiledRules: [], riskFilter: filter })).toEqual({
+      allow: false,
+      reason: 'b',
+      matchedRule: null,
+    });
+  });
+
+  it('skips the risk step entirely when riskFilter is empty or absent', () => {
+    // WP-10: unconfigured risk filter means no risk filtering at all.
+    expect(evaluateInputSafety({ normalizedText: '手机号是多少', compiledRules: [] }).allow).toBe(true);
+    expect(evaluateInputSafety({ normalizedText: '手机号是多少', compiledRules: [], riskFilter: [] }).allow).toBe(true);
   });
 
   it('hits a compiled KEYWORD rule', () => {
@@ -81,14 +106,16 @@ describe('evaluateInputSafety', () => {
     expect(d.allow).toBe(true);
   });
 
-  it('gives built-in detectors precedence over compiled rules', () => {
+  it('gives the configured risk filter precedence over compiled rules', () => {
     const d = evaluateInputSafety({
       normalizedText: '你家住址和最低价分别是',
       compiledRules: rules({ ruleType: 'KEYWORD', category: 'TRANSACTION_PRICE', text: '最低价' }),
+      riskFilter: risk({ typeId: 'privacy', label: '隐私', terms: ['住址'] }),
     });
     expect(d.allow).toBe(false);
     if (!d.allow) {
-      expect(d.reason).toBe('PII');
+      expect(d.reason).toBe('privacy');
+      expect(d.matchedRule).toBeNull();
     }
   });
 

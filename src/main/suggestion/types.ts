@@ -9,6 +9,7 @@ import type { AuditStoreWorker } from '../storage/index.js';
 import type { ServiceStateMachine } from '../service/index.js';
 import type { PersonaRouter, PersonaStore, PersonaRoute } from '../persona/index.js';
 import type { SafetyPolicyStore } from '../safety/index.js';
+import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import type { SuggestionRetriever, CalibratedRetrieval, CalibrationArtifactV1 } from '../retrieval/index.js';
 import type { ProviderConfigService, ProviderAuditRecord, TextGenerationProvider } from '../provider/index.js';
 import type { CredentialStore } from '../credentials/index.js';
@@ -111,6 +112,8 @@ export interface SuggestionOrchestratorDeps {
   getSystemPrompt?: () => Promise<SystemPromptConfig | null>;
   /** WP-2: FIFO danmaku queueing during the display window (null → disabled). */
   getQueueing?: () => Promise<QueueingConfigV1 | null>;
+  /** WP-10: user-configured risk filter, compiled per session (empty → no filtering). */
+  getRiskFilter?: () => Promise<CompiledRiskFilter | null>;
   onAuditFailure: () => void;
   /** Diagnostics hooks (M6-02): feed the anonymous run summary. */
   onCommentReceived?: () => void;

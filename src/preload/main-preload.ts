@@ -67,6 +67,8 @@ const echocueApi = {
     get: () => ipcRenderer.invoke(IpcChannel.ConfigGet) as Promise<ConfigViewV1>,
     update: (input: ConfigUpdateRequestV1) =>
       ipcRenderer.invoke(IpcChannel.ConfigUpdate, input) as Promise<ConfigViewV1>,
+    moveDataRoot: (targetDir: string) =>
+      ipcRenderer.invoke(IpcChannel.SettingsMoveDataRoot, { targetDir }) as Promise<{ ok: true }>,
   },
   persona: {
     list: () => ipcRenderer.invoke(IpcChannel.PersonaList) as Promise<PersonaSummaryV1[]>,

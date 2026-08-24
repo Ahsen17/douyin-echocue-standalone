@@ -141,6 +141,41 @@ describe('Config IPC handlers', () => {
     expect(view.provider?.providerId).toBe('default');
   });
 
+  it('update fills default name and built-in base URL for an empty DeepSeek form (WP-11)', async () => {
+    const view = await handlers.update({
+      provider: {
+        adapterType: 'DEEPSEEK',
+        modelId: 'deepseek-chat',
+      },
+    });
+    expect(view.provider?.displayName).toBe('DeepSeek');
+    expect(view.provider?.providerId).toBe('deepseek');
+    expect(view.provider?.baseUrl).toBe('https://api.deepseek.com');
+  });
+
+  it('update rejects an OpenAI compatible config without a base URL (WP-11)', async () => {
+    await expect(
+      handlers.update({
+        provider: {
+          adapterType: 'OPENAI_COMPATIBLE',
+          modelId: 'gpt-4o-mini',
+        },
+      }),
+    ).rejects.toThrow('OpenAI 兼容服务需填写 Base URL');
+  });
+
+  it('update keeps a user-supplied base URL when DeepSeek provides one (WP-11)', async () => {
+    const view = await handlers.update({
+      provider: {
+        displayName: 'DeepSeek',
+        adapterType: 'DEEPSEEK',
+        baseUrl: 'https://api.deepseek.com/v2',
+        modelId: 'deepseek-chat',
+      },
+    });
+    expect(view.provider?.baseUrl).toBe('https://api.deepseek.com/v2');
+  });
+
   it('update keeps the stored credentialRef when providerId is unchanged', async () => {
     await providerConfig.updateProviderConfig(VALID_PROVIDER_CONFIG);
     const view = await handlers.update({

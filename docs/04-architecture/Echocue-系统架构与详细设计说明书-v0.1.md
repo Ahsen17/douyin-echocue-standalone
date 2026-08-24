@@ -58,7 +58,7 @@ stateDiagram-v2
 | `GATE_CONNECTING` | `ROOM_ONLINE` | 记录会话开始，转 `RUNNING`。 |
 | `GATE_CONNECTING` | `ROOM_OFFLINE`、超时、错误 | 关闭 WS，显示“未开播/连接失败，可手动重试”，回 `STOPPED`。 |
 | `RUNNING` + activity 非 `DISPLAYING` | `COMMENT` | 审计可用时进入单条弹幕状态机；activity 可为 `LISTENING/RETRIEVING/GENERATING`。 |
-| `RUNNING` + activity=`DISPLAYING` | 任意 `COMMENT` | 仍创建加密审计 trace，记录 `RECEIVED → NORMALIZED → DISCARDED`，原因 `DISPLAY_WINDOW_ACTIVE`；不进入候选、不调用检索/LLM、不排队。 |
+| `RUNNING` + activity=`DISPLAYING` | 任意 `COMMENT` | 默认：仍创建加密审计 trace，记录 `RECEIVED → NORMALIZED → DISCARDED`，原因 `DISPLAY_WINDOW_ACTIVE`；不进入候选、不调用检索/LLM、不排队。开启「弹幕排队」（系统设置→运行机制）后：入 FIFO 队列，展示结束补发；排队超时丢弃记 `QUEUE_TIMEOUT`（WP-2）。 |
 | 任意非停止状态 | `STOP`、`ROOM_ENDED`、WS 异常、审计故障 | 取消 in-flight 任务，关闭 WS，隐藏浮窗，清空最新窗口，回 `STOPPED`。 |
 
 唯一生命周期枚举为 `STOPPED/GATE_CONNECTING/RUNNING`；唯一活动枚举为 `IDLE/GATE_CHECKING/LISTENING/RETRIEVING/GENERATING/DISPLAYING`。服务状态和每一次状态转换必须广播给主界面；UI 不得自行推断运行状态。
@@ -147,9 +147,11 @@ Qdrant 始终维护两个独立 collection：`pre_set`（预置相似案例库�
 
 ### 4.4 安全规则执行契约
 
-安全规则由版本化 `SafetyPolicyVersionV1` 管理，原始自然语言说明和关键词均保留；运行期只执行已发布版本的确定性编译结果，不在 3 秒主链路内调用 LLM 解释规则。规则发布顺序固定为：Unicode NFKC/大小写/空白归一 → 内置高风险类别与 PII detector → 精确关键词/短语 → 受控 regex → 自然语言边界的确定性编译规则。任何一步命中即 `FILTERED`，记录稳定 `SafetyReasonCodeV1`、规则版本和命中规则 ID。
+安全规则由版本化 `SafetyPolicyVersionV1` 管理，原始自然语言说明和关键词均保留；运行期只执行已发布版本的确定性编译结果，不在 3 秒主链路内调用 LLM 解释规则。规则发布顺序固定为：Unicode NFKC/大小写/空白归一 → 配置化风险过滤（自定义类型与关键词，按配置顺序首命中）→ 精确关键词/短语 → 受控 regex → 自然语言边界的确定性编译规则。任何一步命中即 `FILTERED`，记录稳定原因、规则版本和命中规则 ID。
 
-`SafetyRuleCompilerV1` 仅接受可解释句式，例如“不要/禁止/不讨论 + 一个或多个明确话题”，并把话题编译为 `TOPIC_PHRASE`；无法无歧义解析、regex 非法、关键词为空或类别未知时，版本标为 `INVALID`，不得发布、不得启动服务。用户仍以自然语言配置，但 UI 必须展示“可执行/需修改”的校验结果；不得静默忽略无法执行的自然语言。内置类别至少包括 `ABUSE`、`PII`、`POLITICS`、`SEXUAL`、`ILLEGAL`、`MEDICAL_FINANCIAL_ADVICE`、`COMPETITOR`、`TRANSACTION_PRICE`、`TEAM_FORBIDDEN`。
+> **2026-08 变更（有意）**：原「内置高风险类别与 PII detector（ABUSE/PII/POLITICS/SEXUAL/ILLEGAL/MEDICAL_FINANCIAL_ADVICE/COMPETITOR/TRANSACTION_PRICE）」改为**配置化风险过滤**（WP-10）：直播设置→风险过滤页可自定义类型与关键词；**未配置任何类型时运行期跳过风险步骤、不做内置词过滤**。安全策略（主播自配，以下段落）独立生效；`compiledRules === null` 仍 fail closed。内置词表降级为 benchmark 专用工具，不再进入运行期。
+
+`SafetyRuleCompilerV1` 仅接受可解释句式，例如“不要/禁止/不讨论 + 一个或多个明确话题”，并把话题编译为 `TOPIC_PHRASE`；无法无歧义解析、regex 非法、关键词为空或类别未知时，版本标为 `INVALID`，不得发布、不得启动服务。用户仍以自然语言配置，但 UI 必须展示“可执行/需修改”的校验结果；不得静默忽略无法执行的自然语言。内置类别至少包括 `ABUSE`、`PII`、`POLITICS`、`SEXUAL`、`ILLEGAL`、`MEDICAL_FINANCIAL_ADVICE`、`COMPETITOR`、`TRANSACTION_PRICE`、`TEAM_FORBIDDEN`（`TEAM_FORBIDDEN` 仍由安全策略编译规则产生，其余类别词表仅 benchmark 引用）。
 
 输入过滤与输出复验必须引用同一个已发布 `safety_policy_version`，但分别写入 `INPUT_SAFETY_DECISION` 与 `OUTPUT_SAFETY_DECISION` 快照。检测器异常、规则版本缺失或编译产物校验失败时 fail closed：拒绝启动或停止服务并返回 `E_SAFETY_POLICY_INVALID`，不能降级为“无规则运行”。规则测试集必须覆盖归一化变体、同音/错别字已配置变体、regex 边界、PII、每个内置类别、允许样本和编译失败样本。
 
@@ -227,7 +229,7 @@ interface SuggestionOutput {
 | 人设 | SQLite `persona_version` 自然语言文本 + metadata | 不限文本格式；draft/published 不可变版本；运行期固定 published snapshot。 |
 | 禁忌规则/关键词 | 本机配置 | 修改形成版本并审计引用。 |
 | Qdrant 案例库 | 独立 `pre_set` 与 `golden_set` collection | `pre_set` 按《pre_set 初始案例数据标准》由甲方初始化；两路并行召回；打标合格/修正答案即时 upsert 至 golden set。 |
-| 审计库 | `audit/audit.sqlite` 及 WAL 文件 | 用户应用数据目录、字段加密、永久保留、完全禁用导出；不可写即停止 AI 服务。 |
+| 审计库 | `audit/audit.sqlite` 及 WAL 文件 | 用户应用数据目录、字段加密、按保留期自动清理（默认 30 天、可调 7–180 天，当天首次运行清理过期完整 trace）、完全禁用导出；不可写即停止 AI 服务。 |
 
 ## 8. 安全与 IPC
 

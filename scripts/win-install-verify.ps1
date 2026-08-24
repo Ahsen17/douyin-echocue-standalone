@@ -58,12 +58,14 @@ function Clear-DataRoot {
 $results = [ordered]@{ installer = $installer.Name; passed = $false }
 
 try {
+  Write-Host 'STEP 1/8: silent install'
   # 1. one-click silent install to the per-user directory
   Run-Silent $installer.FullName @('/S')
   if (-not (Test-Path $appExe)) { throw "app not installed at $appExe" }
   $results.installDir = $installRoot
   $results.dataDir = $dataRoot
 
+  Write-Host 'STEP 2/8: bundled resources'
   # 2. sidecars / migration / icons are bundled (no runtime download needed)
   foreach ($rel in $BUNDLED) {
     if (-not (Test-Path (Join-Path $resourcesDir $rel))) {
@@ -72,6 +74,7 @@ try {
   }
   $results.bundledResources = $BUNDLED
 
+  Write-Host 'STEP 3/8: smoke launch'
   # 3. fresh launch creates the audit store and exits cleanly (code 0)
   Clear-DataRoot
   $results.launchExitCode = Invoke-Smoke $appExe
@@ -81,6 +84,7 @@ try {
   if (-not (Test-Path $auditDb)) { throw 'audit.sqlite was not created on first launch' }
   $results.dataCreated = $true
 
+  Write-Host 'STEP 4/8: no-orphan check'
   # 4. no sidecar processes left behind after graceful exit
   $orphans = Get-SidecarProcesses
   if ($orphans) {
@@ -88,6 +92,7 @@ try {
   }
   $results.noOrphanProcesses = $true
 
+  Write-Host 'STEP 5/8: upgrade reinstall'
   # 5. upgrade: reinstall over existing data must preserve the audit store
   Run-Silent $installer.FullName @('/S')
   $results.upgradeLaunchExitCode = Invoke-Smoke $appExe
@@ -102,6 +107,7 @@ try {
   # copy's working directory holds the install dir open, so NSIS can leave an
   # empty dir behind. Kill any app instance, run the uninstaller, wait for the
   # copy to exit, then remove a leftover empty dir explicitly.
+  Write-Host 'STEP 6/8: silent uninstall (preserve data)'
   Get-Process -Name 'Echocue' -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
@@ -134,6 +140,26 @@ try {
   if (-not (Test-Path $auditDb)) { throw 'audit data must survive uninstall (permanent audit)' }
   $results.uninstalled = $true
   $results.uninstallDataPreserved = $true
+
+  # WP-6: optional data cleanup on uninstall (env-gated). Reinstall, seed the
+  # data root, then uninstall with /cleanData and assert the root is removed.
+  if ($env:ECHOCUE_VERIFY_CLEAN_DATA -eq '1') {
+    Write-Host 'STEP 7/8: clean-data reinstall'
+    Run-Silent $installer.FullName @('/S')
+    New-Item -ItemType Directory -Path (Split-Path -Parent $auditDb) -Force | Out-Null
+    Set-Content -Path (Join-Path $dataRoot 'clean-me.txt') -Value 'sentinel' -Encoding utf8
+    if (-not (Test-Path (Join-Path $dataRoot 'clean-me.txt'))) {
+      throw 'could not seed data root for clean-data check'
+    }
+    Write-Host 'STEP 8/8: clean-data uninstall'
+    Run-Silent $uninstaller @('/S', '/cleanData')
+    $cleanDeadline = (Get-Date).AddSeconds(60)
+    while ((Test-Path $dataRoot) -and (Get-Date) -lt $cleanDeadline) {
+      Start-Sleep -Milliseconds 500
+    }
+    if (Test-Path $dataRoot) { throw 'data root not removed after /cleanData uninstall' }
+    $results.cleanDataRemoved = $true
+  }
 
   $results.passed = $true
   Write-Host 'win-install-verify: PASSED'

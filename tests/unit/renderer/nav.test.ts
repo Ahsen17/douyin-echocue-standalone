@@ -44,8 +44,8 @@ describe('main-window navigation', () => {
 })
 
 describe('settings page tabs (five-page restructure)', () => {
-  it('live settings aggregates room, personas, and safety', () => {
-    expect(LIVE_SETTINGS_TABS).toEqual(['直播间', '团队与人设', '安全与禁忌'])
+  it('live settings aggregates room, personas, safety, and risk filter', () => {
+    expect(LIVE_SETTINGS_TABS).toEqual(['直播间', '团队与人设', '安全与禁忌', '风险过滤'])
   })
 
   it('system settings aggregates provider, prompt, overlay, and runtime', () => {

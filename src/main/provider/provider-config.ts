@@ -1,4 +1,6 @@
-import { ProviderConfigV1Schema, type ProviderConfigV1 } from '@echocue/contracts';
+import { DEEPSEEK_DEFAULT_BASE_URL, ProviderConfigV1Schema, type ProviderConfigV1 } from '@echocue/contracts';
+
+export { DEEPSEEK_DEFAULT_BASE_URL };
 import { SettingsStore } from '../config/index.js';
 import { CredentialStore } from '../credentials/index.js';
 import { fetchJson } from './http.js';

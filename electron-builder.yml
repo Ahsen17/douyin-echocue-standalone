@@ -53,10 +53,19 @@ win:
         - x64
 
 nsis:
+  # One-click per-user install (reverted from assisted: the assisted page flow
+  # introduced by oneClick:false crashed the installer with 0xC0000005 on the
+  # Windows runner, independent of the custom NSIS code — see PR #67 history).
+  # Data-save location still works via build/installer.nsh writing the boot
+  # pointer + in-app migration; install-dir selection at install time is dropped.
   oneClick: true
   perMachine: false
-  deleteAppDataOnUninstall: false
   allowElevation: false
+  # Uninstall data cleanup is handled by the customUnInstall macro in
+  # build/installer.nsh (WP-6), so this stays false to avoid unconditional
+  # appdata removal.
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
   # Deterministic install E2E: silent install must not auto-launch the app
   # (would hold %LOCALAPPDATA%\Echocue open during Clear-DataRoot).
   runAfterFinish: false

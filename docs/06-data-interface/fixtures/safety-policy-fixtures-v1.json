@@ -27,12 +27,14 @@
       "id": "pii-input-filtered",
       "stage": "INPUT",
       "text": "你家具体住址和手机号是多少",
+      "riskFilter": [{ "typeId": "PII", "label": "隐私", "keywords": ["住址", "手机号"] }],
       "expected": { "allow": false, "reason": "PII", "traceFinalState": "FILTERED" }
     },
     {
       "id": "abuse-input-filtered",
       "stage": "INPUT",
       "text": "带有侮辱谩骂的测试占位文本",
+      "riskFilter": [{ "typeId": "ABUSE", "label": "辱骂", "keywords": ["侮辱", "谩骂"] }],
       "expected": { "allow": false, "reason": "ABUSE", "traceFinalState": "FILTERED" }
     },
     {
@@ -45,6 +47,7 @@
       "id": "unsafe-output-discarded",
       "stage": "OUTPUT",
       "text": "输出中包含已配置的家庭住址占位内容",
+      "riskFilter": [{ "typeId": "PII", "label": "隐私", "keywords": ["家庭住址"] }],
       "expected": { "allow": false, "reason": "PII", "traceFinalState": "DISCARDED" }
     },
     {

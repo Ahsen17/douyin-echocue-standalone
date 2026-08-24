@@ -124,9 +124,12 @@ describe('importPreSet failure paths', () => {
     }
   });
 
-  it('rejects entries containing sensitive content', () => {
+  it('rejects entries containing configured risk keywords', () => {
     const bad = '{"schema_version":"1.0","id":"pre-000003","text":"这里是我的手机号请勿外传","semantic_type":"positive_praise","description":"d","enabled":true,"is_bad_case":false}';
-    const result = importPreSet({ content: bad });
+    const result = importPreSet(
+      { content: bad },
+      { riskFilter: [{ typeId: 'privacy', label: '隐私', terms: ['手机号'] }] },
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.errors[0]).toMatchObject({ errorCode: 'PRE_SET_UNSAFE_CONTENT', path: '/text' });
@@ -135,11 +138,20 @@ describe('importPreSet failure paths', () => {
 
   it('checks the reference_reply security field too', () => {
     const bad = '{"schema_version":"1.0","id":"pre-000003","text":"状态不错","semantic_type":"positive_praise","description":"d","reference_reply":"请加我手机号咨询","enabled":true,"is_bad_case":false}';
-    const result = importPreSet({ content: bad });
+    const result = importPreSet(
+      { content: bad },
+      { riskFilter: [{ typeId: 'privacy', label: '隐私', terms: ['手机号'] }] },
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.errors[0]).toMatchObject({ errorCode: 'PRE_SET_UNSAFE_CONTENT', path: '/reference_reply' });
     }
+  });
+
+  it('allows content that would be risky when no risk filter is configured (WP-10)', () => {
+    const content = '{"schema_version":"1.0","id":"pre-000003","text":"这里是我的手机号请勿外传","semantic_type":"positive_praise","description":"d","enabled":true,"is_bad_case":false}';
+    const result = importPreSet({ content });
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -147,7 +159,10 @@ describe('importPreSet privacy', () => {
   it('never includes raw content in the error report', () => {
     const sensitive = '这里是我的手机号请勿外传';
     const bad = `{"schema_version":"1.0","id":"pre-000004","text":"${sensitive}","semantic_type":"positive_praise","description":"${sensitive}","enabled":true,"is_bad_case":false}`;
-    const result = importPreSet({ content: bad });
+    const result = importPreSet(
+      { content: bad },
+      { riskFilter: [{ typeId: 'privacy', label: '隐私', terms: ['手机号'] }] },
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const serialized = JSON.stringify(result.errors);

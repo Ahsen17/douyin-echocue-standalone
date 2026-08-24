@@ -4,6 +4,7 @@ import type {
   SuggestionSourceV1,
 } from '@echocue/contracts';
 import { SuggestionOutputValidator } from '../../src/main/validation/index.js';
+import { compileRiskFilter } from '../../src/main/safety/index.js';
 import type {
   CandidateSuggestion,
   OutputValidationContext,
@@ -64,6 +65,9 @@ function buildContext(
       { ruleType: 'KEYWORD', category: 'TEAM_FORBIDDEN', text: '私聊' },
       { ruleType: 'KEYWORD', category: 'TEAM_FORBIDDEN', text: '加微信' },
     ],
+    // WP-10: the pii-output case is filtered by a configured risk type whose
+    // typeId is literally 'PII' so it still maps to PERSONAL_INFO_HIT.
+    riskFilter: compileRiskFilter([{ typeId: 'PII', label: '隐私', keywords: ['微信号'] }]),
     memberNames: fixture.defaults.members,
     currentPersonaId: 'p-1',
     forbiddenPromiseTerms: fixture.defaults.forbiddenPromiseTerms,

@@ -126,16 +126,42 @@ describe('provider form (UI §7.1)', () => {
     expect(result).toEqual({ ok: true })
   })
 
-  it('validateProviderForm rejects empty fields', () => {
-    expect(
-      validateProviderForm({
+  it('validateProviderForm accepts a DeepSeek form without displayName/baseUrl (WP-11)', () => {
+    const result = validateProviderForm({
+      displayName: '',
+      adapterType: 'DEEPSEEK',
+      baseUrl: '',
+      modelId: 'deepseek-chat',
+      apiKey: '',
+    })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('validateProviderForm requires a Base URL for OpenAI compatible (WP-11)', () => {
+    const result = validateProviderForm({
+      displayName: 'OpenAI',
+      adapterType: 'OPENAI_COMPATIBLE',
+      baseUrl: '',
+      modelId: 'gpt-4o-mini',
+      apiKey: '',
+    })
+    expect(result).toEqual({ ok: false, message: 'OpenAI 兼容服务需填写 Base URL' })
+  })
+
+  it('buildConfigUpdate omits empty displayName and baseUrl for adapter defaults (WP-11)', () => {
+    const request = buildConfigUpdate({
+      form: {
         displayName: '',
         adapterType: 'DEEPSEEK',
-        baseUrl: 'https://api.deepseek.com',
+        baseUrl: '',
         modelId: 'deepseek-chat',
         apiKey: '',
-      }),
-    ).toEqual({ ok: false, message: '请填写服务商名称' })
+      },
+    })
+    expect(request.provider).toEqual({
+      adapterType: 'DEEPSEEK',
+      modelId: 'deepseek-chat',
+    })
   })
 
   it('validateProviderForm rejects http and userinfo/query/hash baseUrl', () => {

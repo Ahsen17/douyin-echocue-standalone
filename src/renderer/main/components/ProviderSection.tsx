@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ConfigViewV1, ConnectionTestResultV1 } from '@echocue/contracts'
+import { DEEPSEEK_DEFAULT_BASE_URL, type ConfigViewV1, type ConnectionTestResultV1 } from '@echocue/contracts'
 import { useServiceState } from '../hooks/useServiceState'
 import { useAsyncAction } from '../hooks/useAsyncAction'
 import {
@@ -93,7 +93,7 @@ export default function ProviderSection() {
       <h2>AI 服务</h2>
       <div className="form-grid">
         <label>
-          服务商名称
+          服务商名称<span className="opt-hint">选填 · 不填则用默认名</span>
           <input
             type="text"
             value={form.displayName}
@@ -102,7 +102,7 @@ export default function ProviderSection() {
           />
         </label>
         <label>
-          适配器类型
+          适配器类型<span className="req-mark">*</span>
           <select
             value={form.adapterType}
             onChange={(e) =>
@@ -121,15 +121,20 @@ export default function ProviderSection() {
         </label>
         <label>
           Base URL
+          {form.adapterType === 'OPENAI_COMPATIBLE' ? (
+            <span className="req-mark">*</span>
+          ) : (
+            <span className="opt-hint">选填 · 已内置 {DEEPSEEK_DEFAULT_BASE_URL}，可留空</span>
+          )}
           <input
             type="text"
             value={form.baseUrl}
-            placeholder="https://api.example.com"
+            placeholder={form.adapterType === 'DEEPSEEK' ? 'https://api.deepseek.com' : 'https://api.example.com'}
             onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))}
           />
         </label>
         <label>
-          Model ID
+          Model ID<span className="req-mark">*</span>
           <input
             type="text"
             value={form.modelId}
@@ -138,11 +143,11 @@ export default function ProviderSection() {
           />
         </label>
         <label>
-          API Key
+          API Key<span className="req-mark">*</span>
           <input
             type="password"
             value={form.apiKey}
-            placeholder={config?.apiKeyConfigured ? '已配置；输入新值可替换' : '请输入 API Key'}
+            placeholder={config?.apiKeyConfigured ? '已配置；输入新值可替换，留空则保留原 Key' : '请输入 API Key'}
             onChange={(e) => setForm((f) => ({ ...f, apiKey: e.target.value }))}
           />
         </label>

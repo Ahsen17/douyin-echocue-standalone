@@ -18,6 +18,8 @@ import { wireConfigControl } from './config/index.js'
 import { wirePersonaControl } from './persona/index.js'
 import { wireSafetyControl } from './safety/index.js'
 import { wireRetrievalControl } from './retrieval/index.js'
+import { compileRiskFilter } from './safety/risk-filter-config.js'
+import { DataLocationStore } from './config/index.js'
 import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
 import { resolveResourcePath } from './util/index.js'
 import { SIDECAR_PINS, sidecarSha256 } from './sidecar-pins.js'
@@ -36,12 +38,13 @@ let isExplicitQuit = false
 const SMOKE_QUIT_DELAY_MS = 4000
 
 if (app.isPackaged) {
-  // RUNBOOK §2.3: data root is %LOCALAPPDATA%\Echocue (Local), not the default
-  // Roaming userData, so the (potentially large) audit/Qdrant data does not
-  // roam and never touches the install directory. Electron allows setPath
-  // before ready; nothing reads userData earlier than this module scope.
+  // RUNBOOK §2.3 / WP-5: data root defaults to %LOCALAPPDATA%\Echocue (Local),
+  // so the (potentially large) audit/Qdrant data does not roam and never touches
+  // the install directory. An assisted-install pointer may redirect it; the
+  // pointer file sits at a fixed path so it is readable before userData is set.
   const localAppData = join(dirname(app.getPath('appData')), 'Local', 'Echocue')
-  app.setPath('userData', localAppData)
+  const dataRoot = new DataLocationStore(join(localAppData, 'data-location.json')).readSync()
+  app.setPath('userData', dataRoot ?? localAppData)
 }
 
 // Daily main-process log under the data dir: <userData>/logs/main-YYYY-MM-DD.log.
@@ -203,6 +206,29 @@ app.whenReady().then(async () => {
       providerConfig: services.providerConfig,
       overlayWindow: overlayWindowInstance,
       isTrustedSender,
+      // WP-5: in-app data-root relocation. Services must be stopped before the
+      // copy; after a successful migrate the app relaunches on the new root.
+      moveDataRoot: {
+        pointerStore: new DataLocationStore(
+          join(dirname(app.getPath('appData')), 'Local', 'Echocue', 'data-location.json'),
+        ),
+        dataDir: app.getPath('userData'),
+        // Packaged: getAppPath() is <install>\resources\app.asar, which would not
+        // reject the real install root; the exe's dir is the true install base.
+        installDir: dirname(app.getPath('exe')),
+        isServiceStopped: () =>
+          services?.stateMachine.getViewState().lifecycle === 'STOPPED' &&
+          !services?.controller.isStarting(),
+        shutdownServices: async () => {
+          await services?.controller.stop()
+          await services?.qdrant?.stop()
+          services?.shutdown()
+        },
+        relaunch: () => {
+          app.relaunch()
+          app.quit()
+        },
+      },
     })
     wirePersonaControl({ persona: services.persona, isTrustedSender })
     wireSafetyControl({ safety: services.safety, isTrustedSender })
@@ -225,6 +251,14 @@ app.whenReady().then(async () => {
       isServiceStopped: () =>
         services?.stateMachine.getViewState().lifecycle === 'STOPPED' &&
         !services?.controller.isStarting(),
+      // WP-10: reject pre_set entries containing configured risk keywords.
+      getRiskFilter: async () => {
+        try {
+          return compileRiskFilter((await services?.settings.get())?.riskFilter?.types ?? [])
+        } catch {
+          return null
+        }
+      },
     })
   } catch (err) {
     // bootstrap failure keeps the app usable; the gate fails closed until stores assemble

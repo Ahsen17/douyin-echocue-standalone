@@ -201,10 +201,19 @@ describe('SuggestionOutputValidator', () => {
       );
     });
 
-    it('maps a PII builtin hit to PERSONAL_INFO_HIT', () => {
+    it('maps a PII-category rule hit to PERSONAL_INFO_HIT', () => {
       expectRejected(
         { quick_reply: '加我微信号 123456', cues: ['一', '二'] },
         'PERSONAL_INFO_HIT',
+        { compiledRules: [{ ruleType: 'KEYWORD', category: 'PII', text: '微信号' }] },
+      );
+    });
+
+    it('maps a configured risk-filter hit to RISK_RULE_HIT (WP-10)', () => {
+      expectRejected(
+        { quick_reply: '欢迎私信咨询优惠', cues: ['一', '二'] },
+        'RISK_RULE_HIT',
+        { riskFilter: [{ typeId: 'sensitive', label: '敏感词', terms: ['优惠'] }] },
       );
     });
 

@@ -1,4 +1,4 @@
-export { ProviderConfigService } from './provider-config.js';
+export { ProviderConfigService, DEEPSEEK_DEFAULT_BASE_URL } from './provider-config.js';
 export type {
   ConnectionTestResult,
   ChatCompletionsProbe,

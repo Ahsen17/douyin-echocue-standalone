@@ -4,6 +4,7 @@ import type {
   ValidatedSuggestionV1,
 } from '@echocue/contracts';
 import type { PersonaSnapshot, SafetySnapshot } from '../prompt/types.js';
+import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import type { CompiledSafetyRuleV1 } from '../safety/types.js';
 
 export type { ValidatedSuggestionV1 };
@@ -45,6 +46,8 @@ export interface OutputValidationContext {
   safetySnapshot: SafetySnapshot;
   /** The same compiled rules used by input filtering (frozen version). */
   compiledRules: CompiledSafetyRuleV1[] | null;
+  /** WP-10: configured risk filter (empty ⇒ no risk filtering on output). */
+  riskFilter?: CompiledRiskFilter | null;
   /** All team members; used to reject mentions of non-current members. */
   memberNames: readonly TeamMemberNameV1[];
   /** The routed persona; its own name is allowed as self-reference. */

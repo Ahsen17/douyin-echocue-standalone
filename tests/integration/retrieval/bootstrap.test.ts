@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   QDRANT_ALIAS_GOLDEN_SET,
   QDRANT_ALIAS_PRE_SET,
   bootstrapPreSet,
+  buildDocumentVector,
   createBm25TextPipeline,
   tokenId,
 } from '../../../src/main/retrieval/index.js';
@@ -72,21 +74,57 @@ const VALID_CONTENT = [
     expect(leftovers).toEqual([]);
   }, 30_000);
 
-  it('atomically re-points aliases on a second bootstrap', async () => {
+  it('re-import replaces pre_set but preserves the existing golden_set collection and alias (WP-8)', async () => {
     const qdrant = await startTestQdrant();
     active.push(qdrant);
     const client = new QdrantClient({ host: '127.0.0.1', port: qdrant.manager.httpPort });
 
     const first = await bootstrapPreSet(client, { content: VALID_CONTENT });
+    const firstGolden = `${QDRANT_ALIAS_GOLDEN_SET}__${first.profileId}`;
+
+    // A host-approved point already living in golden_set must survive a re-import.
+    const pipeline = createBm25TextPipeline();
+    const analyzed = pipeline.analyze('主播认可的好答案');
+    const vector = buildDocumentVector(analyzed, first);
+    await client.upsert(firstGolden, {
+      wait: true,
+      points: [
+        {
+          id: randomUUID(),
+          vector: { bm25_zh_jieba_v1: { indices: vector.indices, values: vector.values } },
+          payload: {
+            case_id: 'g-kept',
+            tokenizer_version: 'zh_jieba_search_v1',
+            source_trace_id: randomUUID(),
+            persona_id: 'p-1',
+            persona_version: randomUUID(),
+            text: '主播认可的好答案',
+            semantic_type: 'positive_praise',
+            reply: '谢谢你',
+            cues: ['接住夸奖', '继续互动'],
+            quality_score: 90,
+            enabled: true,
+            is_bad_case: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        },
+      ],
+    });
+    expect((await client.getCollection(firstGolden)).points_count).toBe(1);
+
     const second = await bootstrapPreSet(client, { content: VALID_CONTENT });
 
     const aliases = await client.getAliases();
     const byAlias = new Map(aliases.aliases.map((a) => [a.alias_name, a.collection_name]));
+    // pre_set is re-pointed to the fresh collection…
     expect(byAlias.get(QDRANT_ALIAS_PRE_SET)).toBe(`${QDRANT_ALIAS_PRE_SET}__${second.profileId}`);
-    expect(byAlias.get(QDRANT_ALIAS_GOLDEN_SET)).toBe(`${QDRANT_ALIAS_GOLDEN_SET}__${second.profileId}`);
+    // …but golden_set still points at the first bootstrap's collection, intact.
+    expect(byAlias.get(QDRANT_ALIAS_GOLDEN_SET)).toBe(firstGolden);
+    expect((await client.getCollection(firstGolden)).points_count).toBe(1);
 
-    const firstCollection = `${QDRANT_ALIAS_PRE_SET}__${first.profileId}`;
-    const exists = await client.collectionExists(firstCollection);
-    expect(exists.exists).toBe(true); // old collection retained for rollback window
+    const firstPreSet = `${QDRANT_ALIAS_PRE_SET}__${first.profileId}`;
+    const exists = await client.collectionExists(firstPreSet);
+    expect(exists.exists).toBe(true); // old pre_set collection retained for rollback window
   }, 30_000);
 });

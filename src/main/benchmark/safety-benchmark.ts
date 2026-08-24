@@ -1,7 +1,16 @@
 import type { SafetyReasonCodeV1 } from '@echocue/contracts';
+import { BUILTIN_CATEGORY_TERMS } from '../safety/builtin-detectors.js';
+import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import type { CompiledSafetyRuleV1 } from '../safety/types.js';
 import { evaluateInputSafety, normalizeComment, type InputSafetyDecision } from '../safety/index.js';
 import type { BenchmarkSample, ExpectedSafetyAction } from './types.js';
+
+// WP-10: the benchmark measures base risk-detector accuracy; the former always-on
+// builtin terms are now expressed as a configured risk filter with the same
+// typeIds, so expected reasons (PII/ABUSE/…) stay aligned.
+const BUILTIN_RISK_FILTER: CompiledRiskFilter = (
+  Object.entries(BUILTIN_CATEGORY_TERMS) as Array<[string, readonly string[]]>
+).map(([typeId, terms]) => ({ typeId, label: typeId, terms }));
 
 export type SafetyFailureKind = 'miss' | 'false_positive' | 'wrong_reason';
 
@@ -37,6 +46,7 @@ function evaluateSafetySample(sample: BenchmarkSample, compiledRules: CompiledSa
   const decision = evaluateInputSafety({
     normalizedText: normalizeComment(sample.text),
     compiledRules,
+    riskFilter: BUILTIN_RISK_FILTER,
   });
   let passed: boolean;
   let failure: SafetyFailureKind | null;
