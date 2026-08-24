@@ -38,8 +38,10 @@ describe('DataLocationStore (WP-5)', () => {
     const dataDir = join(testDir, 'data');
     await mkdir(dataDir);
     await store().write(dataDir);
-    expect(await store().read()).toBe(dataDir);
-    expect(store().readSync()).toBe(dataDir);
+    // write() stores forward-slashed (Windows-safe JSON); read returns the same.
+    const fwd = dataDir.replaceAll('\\', '/');
+    expect(await store().read()).toBe(fwd);
+    expect(store().readSync()).toBe(fwd);
   });
 
   it('write also mirrors the plain-text pointer for the uninstaller (WP-6), forward-slashed', async () => {
