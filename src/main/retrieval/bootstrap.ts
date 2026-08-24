@@ -202,10 +202,21 @@ export async function bootstrapPreSet(
   const staged = stagePreSet(imported.entries, pipeline);
   const profile = options.profile ?? computeProfileFromStaging(staged, pipeline, contentSha256(options.content));
 
+  // WP-8: only the first bootstrap creates the golden_set collection/alias. A
+  // re-import must never replace an existing golden collection, or the host
+  // label reflux into golden_set would be wiped (old collection orphaned).
+  const aliases = await client.getAliases();
+  const existing = new Set(aliases.aliases.map((a) => a.alias_name));
+  const goldenExists = existing.has(QDRANT_ALIAS_GOLDEN_SET);
+
   const preSetCollection = `${QDRANT_ALIAS_PRE_SET}__${profile.profileId}`;
   const goldenSetCollection = `${QDRANT_ALIAS_GOLDEN_SET}__${profile.profileId}`;
   await createCollectionWithSparse(client, { collectionName: preSetCollection, profile, golden: false });
-  await createCollectionWithSparse(client, { collectionName: goldenSetCollection, profile, golden: true });
+  let createdGolden = false;
+  if (!goldenExists) {
+    await createCollectionWithSparse(client, { collectionName: goldenSetCollection, profile, golden: true });
+    createdGolden = true;
+  }
 
   try {
     const points = buildPreSetPoints({ staged, profile });
@@ -224,8 +235,6 @@ export async function bootstrapPreSet(
       }
     }
 
-    const aliases = await client.getAliases();
-    const existing = new Set(aliases.aliases.map((a) => a.alias_name));
     const actions: Array<
       { create_alias: { collection_name: string; alias_name: string } }
       | { delete_alias: { alias_name: string } }
@@ -234,16 +243,17 @@ export async function bootstrapPreSet(
       actions.push({ delete_alias: { alias_name: QDRANT_ALIAS_PRE_SET } });
     }
     actions.push({ create_alias: { collection_name: preSetCollection, alias_name: QDRANT_ALIAS_PRE_SET } });
-    if (existing.has(QDRANT_ALIAS_GOLDEN_SET)) {
-      actions.push({ delete_alias: { alias_name: QDRANT_ALIAS_GOLDEN_SET } });
+    if (createdGolden) {
+      actions.push({ create_alias: { collection_name: goldenSetCollection, alias_name: QDRANT_ALIAS_GOLDEN_SET } });
     }
-    actions.push({ create_alias: { collection_name: goldenSetCollection, alias_name: QDRANT_ALIAS_GOLDEN_SET } });
     await client.updateCollectionAliases({ actions });
 
     return profile;
   } catch (err) {
     await client.deleteCollection(preSetCollection).catch(() => undefined);
-    await client.deleteCollection(goldenSetCollection).catch(() => undefined);
+    if (createdGolden) {
+      await client.deleteCollection(goldenSetCollection).catch(() => undefined);
+    }
     throw err;
   }
 }

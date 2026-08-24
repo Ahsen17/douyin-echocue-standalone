@@ -122,7 +122,9 @@ const VALID_CONTENT_B = [
     const aliases = await client.getAliases();
     const byAlias = new Map(aliases.aliases.map((a) => [a.alias_name, a.collection_name]));
     expect(byAlias.get(QDRANT_ALIAS_PRE_SET)).toBe(`${QDRANT_ALIAS_PRE_SET}__${second.profile.profileId}`);
-    expect(byAlias.get(QDRANT_ALIAS_GOLDEN_SET)).toBe(`${QDRANT_ALIAS_GOLDEN_SET}__${second.profile.profileId}`);
+    // WP-8: a re-import must not replace the golden_set alias; it stays on the
+    // first bootstrap's collection so labeled reflux is never wiped.
+    expect(byAlias.get(QDRANT_ALIAS_GOLDEN_SET)).toBe(`${QDRANT_ALIAS_GOLDEN_SET}__${first.profile.profileId}`);
 
     // Old profile collections stay for the rollback window (RUNBOOK §8.2).
     const oldPre = await client.collectionExists(`${QDRANT_ALIAS_PRE_SET}__${first.profile.profileId}`);
