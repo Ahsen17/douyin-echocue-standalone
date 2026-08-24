@@ -7,12 +7,18 @@ import {
   type RuntimeForm,
 } from '../system/runtime-settings'
 
+const DEFAULT_DATA_DIR_HINT = '系统数据保存位置（默认 %LOCALAPPDATA%\\Echocue，可在安装时选择）'
+
 // 系统设置页「运行机制」卡片：弹幕排队、审计保留期、/metrics 端口。
 export default function RuntimeSection() {
   const [config, setConfig] = useState<ConfigViewV1 | null>(null)
   const [form, setForm] = useState<RuntimeForm | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [fieldError, setFieldError] = useState<string | null>(null)
+  // WP-5: in-app data-root relocation target + status.
+  const [targetDir, setTargetDir] = useState('')
+  const [moveMessage, setMoveMessage] = useState<string | null>(null)
+  const [moveError, setMoveError] = useState<string | null>(null)
 
   const load = useAsyncAction(async () => {
     const view = await window.echocue.config.get()
@@ -27,6 +33,21 @@ export default function RuntimeSection() {
     void load.run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const moveAction = useAsyncAction(async (targetDir: string) => {
+    setMoveMessage(null)
+    setMoveError(null)
+    try {
+      // On success the main process relaunches the app; the renderer rarely gets
+      // a response back, but the IPC resolves before quit on non-relaunch paths.
+      await window.echocue.config.moveDataRoot(targetDir)
+      setMoveMessage('数据已迁移，应用即将重启')
+      return true
+    } catch (err) {
+      setMoveError(err instanceof Error ? err.message : String(err))
+      return false
+    }
+  })
 
   const save = useAsyncAction(async () => {
     if (form === null || config === null) return false
@@ -100,6 +121,35 @@ export default function RuntimeSection() {
           />
         </label>
         <p>超过保留期的完整回放记录在当天首次启动应用时自动清理；不影响进行中的记录。</p>
+      </div>
+
+      <div className="card">
+        <h2>数据保存位置</h2>
+        <p>{DEFAULT_DATA_DIR_HINT}。迁移需要停止服务，复制完成后应用自动重启。</p>
+        <label>
+          新数据目录（绝对路径）
+          <input
+            type="text"
+            value={targetDir}
+            placeholder="D:\EchocueData"
+            onChange={(e) => {
+              setTargetDir(e.target.value)
+              setMoveError(null)
+            }}
+          />
+        </label>
+        {moveError ? <p className="danger-text">{moveError}</p> : null}
+        {moveMessage ? <p className="inline-message">{moveMessage}</p> : null}
+        <div className="button-row">
+          <button
+            type="button"
+            className="secondary"
+            disabled={targetDir.trim() === ''}
+            onClick={() => void moveAction.run(targetDir.trim())}
+          >
+            {moveAction.running ? '正在迁移…' : '更改数据保存位置'}
+          </button>
+        </div>
       </div>
 
       <div className="card">

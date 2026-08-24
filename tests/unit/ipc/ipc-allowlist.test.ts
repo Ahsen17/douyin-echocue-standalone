@@ -69,6 +69,7 @@ const HANDLE_CHANNELS = [
   IpcChannel.ConfigGet,
   IpcChannel.ConfigUpdate,
   IpcChannel.OverlayPreferenceUpdate,
+  IpcChannel.SettingsMoveDataRoot,
   IpcChannel.PersonaList,
   IpcChannel.PersonaGet,
   IpcChannel.PersonaCreate,
@@ -140,7 +141,12 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     mocks.registered.clear();
     wireConfigControl({ settings: {}, providerConfig: {}, isTrustedSender: trusted as never });
     expect([...mocks.registered.keys()].sort()).toEqual(
-      [IpcChannel.ConfigGet, IpcChannel.ConfigUpdate, IpcChannel.OverlayPreferenceUpdate].sort(),
+      [
+        IpcChannel.ConfigGet,
+        IpcChannel.ConfigUpdate,
+        IpcChannel.OverlayPreferenceUpdate,
+        IpcChannel.SettingsMoveDataRoot,
+      ].sort(),
     );
 
     mocks.registered.clear();

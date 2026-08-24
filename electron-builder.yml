@@ -53,10 +53,19 @@ win:
         - x64
 
 nsis:
-  oneClick: true
+  # WP-5: assisted installer — user can pick the install directory and (via the
+  # custom page in build/installer.nsh) the data-save directory.
+  oneClick: false
   perMachine: false
-  deleteAppDataOnUninstall: false
+  allowToChangeInstallationDirectory: true
   allowElevation: false
+  createStartMenuShortcut: true
+  createDesktopShortcut: true
+  # Uninstall data cleanup is handled by the customUnInstall macro in
+  # build/uninstaller.nsh (WP-6), so this stays false to avoid unconditional
+  # appdata removal.
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
   # Deterministic install E2E: silent install must not auto-launch the app
   # (would hold %LOCALAPPDATA%\Echocue open during Clear-DataRoot).
   runAfterFinish: false

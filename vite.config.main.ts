@@ -4,7 +4,7 @@ import { resolve } from 'path'
 // Node built-ins are never bundled; keep `node:`-prefixed and bare forms both
 // external (imports use either style across src/main).
 const NODE_BUILTINS = new Set([
-  'child_process', 'cluster', 'crypto', 'events', 'fs', 'http', 'https',
+  'child_process', 'cluster', 'crypto', 'events', 'fs', 'fs/promises', 'http', 'https',
   'net', 'os', 'path', 'process', 'sqlite', 'stream', 'url', 'util',
   'worker_threads', 'zlib',
 ])

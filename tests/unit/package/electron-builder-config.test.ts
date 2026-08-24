@@ -2,8 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// M7-08 / T-PKG-001: the installer must be one-click per-user and must bundle
-// every runtime resource so first launch never downloads binaries. The real
+// M7-08 / T-PKG-001 / WP-5: the installer is per-user assisted (WP-5 adds a
+// changeable install directory + custom data-dir page) and must bundle every
+// runtime resource so first launch never downloads binaries. The real
 // install/launch verification runs on Windows CI (package-windows.yml); here we
 // pin the config against the repository's actual files.
 const CONFIG = 'electron-builder.yml';
@@ -11,10 +12,12 @@ const CONFIG = 'electron-builder.yml';
 describe('electron-builder packaging config (M7-08 / T-PKG-001)', () => {
   const text = readFileSync(join(process.cwd(), CONFIG), 'utf8');
 
-  it('installs per-user one-click without path selection', () => {
-    expect(text).toMatch(/oneClick:\s*true/);
+  it('installs per-user assisted with a changeable directory and data-dir page', () => {
+    expect(text).toMatch(/oneClick:\s*false/);
+    expect(text).toMatch(/allowToChangeInstallationDirectory:\s*true/);
     expect(text).toMatch(/perMachine:\s*false/);
     expect(text).toMatch(/deleteAppDataOnUninstall:\s*false/);
+    expect(text).toMatch(/include:\s*build\/installer\.nsh/);
   });
 
   it('bundles every required runtime resource', () => {
