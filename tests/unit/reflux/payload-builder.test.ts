@@ -100,11 +100,12 @@ describe('deriveRefluxAction', () => {
 });
 
 describe('computeCaseId / computeTargetPointId', () => {
-  it('anchors ids to the feedback revision and is deterministic', () => {
-    const caseId = computeCaseId('fb-1', 3);
-    expect(caseId).toBe('feedback:fb-1:3');
+  it('anchors ids to the stable feedback_id so overwrites reuse the same point', () => {
+    const caseId = computeCaseId('fb-1');
+    expect(caseId).toBe('feedback:fb-1');
     expect(computeTargetPointId(caseId)).toBe(computeTargetPointId(caseId));
-    expect(computeTargetPointId(computeCaseId('fb-1', 2))).not.toBe(computeTargetPointId(caseId));
+    // Different feedback records (different traces) never collide on a point id.
+    expect(computeTargetPointId(computeCaseId('fb-2'))).not.toBe(computeTargetPointId(caseId));
   });
 });
 
@@ -151,7 +152,7 @@ describe('buildGoldenSetPayload', () => {
     expect(payload.source_trace_id).toBe(ctx.traceId);
     expect(payload.enabled).toBe(true);
     expect(payload.is_bad_case).toBe(false);
-    expect(payload.case_id).toBe(computeCaseId(ctx.feedbackId, 1));
+    expect(payload.case_id).toBe(computeCaseId(ctx.feedbackId));
     expect(payload.created_at).toBe(NOW);
     expect(payload.updated_at).toBe(NOW);
     expect(GoldenSetPayloadV1Schema.parse(payload)).toBeDefined();
@@ -214,7 +215,7 @@ describe('buildUpsertPoint', () => {
       analyze: (text: string) => ({ tokens: [text], tf: new Map([[text, 1]]), docLen: 1 }),
     };
     const point = buildUpsertPoint(ctx, profile, pipeline as never, NOW);
-    expect(point.id).toBe(computeTargetPointId(computeCaseId(ctx.feedbackId, ctx.revisionNo)));
+    expect(point.id).toBe(computeTargetPointId(computeCaseId(ctx.feedbackId)));
     expect(point.vector.bm25_zh_jieba_v1.indices.length).toBeGreaterThan(0);
     expect(point.vector.bm25_zh_jieba_v1.values.length).toBe(point.vector.bm25_zh_jieba_v1.indices.length);
     expect(point.payload.reply).toBe('谢谢你');

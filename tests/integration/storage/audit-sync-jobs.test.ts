@@ -223,6 +223,28 @@ describe('T-AUD-001: qdrant_sync_job lifecycle (M7-01)', () => {
     expect(worker.resetStaleRunningJobs()).toBe(0);
   });
 
+  it('drops a claimed RUNNING job when the label is overwritten to no-reflux (M6-10 覆盖)', () => {
+    const { personaVersion } = setupPersonaAndVersion();
+    const traceId = setupDisplayedTrace(personaVersion);
+    worker.submitLabel({ traceId, expectedRevisionNo: 0, score: 90 });
+    const claimed = worker.claimNextSyncJob()!;
+    expect(readJobs()[0].state).toBe('RUNNING');
+
+    // Overwriting to a no-reflux label deletes the claimed job in the same tx.
+    worker.submitLabel({ traceId, expectedRevisionNo: 1, score: 50 });
+    expect(readJobs()).toHaveLength(0);
+    expect(readFeedback(claimed.feedbackId)?.sync_status).toBe('NOT_REQUIRED');
+
+    // The in-flight worker's complete/fail on the deleted job hits the
+    // state-guard and must not clobber the overwrite's sync_status.
+    expect(() => worker.completeSyncJob(claimed.jobId, claimed.feedbackId, 'point-stale')).toThrow(
+      /not RUNNING/,
+    );
+    expect(readFeedback(claimed.feedbackId)?.sync_status).toBe('NOT_REQUIRED');
+    expect(() => worker.failSyncJob(claimed.jobId, claimed.feedbackId, 'boom')).toThrow(/not RUNNING/);
+    expect(readFeedback(claimed.feedbackId)?.sync_status).toBe('NOT_REQUIRED');
+  });
+
   it('enforces the UNIQUE idempotency key (no duplicate jobs)', () => {
     const { personaVersion } = setupPersonaAndVersion();
     const traceId = setupDisplayedTrace(personaVersion);

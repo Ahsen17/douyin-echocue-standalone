@@ -61,8 +61,9 @@ export function buildTimeline(workflow: AuditWorkflowV1): TimelineItem[] {
 }
 
 export function defaultRevisionCount(summary: AuditTraceSummaryV1 | null): number {
-  // Optimistic lock baseline: the exact revision count the page observed, so
-  // edits keep succeeding after re-saves (audit.submitLabel rejects a mismatch).
+  // Optimistic lock baseline: the current label version the page observed, so
+  // overwrite edits keep succeeding after re-saves (audit.submitLabel rejects a
+  // mismatch with a concurrent edit).
   return summary?.revisionCount ?? 0
 }
 

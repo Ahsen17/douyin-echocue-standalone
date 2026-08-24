@@ -11,7 +11,7 @@
 | --- | --- | --- | --- |
 | 人设与版本 | SQLite | 仅 Main/`AuditStoreWorker` 写；Renderer 经白名单 IPC 访问。 | 自然语言内容存 SQLite；已发布版本不可变；每位主播恰有一个主出镜人。 |
 | 直播会话与审计 | SQLite | 审计 Worker 独占写入。 | 每条进入处理链路的弹幕都有 `trace_id`；审计不可写即停止服务；本机永久保存、MVP 不导出。 |
-| 用户打标与回流任务 | SQLite | 在一次事务内写反馈、trace 用户状态和 outbox。 | 同一 trace 每一修订最多一份反馈；用户不可见同步/bad-case 内部状态。 |
+| 用户打标与回流任务 | SQLite | 在一次事务内写/覆盖反馈、trace 用户状态和 outbox。 | 同一 trace 至多一条当前反馈，再次打标按原 `feedback_id` 覆盖；用户不可见同步/bad-case 内部状态。 |
 | 通用相似案例 | Qdrant `pre_set` | 首次 JSONL 导入，运行期只读。 | 通用、不绑定人设版本；仅作分类/LLM 上下文，绝不直出。 |
 | 主播认可案例 | Qdrant `golden_set` | 仅由审计打标的 outbox 增量写入。 | 严格绑定 `persona_id + persona_version`；仅高置信 Top-1 可直出。 |
 | 运行设置 | 原子写入的本机 JSON | Main 通过 schema 白名单更新。 | 不存 API Key、Cookie、签名 URL 或审计原文。 |
@@ -177,10 +177,10 @@ erDiagram
 
 | 表 | 主键与关键字段 | 约束/索引 | 用途 |
 | --- | --- | --- | --- |
-| `suggestion_feedback` | `feedback_id`；`trace_id`、`revision_no`、`persona_id`、`persona_version`、`quality_score`、`correction_envelope`、`label_status`、`sync_status`、`is_bad_case`、`source_collection`、`source_point_id`、`target_point_id` | `UNIQUE(trace_id, revision_no)`；评分 `0..100`；FK `(persona_id, persona_version)` 到版本；枚举受限。建议索引 `(trace_id, revision_no DESC)`、`(sync_status, created_at)`。 | 用户看得见的打标状态及其不可覆盖的修订历史。 |
+| `suggestion_feedback` | `feedback_id`；`trace_id`、`revision_no`、`persona_id`、`persona_version`、`quality_score`、`correction_envelope`、`label_status`、`sync_status`、`is_bad_case`、`source_collection`、`source_point_id`、`target_point_id` | `UNIQUE(trace_id, revision_no)`；评分 `0..100`；FK `(persona_id, persona_version)` 到版本；枚举受限。建议索引 `(trace_id, revision_no DESC)`、`(sync_status, created_at)`。 | 用户看得见的当前打标状态；同一 trace 至多一条反馈，再次打标按原 `feedback_id` 覆盖，`revision_no` 仅作版本号，不保留修订历史。 |
 | `qdrant_sync_job` | `job_id`；`feedback_id`、`target_collection`、`action`、`idempotency_key`、`state`、`attempts` | `idempotency_key UNIQUE`；数据库 CHECK 固定 `target_collection='golden_set'`；`SET_BAD_CASE` 另由 trigger 校验源确为本次 golden 直出；`action ∈ UPSERT/SET_BAD_CASE`。建议索引 `(state, updated_at)`。 | 让 SQLite 提交和 Qdrant 最终一致的事务外盒。 |
 
-`audit.submitLabel` 的事务顺序固定为：写入 feedback 修订 → 更新 `audit_trace.label_status/current_feedback_id` → 若满足回流条件写入 `qdrant_sync_job`。`sync_status` 由 job 派生，禁止独立更新。job 以 `feedbackId:revisionNo:action` 作为幂等键，只允许 `PENDING→RUNNING→SUCCEEDED/FAILED`，到达退避时间后 `FAILED→PENDING`；Qdrant 成功后事务性标记 `SUCCEEDED/SYNCED`，失败记录错误并指数退避。用户 UI 仅看到 `UNLABELED/ACCEPTED/REJECTED/CORRECTED/NOT_APPLICABLE`，绝不展示 golden、bad case 或同步状态。
+`audit.submitLabel` 的事务顺序固定为：首次插入或按原 `feedback_id` 覆盖当前反馈（覆盖时先清除该反馈遗留的 `PENDING/FAILED/RUNNING` outbox job）→ 更新 `audit_trace.label_status/current_feedback_id` → 若新打标仍满足回流条件写入唯一 `qdrant_sync_job`。`sync_status` 由 `submitLabel` 按当前打标意图写入 `PENDING`/`NOT_REQUIRED`，再随 job 完成/失败更新为 `SYNCED`/`FAILED`。job 以 `feedbackId:revisionNo:action` 作为幂等键，只允许 `PENDING→RUNNING→SUCCEEDED/FAILED`，到达退避时间后 `FAILED→PENDING`；Qdrant 成功后事务性标记 `SUCCEEDED/SYNCED`，失败记录错误并指数退避。用户 UI 仅看到 `UNLABELED/ACCEPTED/REJECTED/CORRECTED/NOT_APPLICABLE`，绝不展示 golden、bad case 或同步状态。
 
 ## 5. 版本、审计与反馈追溯关系
 
@@ -189,7 +189,7 @@ flowchart TD
   PV[已发布 persona_version] -->|服务启动时固定快照| T[audit_trace]
   T --> R[audit_transition + audit_reference]
   R --> S[audit_snapshot：路由/检索/模型/展示证据]
-  T --> F[suggestion_feedback revision]
+  T --> F[suggestion_feedback 当前打标]
   PV --> F
   F -->|修正，或认可且分数 >=85| U[UPSERT golden_set point]
   F -->|拒绝无修正 且 本次 golden 直出| B[SET_BAD_CASE 原 golden point]
@@ -198,7 +198,7 @@ flowchart TD
   B --> G
 ```
 
-回放一条 trace 必须能得到：原始事件与规范化文本、硬规则结论、成员路由候选与最终人设版本快照、两库 TopK/原始 score/校准配置/最终 rerank、直出或 LLM 的输入输出、浮窗结果、用户标签及其修订、触发的 outbox job 和最终 Qdrant point ID。此追溯以当时的人设版本为准，不能以当前 active version 反向替代。
+回放一条 trace 必须能得到：原始事件与规范化文本、硬规则结论、成员路由候选与最终人设版本快照、两库 TopK/原始 score/校准配置/最终 rerank、直出或 LLM 的输入输出、浮窗结果、用户当前打标（覆盖式）、触发的 outbox job 和最终 Qdrant point ID。此追溯以当时的人设版本为准，不能以当前 active version 反向替代。
 
 ## 6. Qdrant collection、payload 与 BM25 处理契约
 

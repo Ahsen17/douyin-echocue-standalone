@@ -326,7 +326,7 @@ function LabelForm({ row, workflow, onSaved }: {
     return (
       <div className="label-summary">
         <b>当前打标：{localizeLabelStatus(saved)}</b>
-        <p>已保存为当前有效打标；再次编辑会产生新修订，不覆盖历史。</p>
+        <p>已保存为当前有效打标；再次编辑会按本条原记录覆盖，不保留旧打标。</p>
         <div className="button-row">
           <button type="button" className="secondary" onClick={() => setSaved(null)}>
             编辑本次打标

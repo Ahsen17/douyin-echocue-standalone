@@ -57,10 +57,10 @@ export function deriveRefluxAction(input: DeriveRefluxActionInput): OutboxAction
 }
 
 // CONTRACT §3: golden point ids are deterministic UUIDv5 over the business case
-// id, which is anchored to the persistent feedback revision so a reflux can
-// never create a duplicate point across retries.
-export function computeCaseId(feedbackId: string, revisionNo: number): string {
-  return `feedback:${feedbackId}:${revisionNo}`;
+// id, anchored to the stable feedback_id so re-labeling the same trace
+// re-upserts the SAME point (覆盖) instead of stacking duplicate golden points.
+export function computeCaseId(feedbackId: string): string {
+  return `feedback:${feedbackId}`;
 }
 
 export function computeTargetPointId(caseId: string): string {
@@ -179,7 +179,7 @@ export function buildGoldenSetPayload(ctx: FeedbackSyncContext, now: string): Go
   if (trimmedCues.length < 2) throw new RefluxPayloadError('suggestion has fewer than 2 cues');
 
   const payload = {
-    case_id: computeCaseId(ctx.feedbackId, ctx.revisionNo),
+    case_id: computeCaseId(ctx.feedbackId),
     tokenizer_version: BM25_TOKENIZER_VERSION_V1,
     source_trace_id: ctx.traceId,
     persona_id: ctx.personaId,

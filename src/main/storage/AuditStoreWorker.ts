@@ -574,13 +574,14 @@ export class AuditStoreWorker {
   }
 
   /**
-   * Persist a label revision (DATA §4.3): write suggestion_feedback
-   * (UNIQUE(trace_id, revision_no)), update audit_trace.label_status /
-   * current_feedback_id, and when the revision qualifies for reflux write the
-   * qdrant_sync_job outbox row — all in ONE transaction. The optimistic lock
-   * rejects a concurrent edit (修订而非覆盖); the idempotency key
-   * feedbackId:revisionNo:action prevents duplicate jobs. Returns the
-   * user-visible labelStatus only; sync_status stays internal (M7-01).
+   * Persist a label (DATA §4.3): one suggestion_feedback row per trace.
+   * First label INSERTs; re-labeling UPDATES the existing row by its original
+   * feedback_id (覆盖，不再追加修订), bumping revision_no as the optimistic-lock
+   * version only. Reflux intent follows the current label: stale non-terminal
+   * outbox jobs are dropped and a new job is written when the label still
+   * qualifies. The idempotency key feedbackId:revisionNo:action prevents
+   * duplicate jobs. Returns the user-visible labelStatus only; sync_status
+   * stays internal (M7-01).
    */
   submitLabel(input: AuditSubmitLabelRequestV1): LabelStatus {
     const workflow = this.getTraceWorkflowV1(input.traceId);
@@ -606,38 +607,64 @@ export class AuditStoreWorker {
 
     try {
       this.db.exec('BEGIN');
-      const countRow = this.db.prepare(
-        `SELECT COUNT(*) as revision_count FROM suggestion_feedback WHERE trace_id = ?`,
-      ).get(input.traceId) as { revision_count: number };
-      if (countRow.revision_count !== input.expectedRevisionNo) {
+      // 覆盖语义：同一 trace 只保留一条当前反馈，revision_no 仅作版本号。
+      const current = this.db.prepare(
+        `SELECT feedback_id, revision_no FROM suggestion_feedback
+         WHERE trace_id = ? ORDER BY revision_no DESC LIMIT 1`,
+      ).get(input.traceId) as { feedback_id: string; revision_no: number } | undefined;
+      const observed = current === undefined ? 0 : current.revision_no;
+      if (observed !== input.expectedRevisionNo) {
         this.db.exec('ROLLBACK');
         throw new AuditStateInvalidError('label already changed by another edit; refresh and retry');
       }
-      const revisionNo = countRow.revision_count + 1;
-      const feedbackId = uuidv7();
+      const revisionNo = observed + 1;
+      const feedbackId = current === undefined ? uuidv7() : current.feedback_id;
       const createdAt = new Date().toISOString();
       const correction = this.buildCorrection(input, feedbackId);
-      this.db.prepare(
-        `INSERT INTO suggestion_feedback
-          (feedback_id, trace_id, revision_no, persona_id, persona_version, quality_score,
-           correction_envelope, label_status, sync_status, is_bad_case,
-           source_collection, source_point_id, target_point_id, created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,null,?)`,
-      ).run(
-        feedbackId,
-        input.traceId,
-        revisionNo,
-        persona.personaId,
-        persona.personaVersion,
-        input.score,
-        correction,
-        labelStatus,
-        refluxAction === null ? 'NOT_REQUIRED' : 'PENDING',
-        isBadCase ? 1 : 0,
-        source.collection,
-        source.pointId,
-        createdAt,
-      );
+      if (current === undefined) {
+        this.db.prepare(
+          `INSERT INTO suggestion_feedback
+            (feedback_id, trace_id, revision_no, persona_id, persona_version, quality_score,
+             correction_envelope, label_status, sync_status, is_bad_case,
+             source_collection, source_point_id, target_point_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,null,?)`,
+        ).run(
+          feedbackId,
+          input.traceId,
+          revisionNo,
+          persona.personaId,
+          persona.personaVersion,
+          input.score,
+          correction,
+          labelStatus,
+          refluxAction === null ? 'NOT_REQUIRED' : 'PENDING',
+          isBadCase ? 1 : 0,
+          source.collection,
+          source.pointId,
+          createdAt,
+        );
+      } else {
+        // 覆盖：被取代标签遗留的未终结 reflux job 必须清除，防止按新标签误回流。
+        this.db.prepare(
+          `DELETE FROM qdrant_sync_job WHERE feedback_id = ? AND state IN ('PENDING','FAILED','RUNNING')`,
+        ).run(feedbackId);
+        this.db.prepare(
+          `UPDATE suggestion_feedback SET
+             revision_no = ?, quality_score = ?, correction_envelope = ?, label_status = ?,
+             sync_status = ?, is_bad_case = ?, source_collection = ?, source_point_id = ?
+           WHERE feedback_id = ?`,
+        ).run(
+          revisionNo,
+          input.score,
+          correction,
+          labelStatus,
+          refluxAction === null ? 'NOT_REQUIRED' : 'PENDING',
+          isBadCase ? 1 : 0,
+          source.collection,
+          source.pointId,
+          feedbackId,
+        );
+      }
       this.db.prepare(
         `UPDATE audit_trace SET label_status = ?, current_feedback_id = ? WHERE trace_id = ?`,
       ).run(labelStatus, feedbackId, input.traceId);
@@ -991,10 +1018,11 @@ export class AuditStoreWorker {
 
   private traceRevisionCount(traceId: string): number {
     try {
+      // 覆盖语义：反馈行每覆盖一次 revision_no +1，作为乐观锁版本基线。
       const row = this.db.prepare(
-        `SELECT COUNT(*) as n FROM suggestion_feedback WHERE trace_id = ?`,
-      ).get(traceId) as { n: number };
-      return row.n;
+        `SELECT revision_no FROM suggestion_feedback WHERE trace_id = ? ORDER BY revision_no DESC LIMIT 1`,
+      ).get(traceId) as { revision_no: number } | undefined;
+      return row?.revision_no ?? 0;
     } catch {
       return 0;
     }
