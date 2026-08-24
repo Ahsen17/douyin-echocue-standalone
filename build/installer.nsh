@@ -41,8 +41,11 @@ Function EchocueDataPageCreate
     Abort
   ${EndIf}
 
-  !insertmacro MUI_HEADER_TEXT "数据保存位置" "选择 Echocue 数据保存目录"
-  ${NSD_CreateLabel} 0 0 100% 24u "审计、人设、配置与案例库将保存在所选目录。之后可在应用内随时迁移。"
+  ; Page header via plain nsDialogs labels (no MUI2 dependency: electron-builder
+  ; may compile the include before MUI2's header macros are defined).
+  ${NSD_CreateLabel} 0 0 100% 20u "数据保存位置"
+  Pop $0
+  ${NSD_CreateLabel} 0 20u 100% 24u "审计、人设、配置与案例库将保存在所选目录。之后可在应用内随时迁移。"
   Pop $0
   ${NSD_CreateDirRequest} 0 32u 100% 12u "$EchocueDataDir"
   Pop $EchocueDataDir

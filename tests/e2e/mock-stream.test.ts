@@ -181,11 +181,12 @@ describe('M7-05 模拟 E2E 实时流 (A-02～A-08)', () => {
     const h = await buildMockStreamHarness({
       hits: [preHit()],
       providerDelayMs: 400,
-      // 150ms freshness window: retrieval+prompt complete well inside it, while
-      // the 400ms provider delay reliably exceeds it, so the DEADLINE_EXCEEDED
-      // discard deterministically lands at LLM_PENDING (50ms was too tight under
-      // parallel load and fired earlier in the trace).
-      windowMaxAgeMs: 150,
+      // 250ms freshness window: the mock retrieval+prompt complete in a few ms,
+      // while the 400ms provider delay reliably exceeds it, so the
+      // DEADLINE_EXCEEDED discard deterministically lands at LLM_PENDING. Kept
+      // well under the provider delay with headroom for slow CI runners (150ms
+      // occasionally discarded before the provider call under parallel load).
+      windowMaxAgeMs: 250,
     });
     try {
       await h.startService();
