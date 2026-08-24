@@ -29,8 +29,10 @@ export default function RuntimeSection() {
   }, [])
 
   const save = useAsyncAction(async () => {
-    if (form === null) return false
-    const validation = validateRuntimeForm(form)
+    if (form === null || config === null) return false
+    // When queueing is disabled the greyed-out timeout field is not validated;
+    // persist the last stored value so the contract stays satisfied.
+    const validation = validateRuntimeForm(form, config.queueing.timeoutMs / 1000)
     if (!validation.ok) {
       setFieldError(validation.message)
       setMessage(null)

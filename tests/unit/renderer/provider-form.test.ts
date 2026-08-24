@@ -101,6 +101,20 @@ describe('provider form (UI §7.1)', () => {
     expect(request.provider).toBeDefined()
   })
 
+  it('buildConfigUpdate works without a roomReference (decoupled AI-service save)', () => {
+    const request = buildConfigUpdate({
+      form: {
+        displayName: 'DeepSeek',
+        adapterType: 'DEEPSEEK',
+        baseUrl: 'https://api.deepseek.com',
+        modelId: 'deepseek-chat',
+        apiKey: '',
+      },
+    })
+    expect(request.roomReference).toBeUndefined()
+    expect(request.provider).toBeDefined()
+  })
+
   it('validateProviderForm accepts a valid form', () => {
     const result = validateProviderForm({
       displayName: 'DeepSeek',

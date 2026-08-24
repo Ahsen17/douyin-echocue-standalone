@@ -18,6 +18,7 @@ const pages: Record<PageName, ComponentType<PageProps>> = {
 
 function App() {
   const [page, setPage] = useState<PageName>('服务运行')
+  const [tabHint, setTabHint] = useState<string | undefined>(undefined)
   const [isMaximized, setIsMaximized] = useState(false)
   // Mock entry screen (TD-06): standalone app, no real account validation.
   const [screen, setScreen] = useState<'welcome' | 'workspace'>('welcome')
@@ -89,8 +90,14 @@ function App() {
             type="button"
             className={item === page ? 'active' : undefined}
             aria-current={item === page ? 'page' : undefined}
-            onClick={() => setPage(item)}
-            onKeyDown={handleKeyActivate(() => setPage(item))}
+            onClick={() => {
+              setTabHint(undefined)
+              setPage(item)
+            }}
+            onKeyDown={handleKeyActivate(() => {
+              setTabHint(undefined)
+              setPage(item)
+            })}
           >
             <NavIcon name={item} />
             {item}
@@ -98,7 +105,13 @@ function App() {
         ))}
       </aside>
       <article className={page === '审计追溯' ? 'page-fluid' : undefined}>
-        <CurrentPage onNavigate={setPage} />
+        <CurrentPage
+          onNavigate={(target, tab) => {
+            setTabHint(tab)
+            setPage(target)
+          }}
+          initialTab={tabHint}
+        />
       </article>
     </div>
   )

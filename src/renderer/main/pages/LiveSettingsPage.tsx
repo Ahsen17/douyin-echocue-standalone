@@ -5,9 +5,13 @@ import PersonaPage from './PersonaPage'
 import SafetyPage from './SafetyPage'
 import { LIVE_SETTINGS_TABS, type LiveSettingsTab } from './settings-tabs'
 
+function initialTab(hint?: string): LiveSettingsTab {
+  return LIVE_SETTINGS_TABS.includes(hint as LiveSettingsTab) ? (hint as LiveSettingsTab) : '直播间'
+}
+
 // 直播设置：直播间标识 + 团队与人设 + 安全与禁忌（UI §2 五页重构后的聚合页）。
-export default function LiveSettingsPage(_props: PageProps) {
-  const [tab, setTab] = useState<LiveSettingsTab>('直播间')
+export default function LiveSettingsPage({ initialTab: hint }: PageProps) {
+  const [tab, setTab] = useState<LiveSettingsTab>(() => initialTab(hint))
 
   return (
     <section>

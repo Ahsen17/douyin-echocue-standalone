@@ -41,11 +41,13 @@ describe('system-settings runtime form (WP-2.3 / WP-3.3)', () => {
   })
 
   it('rejects out-of-range queue timeout, retention, and port', () => {
+    // Timeout is only validated while queueing is enabled.
+    const enabled = { ...baseForm, queueingEnabled: true }
     expect(
-      validateRuntimeForm({ ...baseForm, queueTimeoutSec: '0' }),
+      validateRuntimeForm({ ...enabled, queueTimeoutSec: '0' }),
     ).toMatchObject({ ok: false, message: expect.stringContaining('排队超时') })
     expect(
-      validateRuntimeForm({ ...baseForm, queueTimeoutSec: '121' }),
+      validateRuntimeForm({ ...enabled, queueTimeoutSec: '121' }),
     ).toMatchObject({ ok: false })
     expect(
       validateRuntimeForm({ ...baseForm, retentionDays: '6' }),
@@ -62,9 +64,33 @@ describe('system-settings runtime form (WP-2.3 / WP-3.3)', () => {
   })
 
   it('rejects non-integer input', () => {
-    expect(validateRuntimeForm({ ...baseForm, queueTimeoutSec: '30.5' })).toMatchObject({ ok: false })
+    const enabled = { ...baseForm, queueingEnabled: true }
+    expect(validateRuntimeForm({ ...enabled, queueTimeoutSec: '30.5' })).toMatchObject({ ok: false })
     expect(validateRuntimeForm({ ...baseForm, retentionDays: 'abc' })).toMatchObject({ ok: false })
     expect(validateRuntimeForm({ ...baseForm, metricsPort: '' })).toMatchObject({ ok: false })
+  })
+
+  it('does not validate a disabled queue-timeout field (greyed-out text must not block a save)', () => {
+    // Disabled queueing with a stale/invalid timeout text still saves, using the
+    // fallback so the stored timeoutMs always satisfies the schema.
+    const result = validateRuntimeForm(
+      { ...baseForm, queueingEnabled: false, queueTimeoutSec: '' },
+      45,
+    )
+    expect(result).toEqual({
+      ok: true,
+      update: {
+        queueing: { enabled: false, timeoutMs: 45000 },
+        auditRetentionDays: 30,
+        metricsPort: 9100,
+      },
+    })
+  })
+
+  it('still validates the timeout when queueing is enabled, even with a fallback', () => {
+    expect(
+      validateRuntimeForm({ ...baseForm, queueingEnabled: true, queueTimeoutSec: '0' }, 45),
+    ).toMatchObject({ ok: false, message: expect.stringContaining('排队超时') })
   })
 
   it('keeps documented defaults aligned', () => {

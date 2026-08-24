@@ -19,10 +19,10 @@ import {
   type ThresholdForm,
 } from '../run/thresholds'
 
-const MISSING_CONFIG: Record<MissingConfigItem, { label: string; nav: PageName }> = {
+const MISSING_CONFIG: Record<MissingConfigItem, { label: string; nav: PageName; tab?: string }> = {
   room: { label: '直播间', nav: '直播设置' },
   ai: { label: 'AI 服务配置', nav: '系统设置' },
-  principal: { label: '主要出镜人设', nav: '直播设置' },
+  principal: { label: '主要出镜人设', nav: '直播设置', tab: '团队与人设' },
 }
 
 function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
@@ -194,7 +194,11 @@ export default function RunPage({ onNavigate }: PageProps) {
           <ul>
             {completeness.missing.map((item) => (
               <li key={item}>
-                <button type="button" className="secondary" onClick={() => onNavigate(MISSING_CONFIG[item].nav)}>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => onNavigate(MISSING_CONFIG[item].nav, MISSING_CONFIG[item].tab)}
+                >
                   {MISSING_CONFIG[item].label}
                 </button>
               </li>

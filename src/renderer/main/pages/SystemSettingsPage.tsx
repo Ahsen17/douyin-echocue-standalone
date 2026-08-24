@@ -6,9 +6,15 @@ import PromptSection from '../components/PromptSection'
 import OverlaySection from '../components/OverlaySection'
 import { SYSTEM_SETTINGS_TABS, type SystemSettingsTab } from './settings-tabs'
 
+function initialTab(hint?: string): SystemSettingsTab {
+  return SYSTEM_SETTINGS_TABS.includes(hint as SystemSettingsTab)
+    ? (hint as SystemSettingsTab)
+    : 'AI 服务'
+}
+
 // 系统设置：AI 服务 + 提示词 + 浮窗偏好 + 运行机制（UI §2 五页重构后的聚合页）。
-export default function SystemSettingsPage(_props: PageProps) {
-  const [tab, setTab] = useState<SystemSettingsTab>('AI 服务')
+export default function SystemSettingsPage({ initialTab: hint }: PageProps) {
+  const [tab, setTab] = useState<SystemSettingsTab>(() => initialTab(hint))
 
   return (
     <section>

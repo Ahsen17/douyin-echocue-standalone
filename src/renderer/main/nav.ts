@@ -15,5 +15,7 @@ export function isNavItem(value: string): value is PageName {
 }
 
 export interface PageProps {
-  onNavigate: (page: PageName) => void
+  onNavigate: (page: PageName, tab?: string) => void
+  /** Initial tab for aggregated pages (直播设置/系统设置); default tab otherwise. */
+  initialTab?: string
 }
