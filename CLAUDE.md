@@ -84,7 +84,7 @@ Testing structure (from M0-03):
 - Lifecycle: `STOPPED` → `GATE_CONNECTING` (waits for `ROOM_ONLINE`) → `RUNNING` → `STOPPED`
 - Activity: `IDLE/GATE_CHECKING/LISTENING/RETRIEVING/GENERATING/DISPLAYING`
 - Only accepts new messages when activity != `DISPLAYING`
-- Messages received during display window are audited as `RECEIVED → NORMALIZED → DISCARDED` with reason `DISPLAY_WINDOW_ACTIVE`
+- Messages received during display window are audited as `RECEIVED → NORMALIZED → DISCARDED` with reason `DISPLAY_WINDOW_ACTIVE` (empty-body comments are `EMPTY_NORMALIZED` instead)
 
 ### Real-time Processing Pipeline
 1. Receive `WebcastChatMessage` from douyinLive WebSocket

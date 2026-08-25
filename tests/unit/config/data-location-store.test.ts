@@ -112,7 +112,7 @@ describe('DataLocationStore (WP-5)', () => {
     expect(await moveDataRoot(current, target)).toEqual({ ok: true });
     // Data lands; the stale pointer copies stay behind (boot reads the fixed path).
     expect(await readFile(join(target, 'audit', 'audit.sqlite'), 'utf8')).toBe('db');
-    expect(readFile(join(target, 'data-location.txt'), 'utf8')).rejects.toThrow();
-    expect(readFile(join(target, 'data-location.json'), 'utf8')).rejects.toThrow();
+    await expect(readFile(join(target, 'data-location.txt'), 'utf8')).rejects.toThrow();
+    await expect(readFile(join(target, 'data-location.json'), 'utf8')).rejects.toThrow();
   });
 });
