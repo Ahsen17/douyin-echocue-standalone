@@ -7,7 +7,7 @@ import {
   type RuntimeForm,
 } from '../system/runtime-settings'
 
-const DEFAULT_DATA_DIR_HINT = '系统数据保存位置（默认 %LOCALAPPDATA%\\Echocue，可在安装时选择）'
+const DEFAULT_DATA_DIR_HINT = '系统数据保存位置（默认 %LOCALAPPDATA%\\Echocue，可在本页更改）'
 
 // 系统设置页「运行机制」卡片：弹幕排队、审计保留期、/metrics 端口。
 export default function RuntimeSection() {
@@ -15,15 +15,18 @@ export default function RuntimeSection() {
   const [form, setForm] = useState<RuntimeForm | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [fieldError, setFieldError] = useState<string | null>(null)
-  // WP-5: in-app data-root relocation target + status.
+  // WP-5: in-app data-root relocation target + status + effective data root.
   const [targetDir, setTargetDir] = useState('')
   const [moveMessage, setMoveMessage] = useState<string | null>(null)
   const [moveError, setMoveError] = useState<string | null>(null)
+  const [dataRoot, setDataRoot] = useState<string | null>(null)
 
   const load = useAsyncAction(async () => {
     const view = await window.echocue.config.get()
     setConfig(view)
     setForm(runtimeFormFromConfig(view))
+    // Show where audit/settings/qdrant actually live (mirrors the boot pointer).
+    setDataRoot(await window.echocue.config.getDataRoot())
     setMessage(null)
     setFieldError(null)
     return true
@@ -126,6 +129,7 @@ export default function RuntimeSection() {
       <div className="card">
         <h2>数据保存位置</h2>
         <p>{DEFAULT_DATA_DIR_HINT}。迁移需要停止服务，复制完成后应用自动重启。</p>
+        {dataRoot ? <p className="muted">当前数据目录：{dataRoot}</p> : null}
         <label>
           新数据目录（绝对路径）
           <input

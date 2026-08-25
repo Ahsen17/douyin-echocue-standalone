@@ -67,6 +67,7 @@ const HANDLE_CHANNELS = [
   IpcChannel.ProviderCredentialClear,
   IpcChannel.ProviderCredentialTest,
   IpcChannel.ConfigGet,
+  IpcChannel.ConfigGetDataRoot,
   IpcChannel.ConfigUpdate,
   IpcChannel.OverlayPreferenceUpdate,
   IpcChannel.SettingsMoveDataRoot,
@@ -143,6 +144,7 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     expect([...mocks.registered.keys()].sort()).toEqual(
       [
         IpcChannel.ConfigGet,
+        IpcChannel.ConfigGetDataRoot,
         IpcChannel.ConfigUpdate,
         IpcChannel.OverlayPreferenceUpdate,
         IpcChannel.SettingsMoveDataRoot,

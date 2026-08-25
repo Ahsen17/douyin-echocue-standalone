@@ -1,5 +1,6 @@
 import { app, safeStorage, type WebContents } from 'electron'
 import { fileURLToPath } from 'url'
+import { existsSync } from 'node:fs'
 import { dirname, join } from 'path'
 import { MainWindow } from './windows/MainWindow.js'
 import { OverlayWindow } from './windows/OverlayWindow.js'
@@ -32,6 +33,7 @@ let overlayWindowInstance: OverlayWindow | null = null
 let trayManager: TrayManager | null = null
 let services: CreatedServiceController | null = null
 let isExplicitQuit = false
+let bootDataRootWarning: string | null = null
 
 // Grace period for windows/services to initialize before the --smoke-quit hook
 // (T-PKG-001) walks the real graceful-exit path and quits.
@@ -40,16 +42,33 @@ const SMOKE_QUIT_DELAY_MS = 4000
 if (app.isPackaged) {
   // RUNBOOK §2.3 / WP-5: data root defaults to %LOCALAPPDATA%\Echocue (Local),
   // so the (potentially large) audit/Qdrant data does not roam and never touches
-  // the install directory. An assisted-install pointer may redirect it; the
-  // pointer file sits at a fixed path so it is readable before userData is set.
+  // the install directory. A pointer may redirect it; the pointer file sits at a
+  // fixed path so it is readable before userData is set.
   const localAppData = join(dirname(app.getPath('appData')), 'Local', 'Echocue')
-  const dataRoot = new DataLocationStore(join(localAppData, 'data-location.json')).readSync()
+  const pointerStore = new DataLocationStore(join(localAppData, 'data-location.json'))
+  const dataRoot = pointerStore.readSync()
+  // A pointer that exists but is unreadable (corrupt, or its target dir is
+  // unreachable at boot) must not silently re-create the default root: record a
+  // warning so a migrated-but-lost data location stays visible in the log.
+  if (dataRoot === null) {
+    const pointerExists =
+      existsSync(join(localAppData, 'data-location.txt')) ||
+      existsSync(join(localAppData, 'data-location.json'))
+    if (pointerExists) {
+      bootDataRootWarning = 'data-location pointer exists but is unreadable; using default data root'
+    }
+  }
   app.setPath('userData', dataRoot ?? localAppData)
 }
 
 // Daily main-process log under the data dir: <userData>/logs/main-YYYY-MM-DD.log.
 // Created at module scope so early boot failures are captured too.
 const logger = new Logger({ logDir: join(app.getPath('userData'), 'logs') })
+if (bootDataRootWarning !== null) {
+  logger.warn('storage', bootDataRootWarning)
+}
+// Effective data root on boot; a local filesystem path, safe for the log.
+logger.info('storage', `data root: ${app.getPath('userData')}`)
 
 function getIsExplicitQuit(): boolean {
   return isExplicitQuit
@@ -127,6 +146,10 @@ app.whenReady().then(async () => {
         {
           version: 2,
           path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '002_queue_timeout_reason.sql')),
+        },
+        {
+          version: 3,
+          path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '003_empty_normalized_reason.sql')),
         },
       ],
       qdrantConfigTemplatePath: resolveResourcePath(join('resources', 'qdrant-config.yaml')),
@@ -224,7 +247,15 @@ app.whenReady().then(async () => {
           await services?.qdrant?.stop()
           services?.shutdown()
         },
-        relaunch: () => {
+        relaunch: async () => {
+          // Clean exit before relaunch: stop the loopback /metrics server and
+          // dispose the tray so app.quit() completes on Windows (RUNBOOK §3.4).
+          try {
+            await services?.metricsHub?.stopServer()
+          } catch {
+            /* best-effort stop before relaunch */
+          }
+          trayManager?.dispose()
           app.relaunch()
           app.quit()
         },

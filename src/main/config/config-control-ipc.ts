@@ -17,7 +17,7 @@ export interface MoveDataRootContext {
   /** Close stores + sidecars so no process holds a file lock on the data root. */
   shutdownServices: () => Promise<void>;
   /** Relaunch the app so the new root takes effect on boot. */
-  relaunch: () => void;
+  relaunch: () => void | Promise<void>;
 }
 
 export interface ConfigControlIpcOptions {
@@ -39,6 +39,12 @@ export function wireConfigControl(options: ConfigControlIpcOptions): void {
 
   ipcMain.handle(IpcChannel.ConfigGet, createGuardedHandler(isTrustedSender, () => handlers.get()));
   ipcMain.handle(IpcChannel.ConfigUpdate, createGuardedHandler(isTrustedSender, (raw) => handlers.update(raw)));
+  // WP-5 read-only: the effective data root (where audit/settings/qdrant live).
+  // Returns null when the migration context is absent (dev mode).
+  ipcMain.handle(
+    IpcChannel.ConfigGetDataRoot,
+    createGuardedHandler(isTrustedSender, () => moveCtx?.dataDir ?? null),
+  );
   ipcMain.handle(IpcChannel.OverlayPreferenceUpdate, createGuardedHandler(isTrustedSender, (raw) => handlers.updateOverlay(raw)));
   ipcMain.handle(
     IpcChannel.SettingsMoveDataRoot,
@@ -66,7 +72,7 @@ export function wireConfigControl(options: ConfigControlIpcOptions): void {
       await moveCtx.pointerStore.write(targetDir);
       // Relaunch so the new root is picked up at boot; quit returns normally only
       // when the app refuses to relaunch.
-      moveCtx.relaunch();
+      await moveCtx.relaunch();
       return { ok: true };
     }),
   );

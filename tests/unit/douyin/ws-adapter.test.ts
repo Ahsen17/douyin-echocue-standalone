@@ -62,7 +62,7 @@ describe('mapUpstreamFrame', () => {
         sourceMessageId: '7261234567890123456',
         platformRoomId: '7012345678901234567',
         rawText: '  主播 晚上好 ',
-        normalizedText: '主播 晚上好',
+        normalizedText: '主播晚上好',
         userNickname: '观众A',
         upstreamCreatedAt: '1724304000',
         receivedAt: CTX.receivedAt,
@@ -143,7 +143,7 @@ describe('mapUpstreamFrame', () => {
     expect(event).not.toBeNull();
     if (event?.type === 'COMMENT') {
       expect(event.comment.rawText).toBe('  主播 晚上好 ');
-      expect(event.comment.normalizedText).toBe('主播 晚上好');
+      expect(event.comment.normalizedText).toBe('主播晚上好');
       expect(event.comment.sourceMessageId).toMatch(/^local-/);
       expect(event.comment.platformRoomId).toBeUndefined();
       expect(event.comment.userNickname).toBeUndefined();

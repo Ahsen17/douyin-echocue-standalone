@@ -40,6 +40,8 @@ extraResources:
     to: docs/06-data-interface/migrations/001_initial_schema.sql
   - from: docs/06-data-interface/migrations/002_queue_timeout_reason.sql
     to: docs/06-data-interface/migrations/002_queue_timeout_reason.sql
+  - from: docs/06-data-interface/migrations/003_empty_normalized_reason.sql
+    to: docs/06-data-interface/migrations/003_empty_normalized_reason.sql
   - from: build/icon.png
     to: build/icon.png
   - from: build/tray.png

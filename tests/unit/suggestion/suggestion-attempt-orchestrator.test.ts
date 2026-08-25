@@ -386,11 +386,25 @@ describe('SuggestionAttemptOrchestrator', () => {
     machine.setActivity('RETRIEVING');
     machine.setActivity('GENERATING');
     machine.setActivity('DISPLAYING');
-    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f1', normalizedText: '第一条' }));
-    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f2', normalizedText: '第二条' }));
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f1', rawText: '弹幕一', normalizedText: '第一条' }));
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-f2', rawText: '弹幕二', normalizedText: '第二条' }));
     orchestrator.finishDisplay();
     await waitFor(() => sink.shown.length > 0);
-    expect(sink.shown[0].comment.text).toBe('第一条');
+    // Overlay shows the original raw danmaku, not the compact normalized text.
+    expect(sink.shown[0].comment.text).toBe('弹幕一');
+  });
+
+  it('discards emoji-only comments (empty body) as EMPTY_NORMALIZED without generating', async () => {
+    const { audit, sink, orchestrator } = harness({
+      retriever: makeRetriever([]) as never,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-empty', rawText: '[点赞]', normalizedText: '' }));
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.reason).toBe('EMPTY_NORMALIZED');
+    // Audited through RECEIVED→NORMALIZED→DISCARDED, never routed or displayed.
+    expect(audit.transitions.some((t) => t.to === 'ROUTED')).toBe(false);
+    expect(sink.shown.length).toBe(0);
   });
 
   it('discards queued comments when the FIFO queue is full', async () => {
@@ -887,11 +901,12 @@ describe('SuggestionAttemptOrchestrator', () => {
         retriever: makeRetriever([preHit(0.9)]) as never,
       });
       await orchestrator.startSession({ sessionId: 's1' });
-      orchestrator.handleComment(makeComment({ userNickname: '观众B', normalizedText: '主播真棒' }));
+      orchestrator.handleComment(makeComment({ userNickname: '观众B', rawText: '主播真棒', normalizedText: '主播真棒' }));
       await waitFor(() => sink.shown.length === 1);
       // sentAt is the local rendering of receivedAt (timezone-dependent), so
       // assert the two fixed fields plus the HH:mm:ss shape, not a value.
       expect(sink.shown[0].comment.nickname).toBe('观众B');
+      // Overlay shows the original raw danmaku.
       expect(sink.shown[0].comment.text).toBe('主播真棒');
       expect(sink.shown[0].comment.sentAt).toMatch(/^\d{2}:\d{2}:\d{2}$/);
       expect(sink.shown[0].suggestion.quickReply.length).toBeGreaterThan(0);

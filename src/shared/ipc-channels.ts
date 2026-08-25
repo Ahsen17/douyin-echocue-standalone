@@ -11,6 +11,7 @@ export const IpcChannel = {
   ServiceStateSubscribe: 'service.state.subscribe',
   ServiceStateChanged: 'service.state.changed',
   ConfigGet: 'config.get',
+  ConfigGetDataRoot: 'config.getDataRoot',
   ConfigUpdate: 'config.update',
   ProviderCredentialSet: 'provider.credential.set',
   ProviderCredentialClear: 'provider.credential.clear',

@@ -215,6 +215,23 @@ export class SuggestionAttemptOrchestrator {
       this.evictSeenHalf();
     }
 
+    // Emoji/whitespace-only comments have no body to route, retrieve, or
+    // generate from; audit them DISCARDED instead of feeding an empty target
+    // into retrieval/LLM.
+    if (processingComment.normalizedText.trim() === '') {
+      if (!this.beginTrace(processingComment)) return;
+      this.transition(processingComment, null, 'RECEIVED', 'EVENT_RECEIVED', [
+        this.snap('RAW_EVENT_JSON', 'RAW_WS_EVENT', comment.rawEvent),
+      ]);
+      this.transition(processingComment, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK', [
+        this.snap('NORMALIZED_COMMENT_JSON', 'NORMALIZED_COMMENT', comment),
+      ]);
+      this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'EMPTY_NORMALIZED', [
+        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'EMPTY_NORMALIZED' }),
+      ]);
+      return;
+    }
+
     // DISPLAYING guard: no retrieval, no generation (ARCH §4.1). WP-2: with
     // queueing enabled, buffer the comment (audited RECEIVED→NORMALIZED) for a
     // FIFO replay after the display window ends; otherwise discard as before.
@@ -675,7 +692,8 @@ export class SuggestionAttemptOrchestrator {
     const payload: OverlayDisplayPayloadV1 = {
       comment: {
         nickname: attempt.comment.userNickname || undefined,
-        text: attempt.comment.normalizedText,
+        // Overlay shows the original danmaku (raw), not the compact normalized form.
+        text: attempt.comment.rawText,
         ...(sentAt !== undefined ? { sentAt } : {}),
       },
       suggestion: output,

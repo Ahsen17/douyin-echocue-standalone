@@ -45,6 +45,8 @@ describe('electron-builder packaging config (M7-08 / T-PKG-001)', () => {
       'assets/douyinLive_windows.exe',
       'resources/qdrant-config.yaml',
       'docs/06-data-interface/migrations/001_initial_schema.sql',
+      'docs/06-data-interface/migrations/002_queue_timeout_reason.sql',
+      'docs/06-data-interface/migrations/003_empty_normalized_reason.sql',
       'build/icon.png',
       'build/tray.png',
     ];
