@@ -44,7 +44,7 @@ describe('preload surfaces (M6-11 / CONTRACT §7)', () => {
     expect(Object.keys(api.window).sort()).toEqual(['close', 'minimize', 'maximize', 'onMaximizeChange'].sort());
     expect(Object.keys(api.service).sort()).toEqual(['subscribe', 'start', 'stop'].sort());
     expect(Object.keys(api.provider).sort()).toEqual(['setApiKey', 'clearApiKey', 'testConnection'].sort());
-    expect(Object.keys(api.config).sort()).toEqual(['get', 'update', 'moveDataRoot'].sort());
+    expect(Object.keys(api.config).sort()).toEqual(['get', 'getDataRoot', 'update', 'moveDataRoot'].sort());
     expect(Object.keys(api.persona).sort()).toEqual(
       [
         'list', 'get', 'create', 'delete', 'setPrincipal', 'saveDraft', 'publish',
@@ -93,6 +93,8 @@ describe('preload surfaces (M6-11 / CONTRACT §7)', () => {
 
     api.config.get();
     expect(mocks.ipcRenderer.invoke).toHaveBeenCalledWith(IpcChannel.ConfigGet);
+    api.config.getDataRoot();
+    expect(mocks.ipcRenderer.invoke).toHaveBeenCalledWith(IpcChannel.ConfigGetDataRoot);
     const cfgReq = { roomReference: 'room' };
     api.config.update(cfgReq);
     expect(mocks.ipcRenderer.invoke).toHaveBeenCalledWith(IpcChannel.ConfigUpdate, cfgReq);

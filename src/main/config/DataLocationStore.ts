@@ -1,6 +1,6 @@
 import { accessSync, existsSync, readFileSync } from 'node:fs';
 import { access, cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, relative } from 'node:path';
+import { basename, dirname, isAbsolute, relative } from 'node:path';
 
 // WP-5: fixed boot pointer for the data-save location. The app reads this BEFORE
 // deciding userData; the pointer file itself never moves with the data root.
@@ -110,7 +110,15 @@ async function readDirNonEmpty(dir: string): Promise<boolean> {
 /** Copies the data root into an empty target. On failure the target is best-effort removed. */
 export async function moveDataRoot(currentRoot: string, targetDir: string): Promise<MoveDataRootResult> {
   try {
-    await cp(currentRoot, targetDir, { recursive: true, force: false });
+    await cp(currentRoot, targetDir, {
+      recursive: true,
+      force: false,
+      // Break the self-reference: the pointer files live inside the data root, so
+      // copying them into the new root leaves a stale copy pointing back at the
+      // old root (WP-5.3). Boot reads the fixed path, never inside the root, but
+      // a stale copy is a landmine if the fixed path is ever lost.
+      filter: (src) => !/data-location\.(txt|json)$/.test(basename(src)),
+    });
     return { ok: true };
   } catch (err) {
     // Roll back the partial copy so no half-migrated data is left behind.

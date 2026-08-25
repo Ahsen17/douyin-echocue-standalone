@@ -26,10 +26,14 @@
   ; Persist the data root as the boot pointer (plain text — no JSON escaping or
   ; string-replace macros, which are the fragile parts). The app reads this file
   ; first and falls back to the JSON pointer written by in-app migration.
+  ; Only write the default on a fresh install: a reinstall/upgrade must keep an
+  ; existing pointer so an in-app-migrated data root is not silently reset.
   CreateDirectory "$LOCALAPPDATA\Echocue"
-  FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.txt" w
-  FileWrite $0 "$LOCALAPPDATA\Echocue"
-  FileClose $0
+  ${IfNot} ${FileExists} "$LOCALAPPDATA\Echocue\data-location.txt"
+    FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.txt" w
+    FileWrite $0 "$LOCALAPPDATA\Echocue"
+    FileClose $0
+  ${EndIf}
 !macroend
 
 !endif ; !ifndef BUILD_UNINSTALLER

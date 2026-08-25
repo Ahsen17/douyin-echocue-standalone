@@ -100,4 +100,19 @@ describe('DataLocationStore (WP-5)', () => {
     const result = await moveDataRoot(current, join(fileBlock, 'sub'));
     expect(result.ok).toBe(false);
   });
+
+  it('moveDataRoot does not copy the pointer files into the new root', async () => {
+    const current = join(testDir, 'data');
+    await mkdir(join(current, 'audit'), { recursive: true });
+    await writeFile(join(current, 'audit', 'audit.sqlite'), 'db', 'utf8');
+    await writeFile(join(current, 'data-location.txt'), 'oldroot', 'utf8');
+    await writeFile(join(current, 'data-location.json'), '{"schemaVersion":1,"dataRoot":"oldroot"}', 'utf8');
+
+    const target = join(testDir, 'moved');
+    expect(await moveDataRoot(current, target)).toEqual({ ok: true });
+    // Data lands; the stale pointer copies stay behind (boot reads the fixed path).
+    expect(await readFile(join(target, 'audit', 'audit.sqlite'), 'utf8')).toBe('db');
+    expect(readFile(join(target, 'data-location.txt'), 'utf8')).rejects.toThrow();
+    expect(readFile(join(target, 'data-location.json'), 'utf8')).rejects.toThrow();
+  });
 });
