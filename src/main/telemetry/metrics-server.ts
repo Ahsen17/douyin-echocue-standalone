@@ -55,7 +55,16 @@ export function createMetricsServer(options: MetricsServerOptions): MetricsServe
     if (server === null) return Promise.resolve();
     const s = server;
     server = null;
-    return new Promise((resolve) => s.close(() => resolve()));
+    // Bound the close: a long-lived loopback keep-alive must not hang shutdown
+    // or a data-root migration relaunch (server.close waits for connections).
+    return new Promise((resolve) => {
+      const done = () => resolve();
+      const timer = setTimeout(done, 1000);
+      s.close(() => {
+        clearTimeout(timer);
+        done();
+      });
+    });
   };
 
   const getBoundAddress = (): AddressInfo | null => {

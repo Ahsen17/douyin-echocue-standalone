@@ -147,6 +147,10 @@ app.whenReady().then(async () => {
           version: 2,
           path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '002_queue_timeout_reason.sql')),
         },
+        {
+          version: 3,
+          path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '003_empty_normalized_reason.sql')),
+        },
       ],
       qdrantConfigTemplatePath: resolveResourcePath(join('resources', 'qdrant-config.yaml')),
       sidecarPins: {

@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { DatabaseSync } from 'node:sqlite';
+import { TraceReasonCodeV1Schema } from '@echocue/contracts';
 import { MigrationRunner } from '../../../src/main/storage/index.js';
 
 const MIGRATION_PATH = join(
@@ -13,6 +14,11 @@ const MIGRATION_PATH = join(
 const MIGRATION_002_PATH = join(
   process.cwd(),
   'docs/06-data-interface/migrations/002_queue_timeout_reason.sql',
+);
+
+const MIGRATION_003_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/003_empty_normalized_reason.sql',
 );
 
 describe('MigrationRunner', () => {
@@ -184,6 +190,50 @@ THIS IS NOT SQL;
            VALUES (?,?,?,?,?,?,?,?)`,
         )
         .run('ghost', 1, 'NORMALIZED', 'DISCARDED', 'QUEUE_TIMEOUT', now, null, 'h'),
+    ).toThrow();
+
+    db.close();
+  });
+
+  it('003 rebuild accepts EMPTY_NORMALIZED and every reason-code enum value', () => {
+    const runner = new MigrationRunner(dbPath, [
+      { version: 1, path: MIGRATION_PATH },
+      { version: 2, path: MIGRATION_002_PATH },
+      { version: 3, path: MIGRATION_003_PATH },
+    ]);
+    const db = runner.run();
+
+    const applied = db
+      .prepare('SELECT version FROM schema_migration ORDER BY version')
+      .all() as Array<{ version: number }>;
+    expect(applied.map((r) => r.version)).toEqual([1, 2, 3]);
+
+    const now = '2026-08-25T00:00:00.000Z';
+    db.prepare('INSERT INTO live_session (session_id, room_reference, started_at) VALUES (?,?,?)').run(
+      's1', 'room-1', now,
+    );
+    db.prepare(
+      'INSERT INTO audit_trace (trace_id, session_id, source_message_id, received_at, created_at) VALUES (?,?,?,?,?)',
+    ).run('t1', 's1', 'm1', now, now);
+
+    // Every enum value must satisfy the reason_code CHECK — EMPTY_NORMALIZED was
+    // added by 003, so this guards against enum/CHECK drift (C1 regression).
+    const insert = db.prepare(
+      `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    );
+    const reasons = [...TraceReasonCodeV1Schema.options];
+    reasons.forEach((reason, i) => {
+      insert.run('t1', i + 1, 'NORMALIZED', 'DISCARDED', reason, now, null, `h${i}`);
+    });
+    const stored = db
+      .prepare('SELECT reason_code FROM audit_transition WHERE trace_id=? ORDER BY sequence_no')
+      .all('t1') as Array<{ reason_code: string }>;
+    expect(stored.map((r) => r.reason_code)).toEqual(reasons);
+
+    // A value outside the enum is still rejected.
+    expect(() =>
+      insert.run('t1', reasons.length + 1, 'NORMALIZED', 'DISCARDED', 'NOT_A_REASON', now, null, 'hx'),
     ).toThrow();
 
     db.close();

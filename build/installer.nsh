@@ -27,9 +27,12 @@
   ; string-replace macros, which are the fragile parts). The app reads this file
   ; first and falls back to the JSON pointer written by in-app migration.
   ; Only write the default on a fresh install: a reinstall/upgrade must keep an
-  ; existing pointer so an in-app-migrated data root is not silently reset.
+  ; existing pointer (txt or json) so an in-app-migrated data root is not
+  ; silently reset. Boot reads the txt first with the json as fallback, so the
+  ; guard checks both files.
   CreateDirectory "$LOCALAPPDATA\Echocue"
   ${IfNot} ${FileExists} "$LOCALAPPDATA\Echocue\data-location.txt"
+  ${AndIfNot} ${FileExists} "$LOCALAPPDATA\Echocue\data-location.json"
     FileOpen $0 "$LOCALAPPDATA\Echocue\data-location.txt" w
     FileWrite $0 "$LOCALAPPDATA\Echocue"
     FileClose $0
