@@ -151,14 +151,12 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 
 **Off-topic Notes**
 
-1. All requirement analysis, design, MVP, milestone, and other documents (see `docs/`) have been fully committed to GitHub without any omissions, for fellow enthusiasts to reference and learn from.
-2. The project was built entirely using Vibe Coding, with almost no code review on my part. All subtask progress documents are also fully committed (see `progress/`), making it easier for future Coding Harness exchanges and reference.
-3. UI prototypes are located in the `prototype/` directory. The actual product UI differs significantly from the initial design, so treat them as reference only.
-4. The EXE is straightforward to use — just try it out. I didn't write a separate user guide for it.
-5. This project is derived from Douyin-EchoCue, which has been ARCHIVED. See that project's Issues for details.
+1. All requirement analysis, design, MVP, milestone, and other documents (see `docs/`) have been fully committed to GitHub, for fellow enthusiasts to reference or learn from.
+2. The project was built entirely using Vibe Coding, all subtask progress documents are also fully committed (see `progress/`), making it easier for future Coding Harness exchanges and reference.
+3. UI prototypes are located in the `prototype/` directory. The actual product UI **differs significantly from** the initial design, so treat them as reference only.
+4. The EXE is straightforward to use — just try it out. No separate user guide for it.
+5. This project is derived from Douyin-EchoCue, which has been **ARCHIVED**. See that project's Issues for details.
 
 **Special thanks to:**
 
-[douyinLive](https://github.com/Ahsen17/douyinLive)
-
-@[jwwsjlm](https://github.com/jwwsjlm)
+[douyinLive](https://github.com/jwwsjlm/douyinLive) @[jwwsjlm](https://github.com/jwwsjlm)

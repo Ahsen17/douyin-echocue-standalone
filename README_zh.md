@@ -147,14 +147,12 @@ assets/          随包 sidecar 二进制（douyinLive、Qdrant）
 
 **题外话**
 
-1. 项目的所有需求分析和设计、MVP、里程碑等文档（见 `docs/` ）完整提交 Github，未作任何删减，供其他同好交流学习用。
-2. 项目完全采用 Vibe Coding，我几乎没怎么 CR。所有子任务进度档也完整提交（见 `progress/`），方便后续 Coding Harness 交流借鉴。
+1. 项目的所有需求分析和设计、MVP、里程碑等文档（见 `docs/` ）完整提交 Github，供其他同好交流学习用。
+2. 项目完全采用 Vibe Coding，所有子任务进度档也完整提交（见 `progress/`），方便后续 Coding Harness 交流借鉴。
 3. UI 原型在目录 `prototype/` 下，实际产品 UI 与初版设计有**较大出入**，这里仅供参考。
-4. EXE 使用方式很简单，试试就会了，我就没有单独写操作指引文了。
+4. EXE 使用方式很简单，暂未单独写操作指引文了。
 5. 本项目派生自 [Douyin-EchoCue](https://github.com/Ahsen17/Douyin-EchoCue)，项目已 **ARCHIVED**，具体原因可见该项目 Issue。
 
 **特别鸣谢：** 
 
-[douyinLive](https://github.com/Ahsen17/douyinLive)
-
-@[jwwsjlm](https://github.com/jwwsjlm)
+[douyinLive](https://github.com/jwwsjlm/douyinLive) @[jwwsjlm](https://github.com/jwwsjlm)
