@@ -4,6 +4,7 @@ import ProviderSection from '../components/ProviderSection'
 import RuntimeSection from '../components/RuntimeSection'
 import PromptSection from '../components/PromptSection'
 import OverlaySection from '../components/OverlaySection'
+import HistorySection from '../components/HistorySection'
 import { SYSTEM_SETTINGS_TABS, type SystemSettingsTab } from './settings-tabs'
 
 function initialTab(hint?: string): SystemSettingsTab {
@@ -38,6 +39,7 @@ export default function SystemSettingsPage({ initialTab: hint }: PageProps) {
       {tab === 'AI 服务' ? <ProviderSection /> : null}
       {tab === '提示词' ? <PromptSection /> : null}
       {tab === '浮窗偏好' ? <OverlaySection /> : null}
+      {tab === '历史窗口' ? <HistorySection /> : null}
       {tab === '运行机制' ? <RuntimeSection /> : null}
     </section>
   )

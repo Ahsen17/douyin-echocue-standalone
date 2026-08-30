@@ -117,6 +117,13 @@ export interface SuggestionOrchestratorDeps {
   onAuditFailure: () => void;
   /** Diagnostics hooks (M6-02): feed the anonymous run summary. */
   onCommentReceived?: () => void;
+  /**
+   * history-window: called once a suggestion is confirmed displayed (first-frame
+   * ack AND the attempt still passes the post-show freshness check). This gates
+   * the in-memory history feed on the same boundary the overlay uses, so a
+   * cancelled/stale attempt never enters history even if the ack lands late.
+   */
+  onSuggestionDisplayed?: (payload: OverlayDisplayPayloadV1) => void;
   onSuggestionResult?: (
     result: 'displayed' | 'filtered' | 'discarded' | 'failed',
     e2eLatencyMs?: number,

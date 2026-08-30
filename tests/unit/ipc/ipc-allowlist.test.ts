@@ -11,6 +11,7 @@ import { wireDiagnosticsControl } from '../../../src/main/telemetry/diagnostics-
 import { wireMonitoringControl } from '../../../src/main/telemetry/monitoring-control-ipc.js';
 import { wireRetrievalControl } from '../../../src/main/retrieval/index.js';
 import { wireOverlayControl } from '../../../src/main/overlay/overlay-control-ipc.js';
+import { wireHistoryControl } from '../../../src/main/history/history-control-ipc.js';
 
 // Tests bypass tsc (tests/ is excluded from tsconfig), so domain stubs are
 // loosely typed and cast to the option types only for readability.
@@ -51,6 +52,13 @@ function registerMainWires(isTrustedSender: (contents: unknown) => boolean): voi
 
 function registerOverlayWire(isOverlayTrustedSender: (contents: unknown) => boolean): void {
   wireOverlayControl({ overlayWindow: { ack: vi.fn() }, isOverlayTrustedSender: isOverlayTrustedSender as never });
+}
+
+function registerHistoryWire(isHistoryTrustedSender: (contents: unknown) => boolean): void {
+  wireHistoryControl({
+    history: { getSnapshot: () => ({ entries: [], capacity: 20 }) },
+    isHistoryTrustedSender: isHistoryTrustedSender as never,
+  });
 }
 
 function call(channel: string, sender: { id: number }, raw?: unknown): unknown {
@@ -94,6 +102,7 @@ const HANDLE_CHANNELS = [
   IpcChannel.AuditGetWorkflow,
   IpcChannel.AuditSubmitLabel,
   IpcChannel.OverlayAck,
+  IpcChannel.HistoryGetSnapshot,
 ].sort();
 
 const BROADCAST_ONLY = [
@@ -102,6 +111,8 @@ const BROADCAST_ONLY = [
   IpcChannel.OverlayDisplay,
   IpcChannel.OverlayHide,
   IpcChannel.OverlayPreferenceChanged,
+  IpcChannel.HistorySnapshotChanged,
+  IpcChannel.HistoryPreferenceChanged,
 ];
 
 describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
@@ -110,9 +121,10 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     vi.clearAllMocks();
   });
 
-  it('registers exactly the 32 request channels and no broadcast/send-only channel', () => {
+  it('registers exactly the 33 request channels and no broadcast/send-only channel', () => {
     registerMainWires(() => true);
     registerOverlayWire(() => true);
+    registerHistoryWire(() => true);
     const registered = [...mocks.registered.keys()].sort();
     expect(registered).toEqual(HANDLE_CHANNELS);
     expect(mocks.registered.size).toBe(HANDLE_CHANNELS.length);
@@ -188,6 +200,10 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     mocks.registered.clear();
     registerOverlayWire(trusted);
     expect([...mocks.registered.keys()]).toEqual([IpcChannel.OverlayAck]);
+
+    mocks.registered.clear();
+    registerHistoryWire(trusted);
+    expect([...mocks.registered.keys()]).toEqual([IpcChannel.HistoryGetSnapshot]);
   });
 
   it('rejects an untrusted sender before any domain logic on every channel', () => {
@@ -195,6 +211,7 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     const trusted = (contents: unknown) => contents === mainWc;
     registerMainWires(trusted);
     registerOverlayWire(trusted);
+    registerHistoryWire(trusted);
     const foreign = { id: 99 };
     for (const channel of mocks.registered.keys()) {
       expect(() => call(channel, foreign, {}), `${channel} must reject an untrusted sender`).toThrow(
@@ -206,8 +223,10 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
   it('rejects an overlay sender on every main-window channel and a main sender on overlay.ack', () => {
     const mainWc = { id: 1 };
     const overlayWc = { id: 2 };
+    const historyWc = { id: 3 };
     registerMainWires((contents) => contents === mainWc);
     registerOverlayWire((contents) => contents === overlayWc);
+    registerHistoryWire((contents) => contents === historyWc);
     for (const channel of mocks.registered.keys()) {
       if (channel === IpcChannel.OverlayAck) continue;
       expect(() => call(channel, overlayWc), `${channel} must reject an overlay sender`).toThrow(
@@ -215,6 +234,8 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
       );
     }
     expect(() => call(IpcChannel.OverlayAck, mainWc)).toThrow(/rejected: untrusted sender/);
+    // A main-window sender must not reach the history snapshot channel either.
+    expect(() => call(IpcChannel.HistoryGetSnapshot, mainWc)).toThrow(/rejected: untrusted sender/);
   });
 
   it('reaches the intended domain handler for a trusted sender (representative per wire)', async () => {
@@ -302,5 +323,10 @@ describe('IPC handle allowlist (M6-11 / CONTRACT §7)', () => {
     wireOverlayControl({ overlayWindow: overlayWindow as never, isOverlayTrustedSender: isMain as never });
     call(IpcChannel.OverlayAck, mainWc, { requestId: 'req-1' });
     expect(overlayWindow.ack).toHaveBeenCalledWith('req-1');
+
+    const history = { getSnapshot: vi.fn(() => ({ entries: [], capacity: 20 })) };
+    wireHistoryControl({ history: history as never, isHistoryTrustedSender: isMain as never });
+    expect(call(IpcChannel.HistoryGetSnapshot, mainWc)).toEqual({ entries: [], capacity: 20 });
+    expect(history.getSnapshot).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,0 +1,130 @@
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("../assets/fonts/NotoSansSC-VF.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: transparent;
+  font-family: Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+.history {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  color: #f8fbff;
+  background: rgba(17, 24, 39, 0.97);
+}
+
+.history.light {
+  color: #182337;
+  background: rgba(247, 249, 253, 0.98);
+  border: 1px solid #dce4ef;
+}
+
+.history-titlebar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(127, 142, 163, 0.35);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.history-titlebar small {
+  opacity: 0.7;
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-app-region: no-drag;
+}
+
+.history-empty {
+  margin-top: 24px;
+  text-align: center;
+  opacity: 0.55;
+}
+
+.history-card {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(39, 51, 74, 0.7);
+}
+
+.history.light .history-card {
+  background: #e8eef7;
+}
+
+.history-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-author {
+  font-weight: 700;
+  color: #77a7ff;
+}
+
+.history.light .history-author {
+  color: #215cbf;
+}
+
+.history-displayed-at {
+  opacity: 0.6;
+  font-size: 0.8em;
+}
+
+.history-text {
+  margin: 6px 0 0;
+  word-break: break-word;
+}
+
+.history-reply {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.55);
+}
+
+.history.light .history-reply {
+  background: rgba(247, 249, 253, 0.9);
+}
+
+.history-reply small {
+  display: block;
+  opacity: 0.65;
+}
+
+.history-reply b {
+  display: block;
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+.history-cues {
+  margin: 8px 0 0;
+}
+
+.history-cues small {
+  opacity: 0.75;
+}

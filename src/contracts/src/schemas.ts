@@ -339,6 +339,11 @@ export const MetricsConfigV1Schema = z.strictObject({
   port: z.number().int().min(1024).max(65535),
 });
 
+// History-window capacity (in-memory feed, cleared on stop/quit).
+export const HistoryConfigV1Schema = z.strictObject({
+  maxEntries: z.number().int().min(1).max(120).default(20),
+});
+
 // A user-defined risk-filter type: label + substring keywords. An empty type
 // (no keywords) is inert at runtime but allowed so the editor can stage edits.
 export const RiskFilterTypeV1Schema = z.strictObject({
@@ -385,6 +390,7 @@ export const SettingsV1Schema = z.strictObject({
   audit: AuditRetentionV1Schema.optional(),
   metrics: MetricsConfigV1Schema.optional(),
   riskFilter: RiskFilterConfigV1Schema.optional(),
+  history: HistoryConfigV1Schema.optional(),
   internalRetrieval: z.strictObject({
     calibrationVersion: z.string().min(1).max(64),
     directPushThreshold: z.number().min(0).max(1),
@@ -411,6 +417,7 @@ export const ConfigViewV1Schema = z.strictObject({
   audit: AuditRetentionV1Schema,
   metrics: MetricsConfigV1Schema,
   riskFilter: RiskFilterConfigV1Schema,
+  history: HistoryConfigV1Schema,
   apiKeyConfigured: z.boolean(),
 });
 
@@ -451,6 +458,7 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
   auditRetentionDays: z.number().int().min(7).max(180).optional(),
   metricsPort: z.number().int().min(1024).max(65535).optional(),
   riskFilter: RiskFilterConfigV1Schema.optional(),
+  historyMaxEntries: z.number().int().min(1).max(120).optional(),
 }).superRefine((value, ctx) => {
   if (
     value.roomReference === undefined &&
@@ -461,7 +469,8 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
     value.queueing === undefined &&
     value.auditRetentionDays === undefined &&
     value.metricsPort === undefined &&
-    value.riskFilter === undefined
+    value.riskFilter === undefined &&
+    value.historyMaxEntries === undefined
   ) {
     ctx.addIssue({ code: 'custom', message: 'at least one config field is required' });
   }
@@ -704,16 +713,20 @@ export const ValidatedSuggestionV1Schema = z.strictObject({
   source: SuggestionSourceV1Schema,
 });
 
+// A displayed comment as shown on the overlay / history window (@nickname hidden
+// when absent). Trace identity never crosses to either renderer.
+export const OverlayCommentV1Schema = z.strictObject({
+  nickname: z.string().min(1).max(64).optional(),
+  text: z.string().min(1).max(2000),
+  // Comment sent time as local "HH:mm:ss" (createTime, or receivedAt fallback).
+  sentAt: z.string().min(1).max(64).optional(),
+});
+
 // Overlay display content (UI §5): the suggestion plus the triggering comment
 // (@nickname hidden when absent). The sink passes this over overlay.renderSuggestion;
 // trace_id never crosses to the overlay renderer — a requestId nonce matches the ack.
 export const OverlayDisplayPayloadV1Schema = z.strictObject({
-  comment: z.strictObject({
-    nickname: z.string().min(1).max(64).optional(),
-    text: z.string().min(1).max(2000),
-    // Comment sent time as local "HH:mm:ss" (createTime, or receivedAt fallback).
-    sentAt: z.string().min(1).max(64).optional(),
-  }),
+  comment: OverlayCommentV1Schema,
   suggestion: ValidatedSuggestionV1Schema,
 });
 
@@ -724,6 +737,22 @@ export const OverlayDisplayRequestV1Schema = z.strictObject({
 
 export const OverlayAckRequestV1Schema = z.strictObject({
   requestId: z.string().min(1).max(64),
+});
+
+// History-window entry (gap task history-window): one successfully displayed
+// suggestion with the triggering comment. Same comment/suggestion shape as the
+// overlay display payload; trace_id never crosses to the history renderer. The
+// history lives in main-process memory only and is cleared on stop / quit.
+export const HistoryEntryV1Schema = z.strictObject({
+  // Local "HH:mm:ss" of when the suggestion was shown (wall clock, display only).
+  displayedAt: z.string().min(1).max(64),
+  comment: OverlayCommentV1Schema,
+  suggestion: ValidatedSuggestionV1Schema,
+});
+
+export const HistorySnapshotV1Schema = z.strictObject({
+  entries: z.array(HistoryEntryV1Schema),
+  capacity: z.number().int().min(1).max(120),
 });
 
 // CONTRACT §7: audit.search filters by time range (from/to), final result
@@ -852,6 +881,9 @@ export type ValidatedSuggestionV1 = z.infer<typeof ValidatedSuggestionV1Schema>;
 export type OverlayDisplayPayloadV1 = z.infer<typeof OverlayDisplayPayloadV1Schema>;
 export type OverlayDisplayRequestV1 = z.infer<typeof OverlayDisplayRequestV1Schema>;
 export type OverlayAckRequestV1 = z.infer<typeof OverlayAckRequestV1Schema>;
+export type HistoryEntryV1 = z.infer<typeof HistoryEntryV1Schema>;
+export type HistorySnapshotV1 = z.infer<typeof HistorySnapshotV1Schema>;
+export type HistoryConfigV1 = z.infer<typeof HistoryConfigV1Schema>;
 export type LabelStatus = z.infer<typeof LabelStatusSchema>;
 export type TraceState = z.infer<typeof TraceStateSchema>;
 export type TraceFinalState = z.infer<typeof TraceFinalStateSchema>;

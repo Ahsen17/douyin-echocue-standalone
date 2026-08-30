@@ -89,6 +89,30 @@ describe('Config IPC handlers', () => {
     expect(view.riskFilter.types).toHaveLength(1);
   });
 
+  it('get returns the history feed defaults', async () => {
+    const view = await handlers.get();
+    expect(view.history).toEqual({ maxEntries: 20 });
+  });
+
+  it('update persists historyMaxEntries and live-applies the capacity', async () => {
+    const applyCapacity = vi.fn();
+    const withHistory = createConfigControlHandlers({
+      settings,
+      providerConfig,
+      history: { applyCapacity, applyVisualPrefs: vi.fn() },
+    });
+    const view = await withHistory.update({ historyMaxEntries: 50 });
+    expect(view.history).toEqual({ maxEntries: 50 });
+    const stored = await settings.get();
+    expect(stored?.history).toEqual({ maxEntries: 50 });
+    expect(applyCapacity).toHaveBeenCalledWith(50);
+  });
+
+  it('update rejects a historyMaxEntries out of range', async () => {
+    await expect(handlers.update({ historyMaxEntries: 0 })).rejects.toThrow('配置内容不合法');
+    await expect(handlers.update({ historyMaxEntries: 121 })).rejects.toThrow('配置内容不合法');
+  });
+
   it('update rejects a metrics port out of range', async () => {
     await expect(handlers.update({ metricsPort: 80 })).rejects.toThrow('配置内容不合法');
   });
@@ -359,6 +383,26 @@ describe('Config IPC handlers', () => {
     };
     await withWindow.updateOverlay(prefs);
     expect(applyPreferences).toHaveBeenCalledWith(prefs);
+  });
+
+  it('updateOverlay live-applies visual prefs to the history feed (history-window)', async () => {
+    const applyVisualPrefs = vi.fn();
+    const withHistory = createConfigControlHandlers({
+      settings,
+      providerConfig,
+      history: { applyCapacity: vi.fn(), applyVisualPrefs },
+    });
+    const prefs = {
+      durationMs: 10000,
+      width: 800,
+      height: 200,
+      opacity: 0.95,
+      fontScale: 1,
+      theme: 'dark',
+      clickThrough: false,
+    };
+    await withHistory.updateOverlay(prefs);
+    expect(applyVisualPrefs).toHaveBeenCalledWith(prefs);
   });
 
   it('updateOverlay keeps a successful save even when live-apply fails', async () => {

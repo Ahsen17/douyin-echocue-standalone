@@ -713,6 +713,10 @@ export class SuggestionAttemptOrchestrator {
           e2eMs: show.firstFrameAtMonotonicMs - attempt.comment.receivedMonotonicMs,
         }),
       ]);
+      // history-window feed: record only after the post-show freshness check
+      // passed — a stop/abort that lands after the ack still cancels the attempt
+      // (line 706-707 above) and must not leak a stale entry into the cleared feed.
+      this.deps.onSuggestionDisplayed?.(payload);
       this.deps.onSuggestionResult?.(
         'displayed',
         show.firstFrameAtMonotonicMs - attempt.comment.receivedMonotonicMs,

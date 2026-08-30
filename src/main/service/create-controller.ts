@@ -1,6 +1,6 @@
 import { statfsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ServiceViewState } from '@echocue/contracts';
+import type { OverlayDisplayPayloadV1, ServiceViewState } from '@echocue/contracts';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { SettingsStore } from '../config/index.js';
 import { CredentialStore, type SafeStorageLike } from '../credentials/index.js';
@@ -50,6 +50,8 @@ export interface CreateServiceControllerOptions {
   logger?: Logger;
   /** Overlay port; M6-07 replaces the default stub with the real window. */
   displaySink?: SuggestionDisplaySink;
+  /** history-window: record a confirmed display once (post-freshness). */
+  onSuggestionDisplayed?: (payload: OverlayDisplayPayloadV1) => void;
 }
 
 export interface CreatedServiceController {
@@ -186,6 +188,7 @@ export async function createServiceController(
     },
     validator: new SuggestionOutputValidator(),
     displaySink: options.displaySink ?? createStubDisplaySink(),
+    onSuggestionDisplayed: options.onSuggestionDisplayed,
     nowMonotonic: () => performance.now(),
     // 2026-08-24：LLM 时间窗口放宽到 10s（与 T0_FRESHNESS_BUDGET_MS 同步）。
     windowMaxAgeMs: 10_000,
