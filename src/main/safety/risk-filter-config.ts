@@ -1,4 +1,5 @@
 import type { RiskFilterTypeV1 } from '@echocue/contracts';
+import { normalizeComment } from './Normalizer.js';
 
 // WP-10: user-configured risk-filter types. Compiled once per session (frozen),
 // then matched by the input/output safety paths in configuration order.
@@ -17,9 +18,11 @@ export function compileRiskFilter(types: readonly RiskFilterTypeV1[]): CompiledR
   return types.map((type) => ({
     typeId: type.typeId,
     label: type.label,
-    // Lowercase at compile so uppercase user keywords match the lowercased
-    // danmaku/import text (the output path passes un-lowercased fields).
-    terms: type.keywords.map((keyword) => keyword.toLowerCase()),
+    // Align keywords to the same canonical form danmaku/import text is
+    // normalized into, so a whole-copy keyword matches. A keyword that
+    // normalizes to empty (e.g. a bare [表情] placeholder) would match every
+    // haystack via includes('') — drop it instead.
+    terms: type.keywords.map((keyword) => normalizeComment(keyword)).filter((term) => term.length > 0),
   }));
 }
 
