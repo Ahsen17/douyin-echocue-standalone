@@ -69,10 +69,9 @@ describe('deriveRunState (UI §4 nine-state mapping)', () => {
     expect(r.label).toBe('正在准备建议');
   });
 
-  it('RUNNING + DISPLAYING → 正在展示建议 + 浮窗偏好 link', () => {
+  it('RUNNING + DISPLAYING → 正在展示建议', () => {
     const r = deriveRunState(view({ lifecycle: 'RUNNING', activity: 'DISPLAYING' }), true);
     expect(r.label).toBe('正在展示建议');
-    expect(r.showPreferencesLink).toBe(true);
   });
 
   it('STOPPED + ROOM_OFFLINE → 未启动；可手动重试 / 重试启动', () => {

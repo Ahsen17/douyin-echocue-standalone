@@ -12,8 +12,6 @@ export interface RunStateView {
   primaryLabel: string
   /** start is unavailable; e.g. audit down or config incomplete. */
   startDisabled?: boolean
-  /** Show the overlay-preferences link alongside the primary action (DISPLAYING). */
-  showPreferencesLink?: boolean
 }
 
 // UI §4 lifecycle/activity → text mapping. The renderer never derives lifecycle
@@ -40,7 +38,6 @@ export function deriveRunState(state: ServiceViewState, configComplete: boolean)
         tone: 'success',
         primaryAction: 'stop',
         primaryLabel: '停止',
-        showPreferencesLink: true,
       }
     }
     if (activity === 'RETRIEVING' || activity === 'GENERATING') {
