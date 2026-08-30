@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { HistoryEntryV1, HistorySnapshotV1, OverlayPreferenceV1 } from '@echocue/contracts'
 import { historyEchocue } from './echocue'
+import { adoptInitialSnapshot, isNearBottom } from './history-feed-logic'
 
 const DEFAULT_PREFS: OverlayPreferenceV1 = {
   durationMs: 10_000,
@@ -18,20 +19,20 @@ function App() {
   const [snap, setSnap] = useState<HistorySnapshotV1>(EMPTY_SNAPSHOT)
   const [prefs, setPrefs] = useState<OverlayPreferenceV1>(DEFAULT_PREFS)
   const listRef = useRef<HTMLDivElement | null>(null)
-  // Main pushes a full snapshot per mutation; the mount-time getSnapshot must not
-  // overwrite a newer pushed snapshot (pushed.current guards the stale overwrite).
-  const pushedRef = useRef(false)
+  // Latest pushed snapshot: once any push arrived it supersedes the mount-time
+  // getSnapshot (adoptInitialSnapshot), guarding the mount/onSnapshot race.
+  const pushedRef = useRef<HistorySnapshotV1 | null>(null)
   const [stickyBottom, setStickyBottom] = useState(true)
 
   useEffect(() => {
     const echocue = historyEchocue()
     const offSnapshot = echocue.history.onSnapshot((next) => {
-      pushedRef.current = true
+      pushedRef.current = next
       setSnap(next)
     })
     const offPreference = echocue.history.onPreference(setPrefs)
     void echocue.history.getSnapshot().then((next) => {
-      if (!pushedRef.current) setSnap(next)
+      setSnap(adoptInitialSnapshot(pushedRef.current, next))
     })
     return () => {
       offSnapshot()
@@ -49,7 +50,7 @@ function App() {
   const onScroll = () => {
     const el = listRef.current
     if (el === null) return
-    setStickyBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 24)
+    setStickyBottom(isNearBottom(el.scrollHeight, el.scrollTop, el.clientHeight))
   }
 
   const dark = prefs.theme === 'dark'
