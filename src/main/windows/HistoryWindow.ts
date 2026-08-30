@@ -24,9 +24,9 @@ function defaultPosition(
 /**
  * History-window feed (gap task history-window): a frameless always-on-top
  * floating panel showing the last N displayed suggestions, newest at the bottom.
- * In-memory only; the window stays hidden until the service runs and the feed is
- * cleared on service stop. The renderer is a pure view — all mutations arrive as
- * main-pushed HistorySnapshotChanged events.
+ * In-memory only; the window stays hidden until the service runs, and is hidden
+ * again (feed cleared) on service stop. The renderer is a pure view — all
+ * mutations arrive as main-pushed HistorySnapshotChanged events.
  */
 export class HistoryWindow {
   private window: BrowserWindow | null = null;
@@ -83,7 +83,9 @@ export class HistoryWindow {
   }
 
   public hide(): void {
-    this.window?.hide();
+    const win = this.window;
+    if (win === null || win.isDestroyed()) return;
+    win.hide();
   }
 
   public send(channel: string, payload: unknown): void {
