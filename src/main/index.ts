@@ -23,7 +23,7 @@ import { wireRetrievalControl } from './retrieval/index.js'
 import { compileRiskFilter } from './safety/risk-filter-config.js'
 import { DataLocationStore } from './config/index.js'
 import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
-import { createHistoryAwareSink, createHistoryController, wireHistoryControl } from './history/index.js'
+import { createHistoryController, wireHistoryControl } from './history/index.js'
 import type { HistoryController } from './history/index.js'
 import { resolveResourcePath } from './util/index.js'
 import { SIDECAR_PINS, sidecarSha256 } from './sidecar-pins.js'
@@ -201,11 +201,13 @@ app.whenReady().then(async () => {
         },
       },
       keyVersion: '1',
-      // Every successfully shown suggestion also lands in the history feed.
-      displaySink: createHistoryAwareSink(
-        createOverlayDisplaySink({ overlayWindow: overlayWindowInstance }),
-        historyController!,
-      ),
+      displaySink: createOverlayDisplaySink({ overlayWindow: overlayWindowInstance }),
+      // history-window: record a confirmed display after the orchestrator's
+      // post-freshness check, so a stop/abort landing after the ack never leaks
+      // a stale entry into the cleared feed.
+      onSuggestionDisplayed: (payload) => {
+        historyController?.record(payload)
+      },
       cleanupOnStop: () => {
         overlayWindowInstance?.hideSuggestion()
         // In-memory feed is session-scoped: cleared on every stop (stop, stream

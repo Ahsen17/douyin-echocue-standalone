@@ -309,6 +309,64 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(results[0][1]).toBe(1000);
   });
 
+  it('records a confirmed display via onSuggestionDisplayed (golden direct path)', async () => {
+    const displayed: OverlayDisplayPayloadV1[] = [];
+    const { orchestrator } = harness({
+      retriever: makeRetriever([goldenHit(0.98)]) as never,
+      onSuggestionDisplayed: (payload) => displayed.push(payload),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await waitFor(() => displayed.length > 0);
+    expect(displayed).toHaveLength(1);
+    expect(displayed[0].comment.text).toBe('主播晚上好');
+    expect('traceId' in displayed[0]).toBe(false);
+  });
+
+  it('does not record a failed/ignored show', async () => {
+    const displayed: OverlayDisplayPayloadV1[] = [];
+    const { orchestrator } = harness({
+      retriever: makeRetriever([goldenHit(0.98)]) as never,
+      displaySink: {
+        show: async () => ({ ok: false, reason: 'OVERLAY_ACK_TIMEOUT' }),
+        hide: async () => {},
+      } as never,
+      onSuggestionDisplayed: (payload) => displayed.push(payload),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    expect(displayed).toEqual([]);
+  });
+
+  it('does not record a display whose ack resolves after a stop abort (M1 race)', async () => {
+    const displayed: OverlayDisplayPayloadV1[] = [];
+    const shown: OverlayDisplayPayloadV1[] = [];
+    let resolveShow!: (v: { ok: true; firstFrameAtMonotonicMs: number }) => void;
+    const { orchestrator } = harness({
+      retriever: makeRetriever([goldenHit(0.98)]) as never,
+      displaySink: {
+        show: (payload: OverlayDisplayPayloadV1) => {
+          shown.push(payload);
+          return new Promise<{ ok: true; firstFrameAtMonotonicMs: number }>((res) => {
+            resolveShow = res;
+          });
+        },
+        hide: async () => {},
+      } as never,
+      onSuggestionDisplayed: (payload) => displayed.push(payload),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await waitFor(() => shown.length > 0);
+    // The user stops while the first-frame ack is still in flight.
+    orchestrator.abortAll('USER_STOPPED');
+    // The overlay ack lands late and resolves show ok — history must stay empty.
+    resolveShow({ ok: true, firstFrameAtMonotonicMs: 5000 });
+    await flush();
+    expect(displayed).toEqual([]);
+  });
+
   it('feeds the WP-1 observability hooks from the real-time path', async () => {
     const filtered: string[] = [];
     const semanticTypes: string[] = [];
