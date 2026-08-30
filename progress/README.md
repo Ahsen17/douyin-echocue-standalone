@@ -97,3 +97,4 @@
 | Release-v0.2.0-beta.1 | 发布 GitHub Release v0.2.0-beta.1（预发布 beta；含历史建议窗口 PR #83 + 风险过滤 PR #81 + 浮窗按钮移除 PR #82 + 版本提升 PR #85；PUBLISH 信号触发，release-windows run 33317634493 通过后公开） | ✅ 已发布 | 2026-08-30 | progress/M7/M7-release-0.2.0-beta.1.md |
 | slider-custom-style | 定制 slider 细轨道与进度填充样式（改细+美化，主应用与原型共 4 处原生 range 输入，--range-pct 驱动填充） | ✅ 已完成（PR #88 合并、master CI 通过） | 2026-08-30 | progress/slider-custom-style.md |
 | history-close-on-stop | 服务停止时历史建议浮窗即时隐藏（cleanupOnStop 补 HistoryWindow.hide()，覆盖所有停止路径；再次 RUNNING 重新显示） | ✅ 已完成（PR #88 合并、master CI 通过） | 2026-08-30 | progress/history-close-on-stop.md |
+| Release-v0.2.0-beta.2 | 发布 GitHub Release v0.2.0-beta.2（预发布 beta；含定制 slider 样式 + 历史浮窗停止即隐藏 PR #88 + 版本提升 PR #90；PUBLISH 信号触发，release-windows run 33321748065 通过后公开） | ✅ 已发布 | 2026-08-31 | progress/M7/M7-release-0.2.0-beta.2.md |
