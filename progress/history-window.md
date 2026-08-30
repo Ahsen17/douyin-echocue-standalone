@@ -69,6 +69,7 @@
 | 编号 | 级别 | 结论 | 处理 |
 |------|------|------|------|
 | M1 | 中 | 验收措辞「服务未运行时不显示历史窗口」与「停止保留空窗口」的措辞分歧 | 已确认系用户决策（停止保留空窗口），不修改代码；本进度与 UI 文档已明确 |
+| M1′ | 中 | 停止竞态：overlay ack 晚于用户停止时，`record` 可能在 `clear()` 之后落盘遗留一条脏条目 | **已修复**：记录时机从 display sink 组合移到编排器 `display()` 的 post-show 新鲜度校验通过后（新增 `onSuggestionDisplayed` 钩子，`SuggestionOrchestratorDeps`）；停止/abort 会使 post 校验失败，ack 晚到不再记录。移除 `createHistoryAwareSink`，新增编排器回归测试（受控 promise 锁定时序） |
 | M2 | 中 | 历史 renderer 组件逻辑无测试（挂载竞态守卫 + 自动滚底） | **已修复**：抽取 `src/renderer/history/history-feed-logic.ts`（`isNearBottom` / `adoptInitialSnapshot`），`App.tsx` 改用纯函数并新增 `tests/unit/renderer/history-feed.test.ts` 锁定两条行为；组件级 DOM 测试不在本项目测试栈内（无 jsdom/@testing-library），为避免为单个组件引入依赖（影响许可证/SBOM）不引入 |
 | L1 | 低 | `record` 先于编排器 post-show 新鲜度校验 | 记录语义=「首帧已展示」，极端 deadline 时序下历史可能与审计终态（DEADLINE_EXCEEDED）不一致；属可辩护边界语义，不改，特此记录 |
 | L2 | 低 | 历史窗口被用户关闭（Alt+F4）不重建 | 与 OverlayWindow 现状一致、无常规关闭入口，不改 |
