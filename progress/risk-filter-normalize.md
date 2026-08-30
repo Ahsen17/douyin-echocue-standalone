@@ -24,24 +24,28 @@
 
 | 文件 | 改动 |
 |------|------|
-| `src/main/safety/risk-filter-config.ts` | `compileRiskFilter` 关键词归一化由 `toLowerCase()` 改为 `normalizeComment(keyword)`，并丢弃归一化后为空的关键词（防 `includes('')` 全匹配事故） |
-| `src/main/retrieval/pre-set-importer.ts` | pre_set 导入 haystack 由 `NFKC+toLowerCase` 改为 `normalizeComment`，与关键词同规范形 |
+| `src/main/safety/risk-filter-config.ts` | `compileRiskFilter` 关键词归一化由 `toLowerCase()` 改为 `normalizeComment(keyword)`，并丢弃归一化后为空的关键词（防 `includes('')` 全匹配事故）；`detectConfiguredRisk` 对 haystack 内部执行 `normalizeComment`（幂等），使输出路径原始文本与关键词同规范形（评审 M1 回归修复） |
+| `src/main/retrieval/pre-set-importer.ts` | `unsafeField` 直接传字段原值，归一化统一由 `detectConfiguredRisk` 收口 |
 
-不改：输出路径 `SuggestionOutputValidator`（中文 LLM 回复无 `[表情]`/内部空格，匹配等价；改它会影响编译规则语义）；编译安全策略关键词（M2-03/04 同类不对称，记为关联后续）。
+归一化收口：关键词在 `compileRiskFilter` 归一化一次；所有路径（输入/输出/pre_set 导入）的 haystack 在 `detectConfiguredRisk` 归一化一次。输入/导入路径已归一化文本经幂等归一化无副作用。
+
+不改：编译安全策略关键词（M2-03/04 同类不对称，记为关联后续）。
 
 ## 测试
 
-- `tests/unit/safety/risk-filter-config.test.ts`：更新 `ID Card` 用例（空白压缩后 `idcard`）；新增整条拷贝含表情占位符回归、空关键词守卫、全角 NFKC 对齐
+- `tests/unit/safety/risk-filter-config.test.ts`：更新 `ID Card` 用例（空白压缩后 `idcard`）；新增整条拷贝含表情占位符回归、空关键词守卫、全角 NFKC 对齐、原始文本 haystack（输出路径）回归
 - `tests/unit/retrieval/pre-set-importer.test.ts`：新增全角空格分隔关键词回归（`手机　号` 归一化后命中 `手机号`）
 
 ## 验证
 
 - `npm run typecheck` ✅
 - `npm run test:contracts` ✅ 183 passed
-- `npm run test` ✅ 1165 passed / 5 skipped（跳过项为既有，非本任务引入）
+- `npm run test` ✅ 1166 passed / 5 skipped（跳过项为既有 e2e 安装测试）
 - `npm run build` ✅
+- Subagent 严格审查两轮：第一轮发现输出路径回归（M1）已修复；第二轮复核通过
 
-## 已知限制（非本任务）
+## 已知行为（有意的边界语义）
 
-- 编译安全策略（`SafetyRuleCompiler` / policy keywords/topic）存在同类归一化不对称，可复用同一 `normalizeComment` 思路作为后续任务。
-- 输出路径对含空白/表情的英文关键词仍可能漏检（中文直播场景可忽略）。
+- **URL / 纯表情类关键词被静默丢弃**：`normalizeComment` 剥离 URL 与 `[表情]` 后为空的关键词在编译时丢弃，属有意的失效（弹幕路径本就剥离 URL；丢弃是防 `includes('')` 的必要守卫）。用户无感知，可作后续 UX 提示。
+- **词间空格语义消失**：关键词空白被压缩（与弹幕归一化对齐），`no spam` 会命中弹幕 `nospam`。低风险，属设计意图。
+- **编译安全策略（`SafetyRuleCompiler` / policy keywords/topic）存在同类归一化不对称**，可复用同一 `normalizeComment` 思路作为后续任务。
