@@ -41,7 +41,7 @@ function unsafeField(
   if (riskFilter === null) return null;
   for (const field of SECURITY_FIELDS) {
     const value = entry[field];
-    if (typeof value === 'string' && detectConfiguredRisk(riskFilter, value.normalize('NFKC').toLowerCase()) !== null) {
+    if (typeof value === 'string' && detectConfiguredRisk(riskFilter, value) !== null) {
       return field;
     }
   }
