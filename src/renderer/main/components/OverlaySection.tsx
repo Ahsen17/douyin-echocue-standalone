@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { OverlayPreferenceV1 } from '@echocue/contracts'
 import { useAsyncAction } from '../hooks/useAsyncAction'
 import { EmptyState } from './StateViews'
@@ -157,6 +157,7 @@ export default function OverlaySection() {
             min="20"
             max="100"
             value={form.opacityPct}
+            style={{ '--range-pct': `${((form.opacityPct - 20) / 80) * 100}%` } as CSSProperties}
             onChange={(e) => setField('opacityPct', Number(e.target.value))}
           />
         </label>
@@ -168,6 +169,7 @@ export default function OverlaySection() {
             min="75"
             max="200"
             value={form.fontScalePct}
+            style={{ '--range-pct': `${((form.fontScalePct - 75) / 125) * 100}%` } as CSSProperties}
             onChange={(e) => setField('fontScalePct', Number(e.target.value))}
           />
         </label>
