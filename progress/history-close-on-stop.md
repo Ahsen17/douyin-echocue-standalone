@@ -21,7 +21,7 @@
 
 ## 设计要点
 
-- **唯一且完整的停止钩子**：`ServiceController.performStop()` 对用户停止（USER_STOP）、直播间离线（ROOM_OFFLINE）、下播（ROOM_ENDED）、数据源错误（SOURCE_ERROR）、退出（doQuit → stop）全部先调用 `cleanupOnStop` 再 `enterStopped`。在 `main/index.ts` 的 `cleanupOnStop` 补 `historyWindowInstance?.hide()` 即可覆盖所有停止路径。
+- **覆盖所有窗口可见的停止路径**：`ServiceController.performStop()` 对用户停止（USER_STOP）、直播间离线（ROOM_OFFLINE）、下播（ROOM_ENDED）、数据源错误（SOURCE_ERROR）、退出（doQuit → stop）等所有「已进入 RUNNING 后停止」的路径都先调用 `cleanupOnStop` 再 `enterStopped`，历史窗口在这些路径下处于可见态，`main/index.ts` 的 `cleanupOnStop` 补 `historyWindowInstance?.hide()` 即可全部隐藏。启动门禁失败路径直接 `enterStopped`（未经过 RUNNING），窗口从未显示，无需隐藏。
 - **与 overlay 对齐**：实时 overlay 已在 cleanupOnStop 中 `hideSuggestion()`；本次补齐历史窗口隐藏，两浮窗行为一致。
 - **时序**：隐藏先于 STOPPED 状态广播；窗口不销毁，服务再运行时 `show()`（RUNNING 状态监听）仍生效。
 - **数据**：`historyController?.clear()` 保留，停止即清空 feed；隐藏窗口后 renderer 不再接收后续事件（`isReady()` 为 true 时仍会 push，但窗口不可见）。
