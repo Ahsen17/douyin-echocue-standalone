@@ -33,9 +33,9 @@ export interface ConfiguredRiskHit {
 }
 
 // First type, first matching keyword wins; keyword order within a type is kept.
-// The haystack is run through normalizeComment (idempotent) so the output path,
-// which passes raw NFKC-trimmed fields, lands in the same canonical form as the
-// compiled keywords — symmetric matching across every path.
+// The haystack is run through normalizeComment (a no-op on already-normalized
+// input) so the output path, which passes raw NFKC-trimmed fields, lands in the
+// same canonical form as the compiled keywords — symmetric matching across paths.
 export function detectConfiguredRisk(
   compiled: CompiledRiskFilter,
   text: string,
