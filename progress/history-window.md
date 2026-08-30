@@ -61,3 +61,18 @@
 - 历史窗口停止服务后保留空窗口（用户已确认）；若实测发现空置顶窗干扰直播，可改为停止即隐藏（需用户确认）。
 - 容量 `maxEntries` 为持久化设置（settings.json），历史**内容**不持久化。
 - 未做完整 Electron 运行级 E2E（display → 历史窗口 renderer）；各接缝已单测覆盖（sink 组合 / 窗口行为 / IPC / 配置）。
+
+## 审查与修复（第一轮 Subagent，无阻断项）
+
+第一轮隔离审查未发现阻断级问题；已确认核心不变量正确（trace 不跨窗口、弹幕仅内存与 DOM、preload 只读隔离、trusted-sender 前置、单漏斗记录、契约镜像逐字节一致）。审查发现的问题处理如下：
+
+| 编号 | 级别 | 结论 | 处理 |
+|------|------|------|------|
+| M1 | 中 | 验收措辞「服务未运行时不显示历史窗口」与「停止保留空窗口」的措辞分歧 | 已确认系用户决策（停止保留空窗口），不修改代码；本进度与 UI 文档已明确 |
+| M2 | 中 | 历史 renderer 组件逻辑无测试（挂载竞态守卫 + 自动滚底） | **已修复**：抽取 `src/renderer/history/history-feed-logic.ts`（`isNearBottom` / `adoptInitialSnapshot`），`App.tsx` 改用纯函数并新增 `tests/unit/renderer/history-feed.test.ts` 锁定两条行为；组件级 DOM 测试不在本项目测试栈内（无 jsdom/@testing-library），为避免为单个组件引入依赖（影响许可证/SBOM）不引入 |
+| L1 | 低 | `record` 先于编排器 post-show 新鲜度校验 | 记录语义=「首帧已展示」，极端 deadline 时序下历史可能与审计终态（DEADLINE_EXCEEDED）不一致；属可辩护边界语义，不改，特此记录 |
+| L2 | 低 | 历史窗口被用户关闭（Alt+F4）不重建 | 与 OverlayWindow 现状一致、无常规关闭入口，不改 |
+| L3 | 低 | `HistoryBuffer.setCapacity` 无防御性钳制 | 所有写入路径（config.update / syncHistoryFeed）均经 schema 1..120 校验；静默钳制会掩盖越界 bug，不改 |
+| L4 | 低 | 视觉偏好推完整 `OverlayPreferenceV1` | 该 schema 无敏感字段，renderer 仅消费 theme/fontScale，不改 |
+| L5 | 低 | T-HST-001 为 mock Electron 单测放在 tests/e2e | 与 T-OVR-001 同模式（窗口行为测试），不改归类 |
+| L6 | 低 | 初始视觉可能瞬时用默认 dark/1.0 后才同步偏好 | 由 onRendererReady + services 就绪双触发同步覆盖，一次性毫秒级，不改 |
