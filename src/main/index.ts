@@ -211,7 +211,9 @@ app.whenReady().then(async () => {
       cleanupOnStop: () => {
         overlayWindowInstance?.hideSuggestion()
         // In-memory feed is session-scoped: cleared on every stop (stop, stream
-        // end, disconnect). The window itself stays open showing the empty state.
+        // end, disconnect), and the floating history window hides at once so an
+        // empty always-on-top panel never lingers over the stream.
+        historyWindowInstance?.hide()
         historyController?.clear()
       },
       logger,
