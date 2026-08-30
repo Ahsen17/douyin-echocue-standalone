@@ -33,11 +33,14 @@ export interface ConfiguredRiskHit {
 }
 
 // First type, first matching keyword wins; keyword order within a type is kept.
+// The haystack is run through normalizeComment (idempotent) so the output path,
+// which passes raw NFKC-trimmed fields, lands in the same canonical form as the
+// compiled keywords — symmetric matching across every path.
 export function detectConfiguredRisk(
   compiled: CompiledRiskFilter,
-  normalizedText: string,
+  text: string,
 ): ConfiguredRiskHit | null {
-  const haystack = normalizedText.toLowerCase();
+  const haystack = normalizeComment(text);
   for (const type of compiled) {
     for (const term of type.terms) {
       if (haystack.includes(term)) {

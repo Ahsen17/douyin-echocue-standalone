@@ -1,7 +1,6 @@
 import Ajv2020 from 'ajv/dist/2020.js';
 import type { PreSetImportErrorCodeV1 } from '@echocue/contracts';
 import { detectConfiguredRisk, type CompiledRiskFilter } from '../safety/risk-filter-config.js';
-import { normalizeComment } from '../safety/Normalizer.js';
 import preSetSchemaV1 from '../../../docs/05-data-interface/schema/pre-set-v1.schema.json';
 import type { PreSetEntryV1 } from './types.js';
 
@@ -42,7 +41,7 @@ function unsafeField(
   if (riskFilter === null) return null;
   for (const field of SECURITY_FIELDS) {
     const value = entry[field];
-    if (typeof value === 'string' && detectConfiguredRisk(riskFilter, normalizeComment(value)) !== null) {
+    if (typeof value === 'string' && detectConfiguredRisk(riskFilter, value) !== null) {
       return field;
     }
   }

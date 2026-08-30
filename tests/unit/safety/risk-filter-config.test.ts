@@ -47,6 +47,18 @@ describe('risk-filter-config (WP-10)', () => {
     expect(detectConfiguredRisk(compiled, normalizeComment('no id card here'))).not.toBeNull();
   });
 
+  it('matches a raw (un-normalized) haystack as the output path passes (regression)', () => {
+    // The output validator sends NFKC-trimmed fields, not normalizeComment text;
+    // detectConfiguredRisk must normalize the haystack so whitespace keywords
+    // still hit there (whitespace compacted to the same form as the keyword).
+    const compiled = compileRiskFilter([{ typeId: 'brand', label: '品牌', keywords: ['ID Card'] }]);
+    expect(detectConfiguredRisk(compiled, 'show my ID Card number')).toEqual({
+      typeId: 'brand',
+      label: '品牌',
+      term: 'idcard',
+    });
+  });
+
   it('matches a whole-copy keyword containing an emoji placeholder (regression)', () => {
     const compiled = compileRiskFilter([{ typeId: 'fudai', label: '福袋', keywords: ['一生一世只爱xx。[比心]'] }]);
     // The keyword is normalized to the same form as the danmaku (emoji stripped).
