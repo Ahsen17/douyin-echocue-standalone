@@ -83,7 +83,9 @@ export class HistoryWindow {
   }
 
   public hide(): void {
-    this.window?.hide();
+    const win = this.window;
+    if (win === null || win.isDestroyed()) return;
+    win.hide();
   }
 
   public send(channel: string, payload: unknown): void {
