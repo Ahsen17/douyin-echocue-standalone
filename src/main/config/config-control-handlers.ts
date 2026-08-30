@@ -9,6 +9,11 @@ export interface ConfigControlDeps {
   providerConfig: ProviderConfigService;
   /** Live-apply window (M6-07): re-applies feasible visual prefs on update. */
   overlayWindow?: { applyPreferences(prefs: OverlayPreferenceV1): Promise<void> };
+  /** History feed (history-window): capacity + visual prefs live-apply. */
+  history?: {
+    applyCapacity(maxEntries: number): void;
+    applyVisualPrefs(prefs: OverlayPreferenceV1): void;
+  };
 }
 
 export interface ConfigControlHandlers {
@@ -39,6 +44,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         audit: settings.audit ?? { retentionDays: 30 },
         metrics: settings.metrics ?? { enabled: true, port: 9100 },
         riskFilter: settings.riskFilter ?? { types: [] },
+        history: settings.history ?? { maxEntries: 20 },
         apiKeyConfigured,
       };
     },
@@ -58,6 +64,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         auditRetentionDays,
         metricsPort,
         riskFilter,
+        historyMaxEntries,
       } = parsed.data;
       try {
         if (provider !== undefined) {
@@ -133,6 +140,12 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         if (riskFilter !== undefined) {
           await deps.settings.update({ riskFilter });
         }
+        if (historyMaxEntries !== undefined) {
+          // Live-apply to the in-memory buffer: a lower capacity prunes the oldest
+          // entries and pushes the updated snapshot to the history window.
+          await deps.settings.update({ history: { maxEntries: historyMaxEntries } });
+          deps.history?.applyCapacity(historyMaxEntries);
+        }
       } catch (err) {
         if (err instanceof ConfigCorruptError) {
           throw new Error('配置读取失败，请检查设置文件或恢复默认设置');
@@ -163,6 +176,8 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
       } catch {
         /* ignored */
       }
+      // The history feed reuses the overlay theme/fontScale for visual consistency.
+      deps.history?.applyVisualPrefs(overlay);
       return overlay;
     },
   };

@@ -74,6 +74,32 @@ describe('preload surfaces (M6-11 / CONTRACT §7)', () => {
     expect(api.overlay).not.toHaveProperty('updatePreferences');
   });
 
+  it('history preload exposes ONLY the snapshot/preference read-only surface', async () => {
+    const api = await loadPreload('../../../src/preload/history-preload.js');
+    expect(Object.keys(api)).toEqual(['history']);
+    expect(Object.keys(api.history).sort()).toEqual(['getSnapshot', 'onPreference', 'onSnapshot'].sort());
+    for (const forbidden of ['window', 'service', 'provider', 'config', 'persona', 'safety', 'diagnostics', 'audit', 'overlay']) {
+      expect(api).not.toHaveProperty(forbidden);
+    }
+    expect(api.history).not.toHaveProperty('ack');
+  });
+
+  it('history preload wires snapshot request and events to the correct channels', async () => {
+    const api = await loadPreload('../../../src/preload/history-preload.js');
+    api.history.getSnapshot();
+    expect(mocks.ipcRenderer.invoke).toHaveBeenCalledWith(IpcChannel.HistoryGetSnapshot);
+
+    const unsubSnap = api.history.onSnapshot(() => undefined);
+    expect(mocks.ipcRenderer.on).toHaveBeenCalledWith(IpcChannel.HistorySnapshotChanged, expect.any(Function));
+    unsubSnap();
+    expect(mocks.ipcRenderer.removeListener).toHaveBeenCalledWith(IpcChannel.HistorySnapshotChanged, expect.any(Function));
+
+    const unsubPref = api.history.onPreference(() => undefined);
+    expect(mocks.ipcRenderer.on).toHaveBeenCalledWith(IpcChannel.HistoryPreferenceChanged, expect.any(Function));
+    unsubPref();
+    expect(mocks.ipcRenderer.removeListener).toHaveBeenCalledWith(IpcChannel.HistoryPreferenceChanged, expect.any(Function));
+  });
+
   it('main preload wires each method to the correct channel', async () => {
     const api = await loadPreload('../../../src/preload/main-preload.js');
     api.window.close();

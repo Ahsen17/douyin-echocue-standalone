@@ -98,6 +98,8 @@ export class SettingsStore {
       metrics: { enabled: true, port: 9100 },
       // User-configured risk filter: empty by default = no risk filtering.
       riskFilter: { types: [] },
+      // History-window feed capacity (in-memory only, 1..120).
+      history: { maxEntries: 20 },
       internalRetrieval: {
         calibrationVersion: 'v1.0',
         directPushThreshold: 0.85,

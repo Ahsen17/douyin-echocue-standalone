@@ -44,6 +44,9 @@ export const IpcChannel = {
   OverlayAck: 'overlay.ack',
   OverlayHide: 'overlay.hide',
   OverlayPreferenceChanged: 'overlay.preference.changed',
+  HistoryGetSnapshot: 'history.getSnapshot',
+  HistorySnapshotChanged: 'history.snapshot.changed',
+  HistoryPreferenceChanged: 'history.preference.changed',
 } as const;
 
 export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel];

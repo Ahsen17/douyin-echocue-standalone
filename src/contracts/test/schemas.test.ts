@@ -48,6 +48,9 @@ import {
   OverlayDisplayPayloadV1Schema,
   OverlayDisplayRequestV1Schema,
   OverlayAckRequestV1Schema,
+  HistoryEntryV1Schema,
+  HistorySnapshotV1Schema,
+  HistoryConfigV1Schema,
   AuditSearchRequestV1Schema,
   AuditSubmitLabelRequestV1Schema,
   AuditGetWorkflowRequestV1Schema,
@@ -143,6 +146,7 @@ const VALID_VIEW_EXTRAS: object = {
   audit: { retentionDays: 30 },
   metrics: { enabled: true, port: 9100 },
   riskFilter: { types: [] },
+  history: { maxEntries: 20 },
 };
 
 // SystemPromptV1 (TD-08)
@@ -156,6 +160,8 @@ console.log('\nSettingsV1Schema');
 test('valid minimal settings', () => expectValid(SettingsV1Schema, VALID_SETTINGS, 'minimal'));
 test('valid settings with provider', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, provider: VALID_PROVIDER }, 'with provider'));
 test('valid settings with prompt override', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, prompt: VALID_PROMPT }, 'with prompt'));
+test('valid settings with history config', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, history: { maxEntries: 50 } }, 'history optional'));
+test('rejects settings history maxEntries out of range', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, history: { maxEntries: 121 } }, 'history 121'));
 test('rejects wrong schemaVersion', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, schemaVersion: 2 }, 'schemaVersion 2'));
 test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, extra: true }, 'extra field'));
 
@@ -189,6 +195,12 @@ test('rejects missing apiKeyConfigured', () => expectInvalid(ConfigViewV1Schema,
   overlay: VALID_OVERLAY,
   ...VALID_VIEW_EXTRAS,
 }, 'missing apiKeyConfigured'));
+test('rejects missing history in config view', () => expectInvalid(ConfigViewV1Schema, {
+  overlay: VALID_OVERLAY,
+  ...VALID_VIEW_EXTRAS,
+  history: undefined,
+  apiKeyConfigured: false,
+}, 'missing history'));
 
 // WP-0 new setting schemas
 console.log('\nQueueingConfigV1Schema');
@@ -202,6 +214,12 @@ test('rejects retention out of range', () => expectInvalid(AuditRetentionV1Schem
 console.log('\nMetricsConfigV1Schema');
 test('valid metrics config', () => expectValid(MetricsConfigV1Schema, { enabled: true, port: 9100 }, '9100'));
 test('rejects port out of range', () => expectInvalid(MetricsConfigV1Schema, { enabled: true, port: 80 }, 'privileged'));
+
+console.log('\nHistoryConfigV1Schema');
+test('valid history config (default maxEntries)', () => expectValid(HistoryConfigV1Schema, {}, 'default 20'));
+test('valid history config with explicit maxEntries', () => expectValid(HistoryConfigV1Schema, { maxEntries: 120 }, '120'));
+test('rejects history maxEntries 0', () => expectInvalid(HistoryConfigV1Schema, { maxEntries: 0 }, '0'));
+test('rejects history maxEntries over 120', () => expectInvalid(HistoryConfigV1Schema, { maxEntries: 121 }, '121'));
 
 console.log('\nRiskFilterTypeV1Schema');
 test('valid risk filter type', () => expectValid(RiskFilterTypeV1Schema, {
@@ -297,6 +315,8 @@ test('valid provider-only update', () => expectValid(ConfigUpdateRequestV1Schema
 test('rejects empty update', () => expectInvalid(ConfigUpdateRequestV1Schema, {}, 'empty'));
 test('valid systemPrompt-only update', () => expectValid(ConfigUpdateRequestV1Schema, { systemPrompt: '新的指令模板' }, 'systemPrompt only'));
 test('valid systemPrompt clear via empty string', () => expectValid(ConfigUpdateRequestV1Schema, { systemPrompt: '' }, 'clear systemPrompt'));
+test('valid historyMaxEntries-only update', () => expectValid(ConfigUpdateRequestV1Schema, { historyMaxEntries: 50 }, 'history only'));
+test('rejects historyMaxEntries out of range', () => expectInvalid(ConfigUpdateRequestV1Schema, { historyMaxEntries: 0 }, 'history 0'));
 test('rejects unknown field', () => expectInvalid(ConfigUpdateRequestV1Schema, { roomReference: 'room-1', foo: 1 }, 'unknown field'));
 
 // PersonaSummaryV1 (M6-02 run page, M6-04 persona page)
@@ -710,6 +730,49 @@ test('rejects overlay display request missing payload', () => expectInvalid(Over
 console.log('\nOverlayAckRequestV1Schema');
 test('valid overlay ack', () => expectValid(OverlayAckRequestV1Schema, { requestId: 'req-1' }, 'valid'));
 test('rejects overlay ack with empty requestId', () => expectInvalid(OverlayAckRequestV1Schema, { requestId: '' }, 'empty requestId'));
+
+// HistoryEntryV1Schema / HistorySnapshotV1Schema (history-window)
+console.log('\nHistoryEntryV1Schema');
+test('valid history entry', () => expectValid(HistoryEntryV1Schema, {
+  displayedAt: '19:55:26',
+  comment: { nickname: '观众A', text: '主播晚上好', sentAt: '19:55:25' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'valid'));
+test('valid history entry without nickname', () => expectValid(HistoryEntryV1Schema, {
+  displayedAt: '19:55:26',
+  comment: { text: '主播晚上好' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'nickname optional'));
+test('rejects history entry missing displayedAt', () => expectInvalid(HistoryEntryV1Schema, {
+  comment: { text: '主播晚上好' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+}, 'missing displayedAt'));
+test('rejects history entry with extra trace field', () => expectInvalid(HistoryEntryV1Schema, {
+  displayedAt: '19:55:26',
+  comment: { text: '主播晚上好' },
+  suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+  traceId: 't-1',
+}, 'trace never crosses'));
+test('rejects history entry missing suggestion', () => expectInvalid(HistoryEntryV1Schema, {
+  displayedAt: '19:55:26',
+  comment: { text: '主播晚上好' },
+}, 'missing suggestion'));
+
+console.log('\nHistorySnapshotV1Schema');
+test('valid empty snapshot', () => expectValid(HistorySnapshotV1Schema, { entries: [], capacity: 20 }, 'empty'));
+test('valid snapshot with entries', () => expectValid(HistorySnapshotV1Schema, {
+  entries: [{
+    displayedAt: '19:55:26',
+    comment: { text: '主播晚上好' },
+    suggestion: { quickReply: '谢谢你', cues: ['接住夸奖', '继续互动'], source: 'llm' },
+  }],
+  capacity: 20,
+}, 'one entry'));
+test('rejects snapshot capacity 0', () => expectInvalid(HistorySnapshotV1Schema, { entries: [], capacity: 0 }, 'capacity 0'));
+test('rejects snapshot with invalid entry', () => expectInvalid(HistorySnapshotV1Schema, {
+  entries: [{ displayedAt: '19:55:26', comment: { text: '主播晚上好' } }],
+  capacity: 20,
+}, 'entry missing suggestion'));
 
 // AuditSearchRequestV1Schema
 console.log('\nAuditSearchRequestV1Schema');

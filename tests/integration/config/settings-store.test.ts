@@ -30,6 +30,7 @@ describe('SettingsStore', () => {
     expect(settings!.schemaVersion).toBe(1);
     expect(settings!.overlay.durationMs).toBe(10000);
     expect(settings!.overlay.theme).toBe('dark');
+    expect(settings!.history).toEqual({ maxEntries: 20 });
   });
 
   it('update creates defaults then applies partial when no file exists', async () => {
@@ -37,6 +38,7 @@ describe('SettingsStore', () => {
     const settings = await store.get();
     expect(settings!.roomReference).toBe('room-123');
     expect(settings!.overlay.durationMs).toBe(10000);
+    expect(settings!.history).toEqual({ maxEntries: 20 });
   });
 
   it('update merges partial with existing settings', async () => {

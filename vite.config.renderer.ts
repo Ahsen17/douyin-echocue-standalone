@@ -13,6 +13,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'src/renderer/main/index.html'),
         overlay: resolve(__dirname, 'src/renderer/overlay/index.html'),
+        history: resolve(__dirname, 'src/renderer/history/index.html'),
       },
     },
     outDir: resolve(__dirname, 'dist/renderer'),

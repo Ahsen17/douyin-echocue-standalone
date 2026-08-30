@@ -48,7 +48,7 @@ describe('settings page tabs (five-page restructure)', () => {
     expect(LIVE_SETTINGS_TABS).toEqual(['直播间', '团队与人设', '安全与禁忌', '风险过滤'])
   })
 
-  it('system settings aggregates provider, prompt, overlay, and runtime', () => {
-    expect(SYSTEM_SETTINGS_TABS).toEqual(['AI 服务', '提示词', '浮窗偏好', '运行机制'])
+  it('system settings aggregates provider, prompt, overlay, history, and runtime', () => {
+    expect(SYSTEM_SETTINGS_TABS).toEqual(['AI 服务', '提示词', '浮窗偏好', '历史窗口', '运行机制'])
   })
 })

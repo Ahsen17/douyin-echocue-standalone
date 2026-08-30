@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join } from 'path'
 import { MainWindow } from './windows/MainWindow.js'
 import { OverlayWindow } from './windows/OverlayWindow.js'
+import { HistoryWindow } from './windows/HistoryWindow.js'
 import { TrayManager } from './windows/TrayManager.js'
 import {
   createServiceController,
@@ -22,6 +23,8 @@ import { wireRetrievalControl } from './retrieval/index.js'
 import { compileRiskFilter } from './safety/risk-filter-config.js'
 import { DataLocationStore } from './config/index.js'
 import { createOverlayDisplaySink, wireOverlayControl } from './overlay/index.js'
+import { createHistoryAwareSink, createHistoryController, wireHistoryControl } from './history/index.js'
+import type { HistoryController } from './history/index.js'
 import { resolveResourcePath } from './util/index.js'
 import { SIDECAR_PINS, sidecarSha256 } from './sidecar-pins.js'
 
@@ -30,6 +33,8 @@ const __dirname = dirname(__filename)
 
 let mainWindowInstance: MainWindow | null = null
 let overlayWindowInstance: OverlayWindow | null = null
+let historyWindowInstance: HistoryWindow | null = null
+let historyController: HistoryController | null = null
 let trayManager: TrayManager | null = null
 let services: CreatedServiceController | null = null
 let isExplicitQuit = false
@@ -78,6 +83,21 @@ function showMainWindow(): void {
   mainWindowInstance?.show()
 }
 
+// Re-push the history feed's visual prefs + capacity from settings. Called when
+// the history renderer (re)loads and again after services assemble, so both
+// floating windows stay visually consistent and the buffer honors the capacity.
+async function syncHistoryFeed(): Promise<void> {
+  try {
+    const settings = (await services?.settings?.get()) ?? null
+    if (settings !== null) {
+      historyController?.applyVisualPrefs(settings.overlay)
+      historyController?.applyCapacity(settings.history?.maxEntries ?? 20)
+    }
+  } catch {
+    /* corrupt/missing settings fall back to defaults inside the feed */
+  }
+}
+
 async function doQuit(): Promise<void> {
   isExplicitQuit = true
   logger.info('lifecycle', 'app quit')
@@ -98,6 +118,8 @@ async function doQuit(): Promise<void> {
   await services?.metricsHub?.stopServer()
   services?.shutdown()
   overlayWindowInstance?.destroy()
+  historyController?.destroy()
+  historyWindowInstance?.destroy()
   const win = mainWindowInstance?.getWindow()
   if (win && !win.isDestroyed()) {
     win.destroy()
@@ -132,6 +154,21 @@ app.whenReady().then(async () => {
     contents === overlayWindowInstance?.getWindow()?.webContents
   wireOverlayControl({ overlayWindow: overlayWindowInstance, isOverlayTrustedSender })
 
+  // history-window: eager hidden window + in-memory feed. The window stays hidden
+  // until the service RUNNING state reveals it; the feed is cleared on stop.
+  historyWindowInstance = new HistoryWindow({
+    onRendererReady: () => {
+      void syncHistoryFeed()
+    },
+  })
+  historyController = createHistoryController({
+    window: historyWindowInstance,
+    capacity: 20,
+  })
+  const isHistoryTrustedSender = (contents: WebContents) =>
+    contents === historyWindowInstance?.getWindow()?.webContents
+  wireHistoryControl({ history: historyController, isHistoryTrustedSender })
+
   try {
     services = await createServiceController({
       dataDir: app.getPath('userData'),
@@ -164,14 +201,24 @@ app.whenReady().then(async () => {
         },
       },
       keyVersion: '1',
-      displaySink: createOverlayDisplaySink({ overlayWindow: overlayWindowInstance }),
+      // Every successfully shown suggestion also lands in the history feed.
+      displaySink: createHistoryAwareSink(
+        createOverlayDisplaySink({ overlayWindow: overlayWindowInstance }),
+        historyController!,
+      ),
       cleanupOnStop: () => {
         overlayWindowInstance?.hideSuggestion()
+        // In-memory feed is session-scoped: cleared on every stop (stop, stream
+        // end, disconnect). The window itself stays open showing the empty state.
+        historyController?.clear()
       },
       logger,
     })
     logger.info('lifecycle', 'service controller ready')
     services.goldenSync.start()
+    // Sync the history feed's prefs/capacity now that settings are readable (the
+    // eager window's renderer may have loaded before bootstrap finished).
+    void syncHistoryFeed()
     // WP-1 observability (TD-03): loopback /metrics endpoint + monitoring IPC.
     services.metricsHub.startServer()
     wireMonitoringControl({ metricsHub: services.metricsHub, isTrustedSender })
@@ -206,6 +253,9 @@ app.whenReady().then(async () => {
     services.stateMachine.onChanged((state) => {
       services?.diagnostics.updateLifecycle(state.lifecycle, state.activity)
       const lifecycleChanged = state.lifecycle !== lastLoggedLifecycle
+      // history-window: reveal the feed on entering RUNNING (and keep it visible
+      // through activity ticks; stop clears the feed, not the window).
+      if (lifecycleChanged && state.lifecycle === 'RUNNING') historyWindowInstance?.show()
       if (!lifecycleChanged && state.recoverableError === undefined) return
       lastLoggedLifecycle = state.lifecycle
       if (state.recoverableError !== undefined) {
@@ -228,6 +278,7 @@ app.whenReady().then(async () => {
       settings: services.settings,
       providerConfig: services.providerConfig,
       overlayWindow: overlayWindowInstance,
+      history: historyController ?? undefined,
       isTrustedSender,
       // WP-5: in-app data-root relocation. Services must be stopped before the
       // copy; after a successful migrate the app relaunches on the new root.

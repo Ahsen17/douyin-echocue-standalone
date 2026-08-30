@@ -574,7 +574,7 @@ Provider 到领域错误映射固定为：`AUTH→E_PROVIDER_AUTH`、`BILLING→
 
 ## 7. Electron IPC 白名单
 
-主窗口与浮窗必须使用不同 preload：`mainWindowPreload` 暴露下表主窗口能力；`overlayPreload` 仅暴露 `overlay.renderSuggestion`、`overlay.hide` 与偏好只读事件，绝不暴露配置、人设、审计或服务控制。所有通道通过 `contextBridge` 暴露；请求/响应用 Zod schema 校验。每个 `ipcMain.handle/on` 还必须校验 `event.sender.id` 属于预期窗口、窗口类型和当前受信任应用 URL；任何未知通道、非预期字段或越权 trace 查询均拒绝。
+主窗口、浮窗与历史窗口必须使用不同 preload：`mainWindowPreload` 暴露下表主窗口能力；`overlayPreload` 仅暴露 `overlay.renderSuggestion`、`overlay.hide` 与偏好只读事件；`historyPreload` 仅暴露 `history.getSnapshot` 与只读快照/偏好事件，绝不暴露配置、人设、审计或服务控制。所有通道通过 `contextBridge` 暴露；请求/响应用 Zod schema 校验。每个 `ipcMain.handle/on` 还必须校验 `event.sender.id` 属于预期窗口、窗口类型和当前受信任应用 URL；任何未知通道、非预期字段或越权 trace 查询均拒绝。
 
 | IPC | Renderer → Main 请求 | Main → Renderer 响应/事件 |
 | --- | --- | --- |
@@ -590,11 +590,16 @@ Provider 到领域错误映射固定为：`AUTH→E_PROVIDER_AUTH`、`BILLING→
 | `audit.getWorkflow` | `traceId` | 完整 workflow 上下文 |
 | `audit.submitLabel` | 评分、拒绝/修正内容 | 用户可见 `labelStatus` |
 | `overlay.preference.update` | 白名单浮窗偏好 | 更新后偏好 |
+| `history.getSnapshot` | 无 | `HistorySnapshotV1` |
+| `history.snapshot.changed`（事件） | —（主进程推送） | `HistorySnapshotV1` |
+| `history.preference.changed`（事件） | —（主进程推送） | `OverlayPreferenceV1`（仅主题/字号生效） |
 | `window.showMain` | 无 | 成功/错误 |
 
 `audit.getWorkflow` 仅在用户主动进入 workflow 上下文入口时触发；`audit.submitLabel` 只返回用户可见打标状态，不返回 golden 回流或同步状态。
 
 `audit.search` 强制 `pageSize` 为 1–100，默认按 `received_at DESC`；`audit.getWorkflow` 只接受 UUID v7 `traceId`。订阅 IPC 返回取消函数，窗口销毁时 Main 必须自动注销订阅。主窗口禁止任意外部导航和新窗口创建；浮窗加载独立本地路由，不能跳转到主窗口路由。
+
+**历史建议窗口（history-window gap 任务）**：独立置顶无边框窗口，展示最近 `HistoryConfigV1.maxEntries` 条成功展示的建议（`HistoryEntryV1` = 展示时间 + 弹幕 + `ValidatedSuggestionV1`，不含 `trace_id`）。数据仅存主进程内存环形缓冲，服务运行（RUNNING）时显示并实时追加，停止服务或退出程序自动清空，不持久化。历史 renderer 是主进程缓冲的纯视图：每次变更（追加/清空/容量调整）由 Main 推送全量 `HistorySnapshotV1`，挂载时经 `history.getSnapshot` 取当前快照。视觉主题/字号复用浮窗偏好（`settings.overlay.theme/fontScale`），经 `history.preference.changed` 推送。
 
 ## 8. 错误码
 

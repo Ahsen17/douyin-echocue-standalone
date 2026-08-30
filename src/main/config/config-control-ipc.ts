@@ -26,6 +26,8 @@ export interface ConfigControlIpcOptions {
   isTrustedSender: (contents: WebContents) => boolean;
   /** M6-07 live-apply: re-applies visual prefs to the overlay window on update. */
   overlayWindow?: { applyPreferences(prefs: OverlayPreferenceV1): Promise<void> };
+  /** history-window live-apply: capacity + visual prefs on update. */
+  history?: { applyCapacity(maxEntries: number): void; applyVisualPrefs(prefs: OverlayPreferenceV1): void };
   /** WP-5: in-app data-root relocation (settings.moveDataRoot). */
   moveDataRoot?: MoveDataRootContext;
 }
@@ -34,8 +36,8 @@ export interface ConfigControlIpcOptions {
 // window only. Responses are the renderer view (no internalRetrieval, key only
 // as a boolean). settings.moveDataRoot relocates the whole data root then quits.
 export function wireConfigControl(options: ConfigControlIpcOptions): void {
-  const { settings, providerConfig, isTrustedSender, overlayWindow, moveDataRoot: moveCtx } = options;
-  const handlers = createConfigControlHandlers({ settings, providerConfig, overlayWindow });
+  const { settings, providerConfig, isTrustedSender, overlayWindow, history, moveDataRoot: moveCtx } = options;
+  const handlers = createConfigControlHandlers({ settings, providerConfig, overlayWindow, history });
 
   ipcMain.handle(IpcChannel.ConfigGet, createGuardedHandler(isTrustedSender, () => handlers.get()));
   ipcMain.handle(IpcChannel.ConfigUpdate, createGuardedHandler(isTrustedSender, (raw) => handlers.update(raw)));
