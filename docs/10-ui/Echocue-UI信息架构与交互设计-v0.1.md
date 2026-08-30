@@ -32,7 +32,6 @@ flowchart TB
   RUN --> START[启动/停止与状态]
   RUN --> SUMMARY[当前直播间、团队、主要出镜]
   RUN --> THRESHOLD[检索置信度阈值]
-  RUN --> QUICK[浮窗偏好快捷入口]
   LIVE --> ROOM[直播间]
   LIVE --> TEAM[团队与人设]
   LIVE --> SAFE[安全与禁忌]
@@ -117,7 +116,7 @@ flowchart TD
   K --> L[状态：已停止及原因]
 ```
 
-运行页视觉实现见 [`../../prototype/src/pages/RunPage.tsx`](../../prototype/src/pages/RunPage.tsx)：状态卡必须含生命周期状态、停止操作、当前直播间/团队/主要出镜摘要；最近活动卡必须含最近接收、最近处理、端到端耗时与浮窗偏好入口。
+运行页视觉实现见 [`../../prototype/src/pages/RunPage.tsx`](../../prototype/src/pages/RunPage.tsx)：状态卡必须含生命周期状态、停止操作、当前直播间/团队/主要出镜摘要；最近活动卡必须含最近接收、最近处理、端到端耗时。
 
 | 生命周期/活动 | 可见文案 | 主操作 | 禁止/限制 |
 | --- | --- | --- | --- |
@@ -125,7 +124,7 @@ flowchart TD
 | `GATE_CONNECTING` | 正在确认直播状态 | 停止 | 启动按钮禁用，避免重复连接 |
 | `RUNNING + LISTENING` | 正在监听 | 停止 | 不显示原始实时弹幕流 |
 | `RUNNING + RETRIEVING/GENERATING` | 正在准备建议 | 停止 | 不展示候选、置信度或模型名 |
-| `RUNNING + DISPLAYING` | 正在展示建议 | 停止、浮窗偏好 | 不提示“下一条排队中” |
+| `RUNNING + DISPLAYING` | 正在展示建议 | 停止 | 不提示“下一条排队中” |
 | `STOPPED + ROOM_OFFLINE/ENDED/SOURCE_ERROR` | 未启动；可手动重试 | 重试启动 | 不保留 WS、不自动恢复 |
 | `STOPPED + AUDIT_UNAVAILABLE` | 审计存储不可用 | 查看诊断/修复后启动 | 禁止启动生成服务 |
 

@@ -176,11 +176,6 @@ export default function RunPage({ onNavigate }: PageProps) {
         >
           {runView.primaryLabel}
         </button>
-        {runView.showPreferencesLink ? (
-          <button type="button" className="secondary" onClick={() => onNavigate('系统设置', '浮窗偏好')}>
-            浮窗偏好
-          </button>
-        ) : null}
       </div>
 
       {config !== null ? <ThresholdsCard config={config} /> : null}
