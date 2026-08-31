@@ -1,6 +1,6 @@
 {
   "name": "echocue",
-  "version": "0.2.0",
+  "version": "0.2.1-beta.1",
   "description": "Echocue - AI-powered live streaming assistant",
   "main": "dist/main/index.cjs",
   "type": "module",
