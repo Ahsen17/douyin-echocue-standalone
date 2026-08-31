@@ -41,7 +41,12 @@
 - `npm run test:contracts` — 201 passed ✅
 - `npm run test` — 1210 passed / 5 skipped（既有 skip）✅
 
+## 批次审查结论（两轮 Subagent，全部通过）
+
+- 第一轮（P1=1/P2=2/P3=2）：已修复——scale `.finite()` 防 settings.json 损坏；迁移 004 历史 LOW_VALUE 保留测试；编排器 4 条新 reason 断言；getCalibrationParams 未配置返回 null。
+- 第二轮：**无 P0/P1 阻断项，可创建 PR**。复核确认第一轮修复正确；补 P2-1（`validateCalibrationArtifact` 拒绝 NaN/Infinity）与 P3-4（WINDOW_EVICTED 测试清理）。
+
 ## 遗留/待办
 
-- 批次内 Task 2（置信度参数配置化）未开始，完成后再批次级验证（`npm run build`）。
-- 迁移 004 在旧库（含历史 LOW_VALUE 行）上的 INSERT SELECT 保序性由 migration-runner 覆盖。
+- 历史 LOW_VALUE 数据不回溯（Task 既定接受），旧审计回放中 LOW_VALUE 仍混有旧语义。
+- 迁移 004 在旧库（含历史 LOW_VALUE 行）上的 INSERT SELECT 保序性已由 migration-runner 新增用例覆盖。

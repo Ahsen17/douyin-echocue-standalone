@@ -41,7 +41,14 @@
 
 `goldenSetCalibration`/`preSetCalibration` 经用户决策为运行页可编辑参数（非 golden 内容/同步内部细节），已加入 `T-SCOPE-001` 的 `SANCTIONED_CONFIG_VIEW_KEYS` 豁免名单并更新注释；`SettingsV1.internalRetrieval` 内字段仍不跨 IPC。
 
-## 遗留/待办
+## 批次审查结论（两轮 Subagent，全部通过）
 
-- 批次内 Task 1（语义枚举扩展）已完成；批次级验证（`npm run build`）待两任务后执行。
+- 第一轮：P1（scale 非有限）/P2（迁移保留测试、reason 断言）/P3 均已修复。
+- 第二轮：**无 P0/P1 阻断项，可创建 PR**。补 P2-1（`validateCalibrationArtifact` 拒绝 NaN/Infinity，与 schema `.finite()` 对齐）+ P3-4（WINDOW_EVICTED 测试清理）。
+
+## 遗留/待办（M3-09 接线前必须处理）
+
+- **P3-1/P3-2（前向设计）**：`SettingsStore.getDefaults()` 写入 `{0,2}`，用户首次保存配置后 `getCalibrationParams` 不再返回 null，defaults 会覆盖 M3-09 注入的真实 artifact；单集合配置会强制另一集合回退 `{0,2}`。接线时需用"用户是否显式修改"标记区分默认与显式配置。
+- **P3-3（既有基建）**：`tests/` 不在 `npm run typecheck` 范围，测试类型错误不可见；建议 `tsconfig.test.json` 纳入。
+- **P3-5**：`getCalibrationParams` 的 null/部分配置分支无直接单测（薄读取层，null 语义由编排器测试间接覆盖）。
 - center/scale 当前仍是 POC 占位（`{0,2}`），M3-09 真实样本标定前业务上未验证；本任务仅打通配置通道。
