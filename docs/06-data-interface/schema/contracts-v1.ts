@@ -383,7 +383,7 @@ export const MoveDataRootRequestV1Schema = z.strictObject({
 
 export const SigmoidCalibrationV1Schema = z.strictObject({
   center: z.number().finite(),
-  scale: z.number().positive(),
+  scale: z.number().finite().positive(),
 });
 
 export const SettingsV1Schema = z.strictObject({

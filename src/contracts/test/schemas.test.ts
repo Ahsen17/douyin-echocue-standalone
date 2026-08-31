@@ -178,6 +178,22 @@ test('rejects settings calibration scale <= 0', () => expectInvalid(SettingsV1Sc
     preSetCalibration: { center: 0, scale: 0 },
   },
 }, 'scale 0'));
+test('rejects non-finite calibration center/scale', () => {
+  expectInvalid(SettingsV1Schema, {
+    ...VALID_SETTINGS,
+    internalRetrieval: {
+      ...(VALID_SETTINGS as { internalRetrieval: object }).internalRetrieval,
+      preSetCalibration: { center: Number.POSITIVE_INFINITY, scale: 2 },
+    },
+  }, 'center Infinity');
+  expectInvalid(SettingsV1Schema, {
+    ...VALID_SETTINGS,
+    internalRetrieval: {
+      ...(VALID_SETTINGS as { internalRetrieval: object }).internalRetrieval,
+      goldenSetCalibration: { center: 0, scale: Number.POSITIVE_INFINITY },
+    },
+  }, 'scale Infinity');
+});
 test('rejects settings history maxEntries out of range', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, history: { maxEntries: 121 } }, 'history 121'));
 test('rejects wrong schemaVersion', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, schemaVersion: 2 }, 'schemaVersion 2'));
 test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, extra: true }, 'extra field'));

@@ -384,7 +384,7 @@ export const MoveDataRootRequestV1Schema = z.strictObject({
 // Sigmoid calibration curve params for a retrieval collection (CONTRACT §4.4).
 export const SigmoidCalibrationV1Schema = z.strictObject({
   center: z.number().finite(),
-  scale: z.number().positive(),
+  scale: z.number().finite().positive(),
 });
 
 export const SettingsV1Schema = z.strictObject({

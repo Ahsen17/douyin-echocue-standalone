@@ -239,15 +239,21 @@ export async function createServiceController(
         return 0.9;
       }
     },
+    // null = user has not explicitly configured the sigmoid params, so the
+    // orchestrator keeps the injected/ default artifact instead of a fallback
+    // that would shadow a future real calibration artifact (M3-09).
     getCalibrationParams: async () => {
       try {
         const r = (await settings.get())?.internalRetrieval;
+        const preSet = r?.preSetCalibration;
+        const goldenSet = r?.goldenSetCalibration;
+        if (preSet === undefined && goldenSet === undefined) return null;
         return {
-          preSet: r?.preSetCalibration ?? { center: 0, scale: 2 },
-          goldenSet: r?.goldenSetCalibration ?? { center: 0, scale: 2 },
+          preSet: preSet ?? { center: 0, scale: 2 },
+          goldenSet: goldenSet ?? { center: 0, scale: 2 },
         };
       } catch {
-        return { preSet: { center: 0, scale: 2 }, goldenSet: { center: 0, scale: 2 } };
+        return null;
       }
     },
     // WP-10: compile the configured risk filter once per session (empty → none).
