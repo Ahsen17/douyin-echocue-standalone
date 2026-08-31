@@ -239,6 +239,17 @@ export async function createServiceController(
         return 0.9;
       }
     },
+    getCalibrationParams: async () => {
+      try {
+        const r = (await settings.get())?.internalRetrieval;
+        return {
+          preSet: r?.preSetCalibration ?? { center: 0, scale: 2 },
+          goldenSet: r?.goldenSetCalibration ?? { center: 0, scale: 2 },
+        };
+      } catch {
+        return { preSet: { center: 0, scale: 2 }, goldenSet: { center: 0, scale: 2 } };
+      }
+    },
     // WP-10: compile the configured risk filter once per session (empty → none).
     getRiskFilter: async () => {
       try {

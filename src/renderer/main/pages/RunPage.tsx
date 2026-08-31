@@ -38,7 +38,12 @@ function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
       return false
     }
     const updated = await window.echocue.config.update(
-      buildThresholdUpdate(validation.directPush, validation.semanticDiscard),
+      buildThresholdUpdate(
+        validation.directPush,
+        validation.semanticDiscard,
+        validation.preSet,
+        validation.goldenSet,
+      ),
     )
     setForm(thresholdFormFromConfig(updated))
     setFieldError(null)
@@ -48,8 +53,8 @@ function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
 
   return (
     <div className="card">
-      <h2>检索置信度阈值</h2>
-      <p>golden_set 命中达到直出阈值时跳过 LLM 直接展示；low_value / filter_risk 分类置信度达到语义丢弃阈值时直接丢弃（调高阈值更不易丢弃）。范围 0–1。</p>
+      <h2>检索置信度阈值与校准参数</h2>
+      <p>golden_set 命中达到直出阈值时跳过 LLM 直接展示；low_value / filter_risk 分类置信度达到语义丢弃阈值时直接丢弃（调高阈值更不易丢弃）。阈值范围 0–1；置信度由原始分经 sigmoid（center/scale）校准得到，pre_set 与 golden_set 各一组。</p>
       <div className="form-grid">
         <label>
           golden 直出阈值（默认 0.85）
@@ -75,6 +80,58 @@ function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
             value={form.semanticDiscard}
             onChange={(e) => {
               setForm((f) => ({ ...f, semanticDiscard: e.target.value }))
+              setFieldError(null)
+            }}
+          />
+        </label>
+      </div>
+      <div className="form-grid">
+        <label>
+          pre_set 校准 center（默认 0）
+          <input
+            type="number"
+            step="any"
+            value={form.preSetCenter}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, preSetCenter: e.target.value }))
+              setFieldError(null)
+            }}
+          />
+        </label>
+        <label>
+          pre_set 校准 scale（默认 2）
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={form.preSetScale}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, preSetScale: e.target.value }))
+              setFieldError(null)
+            }}
+          />
+        </label>
+        <label>
+          golden_set 校准 center（默认 0）
+          <input
+            type="number"
+            step="any"
+            value={form.goldenSetCenter}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, goldenSetCenter: e.target.value }))
+              setFieldError(null)
+            }}
+          />
+        </label>
+        <label>
+          golden_set 校准 scale（默认 2）
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={form.goldenSetScale}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, goldenSetScale: e.target.value }))
               setFieldError(null)
             }}
           />

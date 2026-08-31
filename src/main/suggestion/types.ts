@@ -10,7 +10,7 @@ import type { ServiceStateMachine } from '../service/index.js';
 import type { PersonaRouter, PersonaStore, PersonaRoute } from '../persona/index.js';
 import type { SafetyPolicyStore } from '../safety/index.js';
 import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
-import type { SuggestionRetriever, CalibratedRetrieval, CalibrationArtifactV1 } from '../retrieval/index.js';
+import type { SuggestionRetriever, CalibratedRetrieval, CalibrationArtifactV1, SigmoidCalibrationV1 } from '../retrieval/index.js';
 import type { ProviderConfigService, ProviderAuditRecord, TextGenerationProvider } from '../provider/index.js';
 import type { CredentialStore } from '../credentials/index.js';
 import type { SuggestionOutputValidator } from '../validation/index.js';
@@ -107,6 +107,8 @@ export interface SuggestionOrchestratorDeps {
   /** WP-4: live reads of the run-page thresholds; frozen per session. */
   getDirectPushThreshold?: () => Promise<number>;
   getSemanticDiscardConfidence?: () => Promise<number>;
+  /** Per-collection sigmoid calibration params (center/scale); frozen per session. */
+  getCalibrationParams?: () => Promise<{ preSet: SigmoidCalibrationV1; goldenSet: SigmoidCalibrationV1 } | null>;
   maxContextBudget?: number;
   /** TD-08: live read of the user-configured system prompt (null → code default). */
   getSystemPrompt?: () => Promise<SystemPromptConfig | null>;

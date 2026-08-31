@@ -381,6 +381,12 @@ export const MoveDataRootRequestV1Schema = z.strictObject({
   targetDir: z.string().trim().min(1).max(1024),
 });
 
+// Sigmoid calibration curve params for a retrieval collection (CONTRACT §4.4).
+export const SigmoidCalibrationV1Schema = z.strictObject({
+  center: z.number().finite(),
+  scale: z.number().positive(),
+});
+
 export const SettingsV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
   roomReference: z.string().min(1).max(128).optional(),
@@ -399,6 +405,10 @@ export const SettingsV1Schema = z.strictObject({
     // Optional so pre-existing settings.json (without the field) still parse;
     // getDefaults / runtime fall back to DEFAULT_CALIBRATION_ARTIFACT_V1 (0.9).
     semanticDiscardConfidence: z.number().min(0).max(1).optional(),
+    // Optional per-collection sigmoid params; getDefaults / runtime fall back to
+    // {center:0, scale:2}, matching DEFAULT_CALIBRATION_ARTIFACT_V1.
+    preSetCalibration: SigmoidCalibrationV1Schema.optional(),
+    goldenSetCalibration: SigmoidCalibrationV1Schema.optional(),
     windowMaxAgeMs: z.number().int().min(100).max(30000),
     candidateMaxCount: z.number().int().min(1).max(1000),
   }),
@@ -415,6 +425,8 @@ export const ConfigViewV1Schema = z.strictObject({
   prompt: SystemPromptV1Schema.optional(),
   directPushThreshold: z.number().min(0).max(1),
   semanticDiscardConfidence: z.number().min(0).max(1),
+  preSetCalibration: SigmoidCalibrationV1Schema,
+  goldenSetCalibration: SigmoidCalibrationV1Schema,
   queueing: QueueingConfigV1Schema,
   audit: AuditRetentionV1Schema,
   metrics: MetricsConfigV1Schema,
@@ -452,9 +464,12 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
   provider: ProviderConfigInputV1Schema.optional(),
   // TD-08: empty string clears the custom template back to the code default.
   systemPrompt: z.string().trim().max(20000).optional(),
-  // Run page retrieval thresholds; applied on the next service start.
+  // Run page retrieval thresholds + calibration params; applied on the next
+  // service start.
   directPushThreshold: z.number().min(0).max(1).optional(),
   semanticDiscardConfidence: z.number().min(0).max(1).optional(),
+  preSetCalibration: SigmoidCalibrationV1Schema.optional(),
+  goldenSetCalibration: SigmoidCalibrationV1Schema.optional(),
   // System-settings runtime mechanism controls.
   queueing: QueueingConfigV1Schema.optional(),
   auditRetentionDays: z.number().int().min(7).max(180).optional(),
@@ -468,6 +483,8 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
     value.systemPrompt === undefined &&
     value.directPushThreshold === undefined &&
     value.semanticDiscardConfidence === undefined &&
+    value.preSetCalibration === undefined &&
+    value.goldenSetCalibration === undefined &&
     value.queueing === undefined &&
     value.auditRetentionDays === undefined &&
     value.metricsPort === undefined &&

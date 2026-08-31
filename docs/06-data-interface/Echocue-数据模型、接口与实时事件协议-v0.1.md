@@ -341,7 +341,7 @@ interface SettingsV1 {
   activeSafetyPolicyVersion?: string;
   overlay: { durationMs: number; width: number; height: number; opacity: number; fontScale: number; theme: 'light'|'dark'; clickThrough: boolean };
   prompt?: { systemPromptTemplate: string; templateVersion: string; updatedAt: string };
-  internalRetrieval: { calibrationVersion: string; directPushThreshold: number; windowMaxAgeMs: number; candidateMaxCount: number };
+  internalRetrieval: { calibrationVersion: string; directPushThreshold: number; semanticDiscardConfidence?: number; preSetCalibration?: { center: number; scale: number }; goldenSetCalibration?: { center: number; scale: number }; windowMaxAgeMs: number; candidateMaxCount: number };
 }
 
 interface ProviderConfigV1 {

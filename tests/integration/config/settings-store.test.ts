@@ -183,5 +183,7 @@ describe('SettingsStore', () => {
     const { SettingsV1Schema } = await import('@echocue/contracts');
     const defaults = store.getDefaults();
     expect(() => SettingsV1Schema.parse(defaults)).not.toThrow();
+    expect(defaults.internalRetrieval.preSetCalibration).toEqual({ center: 0, scale: 2 });
+    expect(defaults.internalRetrieval.goldenSetCalibration).toEqual({ center: 0, scale: 2 });
   });
 });

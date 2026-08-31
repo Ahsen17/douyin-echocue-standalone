@@ -614,6 +614,36 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(discard?.reason).toBe('LOW_VALUE');
   });
 
+  it('WP-4: freezes per-collection calibration params at session start for semantic discard', async () => {
+    // sigmoid(2/1) ≈ 0.88 (frozen scale=1) vs sigmoid(2/2) ≈ 0.73 (default):
+    // with frozen threshold 0.8, the low_value hit is discarded only via the params.
+    const lowValue = {
+      pointId: 'pre-low',
+      caseId: 'pre-low',
+      collection: 'pre_set',
+      rawScore: 2,
+      rank: 1,
+      payload: { ...PRE_PAYLOAD, case_id: 'pre-low', semantic_type: 'low_value' },
+    } satisfies RetrievalRawHit;
+    const provider = makeProvider();
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([lowValue]) as never,
+      createProvider: () => provider as never,
+      getSemanticDiscardConfidence: async () => 0.8,
+      getCalibrationParams: async () => ({
+        preSet: { center: 0, scale: 1 },
+        goldenSet: { center: 0, scale: 1 },
+      }),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    expect(provider.calls).toBe(0);
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.from).toBe('RETRIEVING');
+    expect(discard?.reason).toBe('LOW_VALUE');
+  });
+
   it('aborts the in-flight attempt on abortAll(USER_STOP)', async () => {
     const provider = makeProvider({ ok: false, error: { code: 'ABORTED' } });
     const { audit, orchestrator } = harness({

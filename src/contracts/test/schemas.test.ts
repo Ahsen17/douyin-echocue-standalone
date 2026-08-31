@@ -142,6 +142,8 @@ const VALID_PROMPT: object = {
 const VALID_VIEW_EXTRAS: object = {
   directPushThreshold: 0.85,
   semanticDiscardConfidence: 0.9,
+  preSetCalibration: { center: 0, scale: 2 },
+  goldenSetCalibration: { center: 0, scale: 2 },
   queueing: { enabled: false, timeoutMs: 30000 },
   audit: { retentionDays: 30 },
   metrics: { enabled: true, port: 9100 },
@@ -161,6 +163,21 @@ test('valid minimal settings', () => expectValid(SettingsV1Schema, VALID_SETTING
 test('valid settings with provider', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, provider: VALID_PROVIDER }, 'with provider'));
 test('valid settings with prompt override', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, prompt: VALID_PROMPT }, 'with prompt'));
 test('valid settings with history config', () => expectValid(SettingsV1Schema, { ...VALID_SETTINGS, history: { maxEntries: 50 } }, 'history optional'));
+test('valid settings with per-collection calibration params', () => expectValid(SettingsV1Schema, {
+  ...VALID_SETTINGS,
+  internalRetrieval: {
+    ...(VALID_SETTINGS as { internalRetrieval: object }).internalRetrieval,
+    preSetCalibration: { center: 0, scale: 2 },
+    goldenSetCalibration: { center: 0, scale: 4 },
+  },
+}, 'calibration optional'));
+test('rejects settings calibration scale <= 0', () => expectInvalid(SettingsV1Schema, {
+  ...VALID_SETTINGS,
+  internalRetrieval: {
+    ...(VALID_SETTINGS as { internalRetrieval: object }).internalRetrieval,
+    preSetCalibration: { center: 0, scale: 0 },
+  },
+}, 'scale 0'));
 test('rejects settings history maxEntries out of range', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, history: { maxEntries: 121 } }, 'history 121'));
 test('rejects wrong schemaVersion', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, schemaVersion: 2 }, 'schemaVersion 2'));
 test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, extra: true }, 'extra field'));
