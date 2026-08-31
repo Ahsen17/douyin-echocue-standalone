@@ -72,6 +72,21 @@ describe('validateCalibrationArtifact', () => {
     ).toThrow(/scale must be positive/);
   });
 
+  it('rejects non-finite center/scale', () => {
+    expect(() =>
+      validateCalibrationArtifact({
+        ...DEFAULT_CALIBRATION_ARTIFACT_V1,
+        preSet: { center: 0, scale: Number.POSITIVE_INFINITY },
+      }),
+    ).toThrow(/must be finite/);
+    expect(() =>
+      validateCalibrationArtifact({
+        ...DEFAULT_CALIBRATION_ARTIFACT_V1,
+        goldenSet: { center: Number.NaN, scale: 2 },
+      }),
+    ).toThrow(/must be finite/);
+  });
+
   it('rejects discard confidence out of [0,1]', () => {
     expect(() =>
       validateCalibrationArtifact({ ...DEFAULT_CALIBRATION_ARTIFACT_V1, semanticDiscardConfidence: 1.1 }),

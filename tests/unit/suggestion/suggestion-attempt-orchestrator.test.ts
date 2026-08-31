@@ -689,6 +689,9 @@ describe('SuggestionAttemptOrchestrator', () => {
     orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-c' }));
     await flush(50);
     expect(audit.transitions.map((t) => t.reason)).toContain('WINDOW_EVICTED');
+    // Clean up the lingering slow attempt timer (P3-4).
+    orchestrator.abortAll('USER_STOPPED');
+    await flush(10);
   });
 
   it('closes an unexpected pipeline error with PIPELINE_ERROR', async () => {
