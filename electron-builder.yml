@@ -42,6 +42,8 @@ extraResources:
     to: docs/06-data-interface/migrations/002_queue_timeout_reason.sql
   - from: docs/06-data-interface/migrations/003_empty_normalized_reason.sql
     to: docs/06-data-interface/migrations/003_empty_normalized_reason.sql
+  - from: docs/06-data-interface/migrations/004_semantic_reason_codes.sql
+    to: docs/06-data-interface/migrations/004_semantic_reason_codes.sql
   - from: build/icon.png
     to: build/icon.png
   - from: build/tray.png

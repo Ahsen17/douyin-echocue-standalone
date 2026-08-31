@@ -21,6 +21,11 @@ const MIGRATION_003_PATH = join(
   'docs/06-data-interface/migrations/003_empty_normalized_reason.sql',
 );
 
+const MIGRATION_004_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/004_semantic_reason_codes.sql',
+);
+
 describe('MigrationRunner', () => {
   let testDir: string;
   let dbPath: string;
@@ -195,18 +200,19 @@ THIS IS NOT SQL;
     db.close();
   });
 
-  it('003 rebuild accepts EMPTY_NORMALIZED and every reason-code enum value', () => {
+  it('003/004 rebuild accepts EMPTY_NORMALIZED and every reason-code enum value', () => {
     const runner = new MigrationRunner(dbPath, [
       { version: 1, path: MIGRATION_PATH },
       { version: 2, path: MIGRATION_002_PATH },
       { version: 3, path: MIGRATION_003_PATH },
+      { version: 4, path: MIGRATION_004_PATH },
     ]);
     const db = runner.run();
 
     const applied = db
       .prepare('SELECT version FROM schema_migration ORDER BY version')
       .all() as Array<{ version: number }>;
-    expect(applied.map((r) => r.version)).toEqual([1, 2, 3]);
+    expect(applied.map((r) => r.version)).toEqual([1, 2, 3, 4]);
 
     const now = '2026-08-25T00:00:00.000Z';
     db.prepare('INSERT INTO live_session (session_id, room_reference, started_at) VALUES (?,?,?)').run(

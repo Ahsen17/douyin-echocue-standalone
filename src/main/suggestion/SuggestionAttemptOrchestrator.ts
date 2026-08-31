@@ -108,7 +108,7 @@ export class SuggestionAttemptOrchestrator {
       onEvict: (traceId) => {
         const candidate = this.windowedComments.get(traceId);
         if (candidate === undefined) return;
-        this.closeChain(candidate, 'LOW_VALUE');
+        this.closeChain(candidate, 'WINDOW_EVICTED');
         this.windowedComments.delete(traceId);
       },
     });
@@ -301,8 +301,8 @@ export class SuggestionAttemptOrchestrator {
         contentHmac: meta.contentHmac,
       };
     } catch {
-      this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'LOW_VALUE', [
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'routing unavailable' }),
+      this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'PERSONA_ROUTE_UNAVAILABLE', [
+        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'PERSONA_ROUTE_UNAVAILABLE', note: 'routing unavailable' }),
       ]);
       return;
     }
@@ -390,8 +390,8 @@ export class SuggestionAttemptOrchestrator {
         personaVersion: personaRoute.personaVersion,
       });
     } catch {
-      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', 'LOW_VALUE', [
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'retrieval failed' }),
+      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', 'RETRIEVAL_FAILED', [
+        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'RETRIEVAL_FAILED', note: 'retrieval failed' }),
       ]);
       this.restoreListening();
       return;
@@ -413,9 +413,15 @@ export class SuggestionAttemptOrchestrator {
       this.snap('DECISION_JSON', 'RERANK_DECISION', { mergedTopK: calibrated.mergedTopK }),
     ] as PendingCandidate['querySnapshots'];
     if (calibrated.semanticDecision.action === 'DISCARD') {
-      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', 'LOW_VALUE', [
+      const semanticReason = calibrated.semanticDecision.reason ?? 'LOW_VALUE';
+      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', semanticReason, [
         ...querySnapshots,
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'semantic discard' }),
+        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', {
+          reason: semanticReason,
+          discardedBy: calibrated.semanticDecision.discardedBy,
+          topSemanticType: calibrated.semanticDecision.topSemanticType,
+          note: 'semantic discard',
+        }),
       ]);
       this.restoreListening();
       return;
@@ -1102,7 +1108,7 @@ export class SuggestionAttemptOrchestrator {
       ]);
       return;
     }
-    this.closeChain(comment, 'LOW_VALUE');
+    this.closeChain(comment, 'PIPELINE_ERROR');
     // Only release the mutex when the failing comment is the current attempt; a
     // background candidate's error must not clear a genuinely in-flight attempt
     // (MINOR-1).

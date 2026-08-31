@@ -66,6 +66,7 @@ describe('evaluateSemanticFilter', () => {
   it('discards when a filter_risk hit is confident and no positive hit is higher', () => {
     const decision = evaluateSemanticFilter([hit('f1', 9, 'filter_risk')], ARTIFACT);
     expect(decision.action).toBe('DISCARD');
+    expect(decision.reason).toBe('FILTER_RISK_DISCARD');
     expect(decision.discardedBy).toBe('filter_risk');
   });
 
