@@ -21,6 +21,11 @@ const MIGRATION_003_PATH = join(
   'docs/06-data-interface/migrations/003_empty_normalized_reason.sql',
 );
 
+const MIGRATION_004_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/004_semantic_reason_codes.sql',
+);
+
 describe('MigrationRunner', () => {
   let testDir: string;
   let dbPath: string;
@@ -195,18 +200,19 @@ THIS IS NOT SQL;
     db.close();
   });
 
-  it('003 rebuild accepts EMPTY_NORMALIZED and every reason-code enum value', () => {
+  it('003/004 rebuild accepts EMPTY_NORMALIZED and every reason-code enum value', () => {
     const runner = new MigrationRunner(dbPath, [
       { version: 1, path: MIGRATION_PATH },
       { version: 2, path: MIGRATION_002_PATH },
       { version: 3, path: MIGRATION_003_PATH },
+      { version: 4, path: MIGRATION_004_PATH },
     ]);
     const db = runner.run();
 
     const applied = db
       .prepare('SELECT version FROM schema_migration ORDER BY version')
       .all() as Array<{ version: number }>;
-    expect(applied.map((r) => r.version)).toEqual([1, 2, 3]);
+    expect(applied.map((r) => r.version)).toEqual([1, 2, 3, 4]);
 
     const now = '2026-08-25T00:00:00.000Z';
     db.prepare('INSERT INTO live_session (session_id, room_reference, started_at) VALUES (?,?,?)').run(
@@ -237,5 +243,57 @@ THIS IS NOT SQL;
     ).toThrow();
 
     db.close();
+  });
+
+  it('004 rebuild preserves pre-existing transitions incl. historical LOW_VALUE rows', () => {
+    const runner1 = new MigrationRunner(dbPath, [
+      { version: 1, path: MIGRATION_PATH },
+      { version: 2, path: MIGRATION_002_PATH },
+      { version: 3, path: MIGRATION_003_PATH },
+    ]);
+    const db1 = runner1.run();
+    const now = '2026-08-26T00:00:00.000Z';
+    db1.prepare('INSERT INTO live_session (session_id, room_reference, started_at) VALUES (?,?,?)').run(
+      's1', 'room-1', now,
+    );
+    db1.prepare(
+      'INSERT INTO audit_trace (trace_id, session_id, source_message_id, received_at, created_at) VALUES (?,?,?,?,?)',
+    ).run('t1', 's1', 'm1', now, now);
+    // Historical LOW_VALUE row (old semantic overload) + a QUEUE_TIMEOUT row.
+    db1.prepare(
+      `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).run('t1', 1, 'RETRIEVING', 'DISCARDED', 'LOW_VALUE', now, null, 'h-old1');
+    db1.prepare(
+      `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).run('t1', 2, 'NORMALIZED', 'DISCARDED', 'QUEUE_TIMEOUT', now, 'h-old1', 'h-old2');
+    db1.close();
+
+    // Second run applies only the new 004 migration on top of the existing DB.
+    const runner2 = new MigrationRunner(dbPath, [
+      { version: 1, path: MIGRATION_PATH },
+      { version: 2, path: MIGRATION_002_PATH },
+      { version: 3, path: MIGRATION_003_PATH },
+      { version: 4, path: MIGRATION_004_PATH },
+    ]);
+    const db2 = runner2.run();
+    const applied = db2
+      .prepare('SELECT version FROM schema_migration ORDER BY version')
+      .all() as Array<{ version: number }>;
+    expect(applied.map((r) => r.version)).toEqual([1, 2, 3, 4]);
+    const rows = db2
+      .prepare('SELECT reason_code, previous_hmac, entry_hmac FROM audit_transition WHERE trace_id=? ORDER BY sequence_no')
+      .all('t1') as Array<{ reason_code: string; previous_hmac: string | null; entry_hmac: string }>;
+    expect(rows).toEqual([
+      { reason_code: 'LOW_VALUE', previous_hmac: null, entry_hmac: 'h-old1' },
+      { reason_code: 'QUEUE_TIMEOUT', previous_hmac: 'h-old1', entry_hmac: 'h-old2' },
+    ]);
+    // The 004 CHECK still accepts the new reason codes after the rebuild.
+    db2.prepare(
+      `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).run('t1', 3, 'RETRIEVING', 'DISCARDED', 'RETRIEVAL_FAILED', now, 'h-old2', 'h-new');
+    db2.close();
   });
 });

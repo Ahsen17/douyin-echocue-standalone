@@ -56,6 +56,8 @@ describe('Config IPC handlers', () => {
     const view = await handlers.get();
     expect(view.directPushThreshold).toBe(0.85);
     expect(view.semanticDiscardConfidence).toBe(0.9);
+    expect(view.preSetCalibration).toEqual({ center: 0, scale: 2 });
+    expect(view.goldenSetCalibration).toEqual({ center: 0, scale: 2 });
     expect(view.queueing).toEqual({ enabled: false, timeoutMs: 30000 });
     expect(view.audit).toEqual({ retentionDays: 30 });
     expect(view.metrics).toEqual({ enabled: true, port: 9100 });
@@ -70,6 +72,19 @@ describe('Config IPC handlers', () => {
     expect(stored?.internalRetrieval.directPushThreshold).toBe(0.9);
     expect(stored?.internalRetrieval.semanticDiscardConfidence).toBe(0.85);
     expect(stored?.internalRetrieval.calibrationVersion).toBe('v1.0'); // untouched
+  });
+
+  it('update persists per-collection calibration params into internalRetrieval', async () => {
+    const view = await handlers.update({
+      preSetCalibration: { center: -1, scale: 3 },
+      goldenSetCalibration: { center: 2, scale: 4 },
+    });
+    expect(view.preSetCalibration).toEqual({ center: -1, scale: 3 });
+    expect(view.goldenSetCalibration).toEqual({ center: 2, scale: 4 });
+    const stored = await settings.get();
+    expect(stored?.internalRetrieval.preSetCalibration).toEqual({ center: -1, scale: 3 });
+    expect(stored?.internalRetrieval.goldenSetCalibration).toEqual({ center: 2, scale: 4 });
+    expect(stored?.internalRetrieval.directPushThreshold).toBe(0.85); // untouched
   });
 
   it('update persists queueing, audit retention, metrics port and risk filter', async () => {

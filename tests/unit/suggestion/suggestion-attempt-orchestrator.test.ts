@@ -614,6 +614,106 @@ describe('SuggestionAttemptOrchestrator', () => {
     expect(discard?.reason).toBe('LOW_VALUE');
   });
 
+  it('WP-4: freezes per-collection calibration params at session start for semantic discard', async () => {
+    // sigmoid(2/1) ≈ 0.88 (frozen scale=1) vs sigmoid(2/2) ≈ 0.73 (default):
+    // with frozen threshold 0.8, the low_value hit is discarded only via the params.
+    const lowValue = {
+      pointId: 'pre-low',
+      caseId: 'pre-low',
+      collection: 'pre_set',
+      rawScore: 2,
+      rank: 1,
+      payload: { ...PRE_PAYLOAD, case_id: 'pre-low', semantic_type: 'low_value' },
+    } satisfies RetrievalRawHit;
+    const provider = makeProvider();
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([lowValue]) as never,
+      createProvider: () => provider as never,
+      getSemanticDiscardConfidence: async () => 0.8,
+      getCalibrationParams: async () => ({
+        preSet: { center: 0, scale: 1 },
+        goldenSet: { center: 0, scale: 1 },
+      }),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    expect(provider.calls).toBe(0);
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.from).toBe('RETRIEVING');
+    expect(discard?.reason).toBe('LOW_VALUE');
+  });
+
+  it('closes a persona-routing failure with PERSONA_ROUTE_UNAVAILABLE', async () => {
+    const { audit, orchestrator } = harness({
+      router: { route: () => { throw new Error('routing fail') } } as never,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.from).toBe('NORMALIZED');
+    expect(discard?.reason).toBe('PERSONA_ROUTE_UNAVAILABLE');
+  });
+
+  it('closes a retrieval failure with RETRIEVAL_FAILED', async () => {
+    const { audit, orchestrator } = harness({
+      retriever: { search: async () => { throw new Error('qdrant down') } } as never,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.from).toBe('RETRIEVING');
+    expect(discard?.reason).toBe('RETRIEVAL_FAILED');
+  });
+
+  it('closes a candidate evicted from the window with WINDOW_EVICTED', async () => {
+    // Slow provider keeps the first attempt alive (activity GENERATING) so the
+    // later comments are windowed instead of selected; cap=1 evicts the lowest.
+    const provider = makeProvider();
+    const origGenerate = provider.generateReply;
+    provider.generateReply = async (input) => {
+      await new Promise((r) => setTimeout(r, 500));
+      return origGenerate(input);
+    };
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([preHit(0.95)]) as never,
+      createProvider: () => provider as never,
+      candidateMaxCount: 1,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-a' }));
+    await flush();
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-b' }));
+    orchestrator.handleComment(makeComment({ sourceMessageId: 'msg-c' }));
+    await flush(50);
+    expect(audit.transitions.map((t) => t.reason)).toContain('WINDOW_EVICTED');
+    // Clean up the lingering slow attempt timer (P3-4).
+    orchestrator.abortAll('USER_STOPPED');
+    await flush(10);
+  });
+
+  it('closes an unexpected pipeline error with PIPELINE_ERROR', async () => {
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([preHit(0.95)]) as never,
+      // Invalid calibration (scale 0) fails validateCalibrationArtifact inside
+      // evaluateRetrieval, outside the search try/catch → handlePipelineError.
+      calibrationArtifact: {
+        artifactId: 'test',
+        version: 'v1',
+        preSet: { center: 0, scale: 0 },
+        goldenSet: { center: 0, scale: 2 },
+        semanticDiscardConfidence: 0.9,
+      },
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.reason).toBe('PIPELINE_ERROR');
+  });
+
   it('aborts the in-flight attempt on abortAll(USER_STOP)', async () => {
     const provider = makeProvider({ ok: false, error: { code: 'ABORTED' } });
     const { audit, orchestrator } = harness({

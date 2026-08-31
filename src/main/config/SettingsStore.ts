@@ -106,6 +106,10 @@ export class SettingsStore {
         // 2026-08 校准：语义丢弃阈值（low_value/filter_risk 明确丢弃），与
         // DEFAULT_CALIBRATION_ARTIFACT_V1 保持一致；运行页可调。
         semanticDiscardConfidence: 0.9,
+        // sigmoid 校准参数（POC 占位 {0,2}），与 DEFAULT_CALIBRATION_ARTIFACT_V1
+        // 保持一致；运行页可调，服务启动冻结生效。
+        preSetCalibration: { center: 0, scale: 2 },
+        goldenSetCalibration: { center: 0, scale: 2 },
         // 2026-08-25：默认 10s（LLM 时间窗口），与编排器常量保持一致（当前未接线进运行时）。
         windowMaxAgeMs: 10_000,
         candidateMaxCount: 50,

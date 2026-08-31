@@ -40,6 +40,10 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         directPushThreshold: settings.internalRetrieval.directPushThreshold,
         semanticDiscardConfidence:
           settings.internalRetrieval.semanticDiscardConfidence ?? 0.9,
+        preSetCalibration:
+          settings.internalRetrieval.preSetCalibration ?? { center: 0, scale: 2 },
+        goldenSetCalibration:
+          settings.internalRetrieval.goldenSetCalibration ?? { center: 0, scale: 2 },
         queueing: settings.queueing ?? { enabled: false, timeoutMs: 30000 },
         audit: settings.audit ?? { retentionDays: 30 },
         metrics: settings.metrics ?? { enabled: true, port: 9100 },
@@ -60,6 +64,8 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         systemPrompt,
         directPushThreshold,
         semanticDiscardConfidence,
+        preSetCalibration,
+        goldenSetCalibration,
         queueing,
         auditRetentionDays,
         metricsPort,
@@ -112,16 +118,23 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
                 };
           await deps.settings.update({ prompt });
         }
-        // Retrieval thresholds: merge into internalRetrieval so the other
-        // internal fields survive the partial write. Applied on next service
-        // start (the orchestrator freezes them per session).
-        if (directPushThreshold !== undefined || semanticDiscardConfidence !== undefined) {
+        // Retrieval thresholds + calibration params: merge into internalRetrieval
+        // so the other internal fields survive the partial write. Applied on next
+        // service start (the orchestrator freezes them per session).
+        if (
+          directPushThreshold !== undefined ||
+          semanticDiscardConfidence !== undefined ||
+          preSetCalibration !== undefined ||
+          goldenSetCalibration !== undefined
+        ) {
           const currentSettings = await readSettings(deps.settings);
           await deps.settings.update({
             internalRetrieval: {
               ...currentSettings.internalRetrieval,
               ...(directPushThreshold !== undefined ? { directPushThreshold } : {}),
               ...(semanticDiscardConfidence !== undefined ? { semanticDiscardConfidence } : {}),
+              ...(preSetCalibration !== undefined ? { preSetCalibration } : {}),
+              ...(goldenSetCalibration !== undefined ? { goldenSetCalibration } : {}),
             },
           });
         }

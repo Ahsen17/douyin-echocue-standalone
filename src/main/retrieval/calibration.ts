@@ -29,8 +29,13 @@ export const DEFAULT_CALIBRATION_ARTIFACT_V1: CalibrationArtifactV1 = {
 };
 
 export function validateCalibrationArtifact(artifact: CalibrationArtifactV1): void {
-  if (artifact.preSet.scale <= 0 || artifact.goldenSet.scale <= 0) {
-    throw new Error(`calibration artifact scale must be positive: ${artifact.artifactId}`);
+  for (const params of [artifact.preSet, artifact.goldenSet]) {
+    if (!Number.isFinite(params.center) || !Number.isFinite(params.scale)) {
+      throw new Error(`calibration artifact sigmoid params must be finite: ${artifact.artifactId}`);
+    }
+    if (params.scale <= 0) {
+      throw new Error(`calibration artifact scale must be positive: ${artifact.artifactId}`);
+    }
   }
   if (
     artifact.semanticDiscardConfidence < 0 ||

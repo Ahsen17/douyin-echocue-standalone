@@ -30,13 +30,16 @@ const FORBIDDEN_USER_VISIBLE_KEY = [
   /golden|bad.?case|sync|threshold|score|confidence|envelope/i,
 ];
 
-// Sanctioned T-SCOPE-001 exception: the Run page exposes exactly these two
-// user-tunable retrieval thresholds (direct golden push + low-value semantic
-// discard), per product decision. The internal calibration artifact, windowing,
-// candidate caps and golden/sync internals stay forbidden.
+// Sanctioned T-SCOPE-001 exception: the Run page exposes the two user-tunable
+// retrieval thresholds (direct golden push + low-value semantic discard) and the
+// per-collection sigmoid calibration params (center/scale of the confidence
+// curve), per product decision. The internal calibration artifact version,
+// windowing, candidate caps and golden/sync internals stay forbidden.
 const SANCTIONED_CONFIG_VIEW_KEYS = new Set([
   'directPushThreshold',
   'semanticDiscardConfidence',
+  'preSetCalibration',
+  'goldenSetCalibration',
 ]);
 
 const FORBIDDEN_SOURCE_EVENT_TYPE = /send|publish|write|push|reply/i;

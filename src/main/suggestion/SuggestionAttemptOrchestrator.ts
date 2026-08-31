@@ -12,7 +12,7 @@ import type { PersonaRoute } from '../persona/index.js';
 import { evaluateInputSafety } from '../safety/index.js';
 import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import { evaluateRetrieval } from '../retrieval/index.js';
-import { DEFAULT_CALIBRATION_ARTIFACT_V1, type CalibrationArtifactV1 } from '../retrieval/calibration.js';
+import { DEFAULT_CALIBRATION_ARTIFACT_V1, type CalibrationArtifactV1, type SigmoidCalibrationV1 } from '../retrieval/calibration.js';
 import { evaluateDirectPush } from '../retrieval/direct-push.js';
 import { renderPrompt, type SystemPromptConfig } from '../prompt/index.js';
 import { CredentialStore } from '../credentials/index.js';
@@ -89,6 +89,8 @@ export class SuggestionAttemptOrchestrator {
   /** WP-4: run-page retrieval thresholds, frozen per session like safety/prompt. */
   private frozenDirectPushThreshold: number | null = null;
   private frozenSemanticDiscardConfidence: number | null = null;
+  /** Per-collection sigmoid calibration params (center/scale), frozen per session. */
+  private frozenCalibrationParams: { preSet: SigmoidCalibrationV1; goldenSet: SigmoidCalibrationV1 } | null = null;
   /** WP-10: frozen configured risk filter (empty ⇒ no risk filtering). */
   private frozenRiskFilter: CompiledRiskFilter | null = null;
   /** WP-2: FIFO backlog of comments audited RECEIVED→NORMALIZED while DISPLAYING. */
@@ -108,7 +110,7 @@ export class SuggestionAttemptOrchestrator {
       onEvict: (traceId) => {
         const candidate = this.windowedComments.get(traceId);
         if (candidate === undefined) return;
-        this.closeChain(candidate, 'LOW_VALUE');
+        this.closeChain(candidate, 'WINDOW_EVICTED');
         this.windowedComments.delete(traceId);
       },
     });
@@ -147,6 +149,7 @@ export class SuggestionAttemptOrchestrator {
     // the fallback when the getter is absent or settings are unreadable).
     this.frozenDirectPushThreshold = (await this.deps.getDirectPushThreshold?.()) ?? null;
     this.frozenSemanticDiscardConfidence = (await this.deps.getSemanticDiscardConfidence?.()) ?? null;
+    this.frozenCalibrationParams = (await this.deps.getCalibrationParams?.()) ?? null;
     // WP-10: freeze the configured risk filter for the whole session.
     this.frozenRiskFilter = (await this.deps.getRiskFilter?.()) ?? null;
     this.session = { sessionId: input.sessionId, seen: new Set() };
@@ -301,8 +304,8 @@ export class SuggestionAttemptOrchestrator {
         contentHmac: meta.contentHmac,
       };
     } catch {
-      this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'LOW_VALUE', [
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'routing unavailable' }),
+      this.transition(processingComment, 'NORMALIZED', 'DISCARDED', 'PERSONA_ROUTE_UNAVAILABLE', [
+        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'PERSONA_ROUTE_UNAVAILABLE', note: 'routing unavailable' }),
       ]);
       return;
     }
@@ -390,8 +393,8 @@ export class SuggestionAttemptOrchestrator {
         personaVersion: personaRoute.personaVersion,
       });
     } catch {
-      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', 'LOW_VALUE', [
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'retrieval failed' }),
+      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', 'RETRIEVAL_FAILED', [
+        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'RETRIEVAL_FAILED', note: 'retrieval failed' }),
       ]);
       this.restoreListening();
       return;
@@ -413,9 +416,15 @@ export class SuggestionAttemptOrchestrator {
       this.snap('DECISION_JSON', 'RERANK_DECISION', { mergedTopK: calibrated.mergedTopK }),
     ] as PendingCandidate['querySnapshots'];
     if (calibrated.semanticDecision.action === 'DISCARD') {
-      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', 'LOW_VALUE', [
+      const semanticReason = calibrated.semanticDecision.reason ?? 'LOW_VALUE';
+      this.transition(processingComment, 'RETRIEVING', 'DISCARDED', semanticReason, [
         ...querySnapshots,
-        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason: 'LOW_VALUE', note: 'semantic discard' }),
+        this.snap('FINAL_REASON_JSON', 'FINAL_REASON', {
+          reason: semanticReason,
+          discardedBy: calibrated.semanticDecision.discardedBy,
+          topSemanticType: calibrated.semanticDecision.topSemanticType,
+          note: 'semantic discard',
+        }),
       ]);
       this.restoreListening();
       return;
@@ -992,13 +1001,17 @@ export class SuggestionAttemptOrchestrator {
       : { version: 'unknown', policyText: '', keywords: [] };
   }
 
-  // WP-4: the run-page semantic-discard threshold overrides only the confidence
-  // field; the rest of the calibration artifact keeps its code/default weights.
+  // WP-4: run-page overrides (threshold + per-collection center/scale) merge
+  // over the code/default weights; the rest of the artifact stays intact.
   private effectiveCalibrationArtifact(): CalibrationArtifactV1 {
     const base = this.deps.calibrationArtifact ?? DEFAULT_CALIBRATION_ARTIFACT_V1;
-    return this.frozenSemanticDiscardConfidence === null
-      ? base
-      : { ...base, semanticDiscardConfidence: this.frozenSemanticDiscardConfidence };
+    return {
+      ...base,
+      preSet: this.frozenCalibrationParams?.preSet ?? base.preSet,
+      goldenSet: this.frozenCalibrationParams?.goldenSet ?? base.goldenSet,
+      semanticDiscardConfidence:
+        this.frozenSemanticDiscardConfidence ?? base.semanticDiscardConfidence,
+    };
   }
 
   /**
@@ -1102,7 +1115,7 @@ export class SuggestionAttemptOrchestrator {
       ]);
       return;
     }
-    this.closeChain(comment, 'LOW_VALUE');
+    this.closeChain(comment, 'PIPELINE_ERROR');
     // Only release the mutex when the failing comment is the current attempt; a
     // background candidate's error must not clear a genuinely in-flight attempt
     // (MINOR-1).

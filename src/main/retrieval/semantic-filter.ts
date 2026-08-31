@@ -64,7 +64,8 @@ export function evaluateSemanticFilter(
   if (discardCandidateConfident && noHigherPositive && discardedBy !== undefined) {
     return {
       action: 'DISCARD',
-      reason: 'LOW_VALUE',
+      // Only the discard-type semantic vote (filter_risk vs low_value) picks the reason.
+      reason: discardedBy === 'filter_risk' ? 'FILTER_RISK_DISCARD' : 'LOW_VALUE',
       topSemanticType,
       discardedBy,
     };
