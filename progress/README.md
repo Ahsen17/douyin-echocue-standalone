@@ -99,3 +99,4 @@
 | history-close-on-stop | 服务停止时历史建议浮窗即时隐藏（cleanupOnStop 补 HistoryWindow.hide()，覆盖所有停止路径；再次 RUNNING 重新显示） | ✅ 已完成（PR #88 合并、master CI 通过） | 2026-08-30 | progress/history-close-on-stop.md |
 | Release-v0.2.0-beta.2 | 发布 GitHub Release v0.2.0-beta.2（预发布 beta；含定制 slider 样式 + 历史浮窗停止即隐藏 PR #88 + 版本提升 PR #90；PUBLISH 信号触发，release-windows run 33321748065 通过后公开） | ✅ 已发布 | 2026-08-31 | progress/M7/M7-release-0.2.0-beta.2.md |
 | Release-v0.2.0 | 发布 GitHub Release v0.2.0（正式版/Latest；含历史建议窗口 PR #83 + 风险过滤 PR #81 + 浮窗按钮移除 PR #82 + slider/历史浮窗 PR #88 + 版本提升 PR #92；PUBLISH 信号触发，release-windows run 33323857562 通过后公开） | ✅ 已发布 | 2026-08-31 | progress/M7/M7-release-0.2.0.md |
+| M3-semantic-reason-split | 审计追溯语义枚举扩展：LOW_VALUE 收敛为仅 low_value 类语义初筛，新增 FILTER_RISK_DISCARD/WINDOW_EVICTED/RETRIEVAL_FAILED/PERSONA_ROUTE_UNAVAILABLE/PIPELINE_ERROR，migration 004 表重建（批次一：feat/M3-semantic-reason-calibration-config） | ⏳ 已完成，待审查 | 2026-08-31 | progress/M3/M3-semantic-reason-split.md |
