@@ -26,10 +26,6 @@ while a suggestion is showing are discarded, not queued.
 - A team wants responses to stay consistent with each member's persona and the room's tone.
 - An operator wants a structured, traceable way to assist live interaction — including review and labeling.
 
-## User Guide
-
-🇺🇸 [English](UserGuide_en.md) | 🇨🇳 [简体中文](UserGuide.md)
-
 ## Requirements
 
 - Windows x64 is the target platform; Linux is used for development and CI.
