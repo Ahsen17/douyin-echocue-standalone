@@ -1,4 +1,4 @@
-<img src="assets/images/cover.png" width="70%" alt="Echocue Cover" style="display: block; margin: 0 auto;" />
+<img src="assets/images/cover.png" width="100%" alt="Echocue Cover" style="display: block; margin: 0 auto;" />
 
 # Echocue
 
