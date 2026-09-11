@@ -16,7 +16,7 @@ Echocue 是一款面向抖音直播主播与运营团队的 Windows 独立桌面
 它将实时弹幕转化为更快、与人设一致的回复建议：从 WebSocket 帧到达，到置顶浮窗渲染出建议，端到端 P95 时延**目标**不超过 3 秒。
 
 每条消息都流经同一条可审计、可取消的单通道流水线：安全过滤 → 人设路由 → Qdrant（BM25）检索 → 可选 LLM 生成 → 浮窗展示。
-同一时刻只进行一次建议尝试；建议展示期间收到的新消息直接丢弃，不排队。
+同一时刻只进行一次建议尝试；建议展示期间收到的新消息支持排队、亦可直接丢弃。
 
 ## 典型场景
 
@@ -114,8 +114,8 @@ assets/          随包 sidecar 二进制（douyinLive、Qdrant）
 **题外话**
 
 1. 项目的所有需求分析和设计、MVP、里程碑等文档（见 `docs/` ）完整提交 Github，供其他同好交流学习用。
-2. 项目完全采用 Vibe Coding，所有子任务进度档也完整提交（见 `progress/`），方便后续 Coding Harness 交流借鉴。
+2. 项目采用 Vibe Coding，所有子任务进度档也完整提交（见 `progress/`），方便后续 Coding Harness 交流借鉴。
 3. UI 原型在目录 `prototype/` 下，实际产品 UI 与初版设计有**较大出入**，这里仅供参考。
 4. 本项目派生自 [Douyin-EchoCue](https://github.com/Ahsen17/Douyin-EchoCue)，项目已 **ARCHIVED**，具体原因可见该项目 Issue。
 
-**特别鸣谢：** jwwsjlm/douyinLive by @jwwsjlm
+**特别鸣谢：** [douyinLive](https://github.com/jwwsjlm/douyinLive) @[jwwsjlm](https://github.com/jwwsjlm)

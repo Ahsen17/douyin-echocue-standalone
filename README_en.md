@@ -12,13 +12,13 @@
 
 🇺🇸 English | 🇨🇳 [简体中文](README.md)
 
-Echocue is a Windows standalone desktop application for Douyin (抖音) live-stream hosts and operations teams.
-It turns live chat (弹幕) into faster, persona-consistent reply suggestions in real time — from the WebSocket
+Echocue is a Windows standalone desktop application for Douyin live-stream hosts and operations teams.
+It turns live chat (danmaku) into faster, persona-consistent reply suggestions in real time — from the WebSocket
 frame arriving to a suggestion rendering in an always-on-top overlay, **targeting** P95 latency under 3 seconds.
 
 Every message flows through a single, auditable pipeline: safety filtering → persona routing → Qdrant (BM25)
 retrieval → optional LLM generation → overlay display. One suggestion attempt at a time; new messages received
-while a suggestion is showing are discarded, not queued.
+while a suggestion supporting queued or discard at once.
 
 ## Typical Scenarios
 
@@ -118,8 +118,8 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 **Off-topic Notes**
 
 1. All requirement analysis, design, MVP, milestone, and other documents (see `docs/`) have been fully committed to GitHub, for fellow enthusiasts to reference or learn from.
-2. The project was built entirely using Vibe Coding, all subtask progress documents are also fully committed (see `progress/`), making it easier for future Coding Harness exchanges and reference.
+2. The project was built with using Vibe Coding, all subtask progress documents are also fully committed (see `progress/`), making it easier for future Coding Harness exchanges and reference.
 3. UI prototypes are located in the `prototype/` directory. The actual product UI **differs significantly from** the initial design, so treat them as reference only.
 4. This project is derived from Douyin-EchoCue, which has been **ARCHIVED**. See that project's Issues for details.
 
-**Special thanks to:** jwwsjlm/douyinLive by @jwwsjlm
+**Special thanks to:** [douyinLive](https://github.com/jwwsjlm/douyinLive) @[jwwsjlm](https://github.com/jwwsjlm)
