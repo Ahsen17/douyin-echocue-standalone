@@ -49,7 +49,9 @@ describe('OpenAiCompatibleProvider', () => {
         status: 200,
         body: {
           id: 'compatible-request-id',
-          choices: [{ message: { content: '{"quick_reply":"这个问题问得好","cues":["先给结论","补充个人感受"]}' } }],
+          choices: [
+            { message: { content: '{"action":"generate","semantic_type":"interactive_question","quick_reply":"这个问题问得好","cues":["先给结论","补充个人感受"]}' } },
+          ],
         },
         finalUrl: 'x',
       }),
@@ -57,7 +59,12 @@ describe('OpenAiCompatibleProvider', () => {
     const result = await provider.generateReply(makeInput());
     expect(result).toEqual({
       ok: true,
-      output: { quick_reply: '这个问题问得好', cues: ['先给结论', '补充个人感受'] },
+      output: {
+        action: 'generate',
+        semantic_type: 'interactive_question',
+        quick_reply: '这个问题问得好',
+        cues: ['先给结论', '补充个人感受'],
+      },
       providerRequestId: 'compatible-request-id',
     });
   });
@@ -92,7 +99,7 @@ describe('OpenAiCompatibleProvider', () => {
     const provider = new OpenAiCompatibleProvider({
       fetchJsonImpl: async () => ({
         status: 200,
-        body: { choices: [{ message: { content: '{"quick_reply":"x","cues":["a","b"]}' } }] },
+        body: { choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"x","cues":["a","b"]}' } }] },
         finalUrl: 'x',
       }),
     });
@@ -120,7 +127,9 @@ describe('OpenAiCompatibleProvider', () => {
   it('returns the same structured output as DeepSeek for identical success input', async () => {
     const successBody = {
       id: 'shared-request-id',
-      choices: [{ message: { content: '{"quick_reply":"通用回复","cues":["提词一","提词二"]}' } }],
+      choices: [
+        { message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"通用回复","cues":["提词一","提词二"]}' } },
+      ],
     };
     const makeSucceeding = (cls: typeof OpenAiCompatibleProvider | typeof DeepSeekProvider) =>
       new cls({
@@ -135,7 +144,7 @@ describe('OpenAiCompatibleProvider', () => {
     expect(compatible).toEqual(deepseek);
     expect(compatible).toEqual({
       ok: true,
-      output: { quick_reply: '通用回复', cues: ['提词一', '提词二'] },
+      output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '通用回复', cues: ['提词一', '提词二'] },
       providerRequestId: 'shared-request-id',
     });
   });

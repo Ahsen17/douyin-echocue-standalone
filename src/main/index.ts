@@ -192,6 +192,10 @@ app.whenReady().then(async () => {
           version: 4,
           path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '004_semantic_reason_codes.sql')),
         },
+        {
+          version: 5,
+          path: resolveResourcePath(join('docs', '06-data-interface', 'migrations', '005_llm_semantic_reason_codes.sql')),
+        },
       ],
       qdrantConfigTemplatePath: resolveResourcePath(join('resources', 'qdrant-config.yaml')),
       sidecarPins: {

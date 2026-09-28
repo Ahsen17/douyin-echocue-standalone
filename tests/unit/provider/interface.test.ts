@@ -32,7 +32,7 @@ describe('TextGenerationProvider stable interface', () => {
   it('ok and error branches are structurally distinguishable', () => {
     const ok: ProviderGenerateOk = {
       ok: true,
-      output: { quick_reply: 'x', cues: ['a', 'b'] },
+      output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: 'x', cues: ['a', 'b'] },
       providerRequestId: 'req-1',
     };
     const err: ProviderGenerateError = {
@@ -63,6 +63,7 @@ describe('TextGenerationProvider stable interface', () => {
       // Shared contract types must never be re-declared locally.
       expect(content).not.toMatch(/export\s+(const|enum)\s+ProviderErrorV1\b/i);
       expect(content).not.toMatch(/export\s+(const|enum)\s+SuggestionOutputV1\b/i);
+      expect(content).not.toMatch(/export\s+(const|enum)\s+SuggestionDecisionV2\b/i);
       expect(content).not.toMatch(/export\s+(const|enum)\s+DomainErrorV1\b/i);
       expect(content).not.toMatch(/export\s+(const|enum)\s+ProviderConfigV1\b/i);
     }
@@ -77,7 +78,10 @@ describe('TextGenerationProvider stable interface', () => {
   it('TextGenerationProvider interface is satisfied by a conforming adapter', () => {
     const adapter: TextGenerationProvider = {
       adapterType: 'DEEPSEEK',
-      generateReply: async () => ({ ok: true, output: { quick_reply: 'x', cues: ['a', 'b'] } }),
+      generateReply: async () => ({
+        ok: true,
+        output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: 'x', cues: ['a', 'b'] },
+      }),
       getAuditRecord: () => null,
     };
     expect(adapter.adapterType).toBe('DEEPSEEK');

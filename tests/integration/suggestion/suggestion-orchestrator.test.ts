@@ -22,6 +22,26 @@ const MIGRATION_PATH = join(
   'docs/06-data-interface/migrations/001_initial_schema.sql',
 );
 
+const MIGRATION_002_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/002_queue_timeout_reason.sql',
+);
+
+const MIGRATION_003_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/003_empty_normalized_reason.sql',
+);
+
+const MIGRATION_004_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/004_semantic_reason_codes.sql',
+);
+
+const MIGRATION_005_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/005_llm_semantic_reason_codes.sql',
+);
+
 const mockStorage = {
   isEncryptionAvailable: () => true,
   encryptString: (plaintext: string) => Buffer.from(plaintext, 'utf-8'),
@@ -90,7 +110,10 @@ function makeComment(): SourceComment {
 
 interface SetupOptions {
   hits: RetrievalRawHit[];
-  providerResult: { ok: true; output: { quick_reply: string; cues: string[] } } | { ok: false; error: { code: string } };
+  providerResult:
+    | { ok: true; output: { action: 'generate'; semantic_type: string; quick_reply: string; cues: string[] } }
+    | { ok: true; output: { action: 'reject'; semantic_type: string } }
+    | { ok: false; error: { code: string } };
   displayDurationMs?: number;
 }
 
@@ -106,7 +129,13 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
     await keyManager.ensureKeys('v1');
     worker = new AuditStoreWorker({
       dbPath,
-      migrations: [{ version: 1, path: MIGRATION_PATH }],
+      migrations: [
+        { version: 1, path: MIGRATION_PATH },
+        { version: 2, path: MIGRATION_002_PATH },
+        { version: 3, path: MIGRATION_003_PATH },
+        { version: 4, path: MIGRATION_004_PATH },
+        { version: 5, path: MIGRATION_005_PATH },
+      ],
       keyManager,
       keyVersion: 'v1',
     });
@@ -220,7 +249,7 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
   it('writes the full LLM chain on a pre_set top1 and shows the overlay', async () => {
     const { orchestrator, shown } = await setup({
       hits: [preHit()],
-      providerResult: { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } },
+      providerResult: { ok: true, output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '谢谢你', cues: ['一', '二'] } },
     });
     orchestrator.handleComment(makeComment());
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -277,7 +306,7 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
   it('replays the four LLM-path snapshots via getTraceWorkflow (M5-09)', async () => {
     const { orchestrator } = await setup({
       hits: [preHit()],
-      providerResult: { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } },
+      providerResult: { ok: true, output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '谢谢你', cues: ['一', '二'] } },
     });
     orchestrator.handleComment(makeComment());
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -295,6 +324,40 @@ describe('SuggestionAttemptOrchestrator integration (real AuditStoreWorker)', ()
     const allPlaintext = allSnapshots.map((s) => s.plaintext.toString()).join('\n');
     expect(allPlaintext).not.toContain('sk-test');
     expect(allPlaintext).not.toContain('Authorization');
+  });
+
+  it('persists an LLM semantic reject trace and shows nothing (llm-semantic-reject)', async () => {
+    const { orchestrator, shown } = await setup({
+      hits: [preHit()],
+      providerResult: { ok: true, output: { action: 'reject', semantic_type: 'low_value' } },
+    });
+    orchestrator.handleComment(makeComment());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(shown.length).toBe(0);
+    const reader = new DatabaseSync(join(testDir, 'audit.sqlite'));
+    const traceId = (reader.prepare('SELECT trace_id FROM audit_trace LIMIT 1').get() as { trace_id: string }).trace_id;
+    const discardRow = reader
+      .prepare(`SELECT from_state, to_state, reason_code FROM audit_transition WHERE to_state = 'DISCARDED'`)
+      .get() as { from_state: string; to_state: string; reason_code: string } | undefined;
+    reader.close();
+    expect(discardRow?.from_state).toBe('GENERATED');
+    expect(discardRow?.reason_code).toBe('LLM_SEMANTIC_DISCARD');
+    const workflow = worker.getTraceWorkflow(traceId);
+    expect(workflow).not.toBeNull();
+    const allSnapshots = workflow!.transitions.flatMap((t) => t.snapshots);
+    const parsedOutput = allSnapshots.find((s) => s.role === 'LLM_PARSED_OUTPUT');
+    const finalReason = allSnapshots.find((s) => s.role === 'FINAL_REASON');
+    expect(parsedOutput).toBeDefined();
+    expect(finalReason).toBeDefined();
+    // Reject decisions carry only structured fields (action/semanticType/reason);
+    // they must never leak the raw danmaku text or invent reply content.
+    for (const snap of [parsedOutput!, finalReason!]) {
+      const text = snap.plaintext.toString();
+      expect(text).not.toContain(makeComment().rawText);
+      expect(text).not.toContain('quick_reply');
+      expect(text).not.toContain('cues');
+    }
+    expect(finalReason!.plaintext.toString()).toContain('LLM_SEMANTIC_DISCARD');
   });
 
   it('audit-unavailable aborts and does not produce a suggestion', async () => {

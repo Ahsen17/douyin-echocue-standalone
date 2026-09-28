@@ -2,7 +2,7 @@
  * Shared provider response parsing (M5-03 DeepSeek, reused by M5-04 OpenAI-compatible).
  * Pure and I/O-free so the contract fixtures can drive it directly.
  */
-import { SuggestionOutputV1Schema } from '@echocue/contracts';
+import { SuggestionDecisionV2Schema } from '@echocue/contracts';
 import type { ProviderGenerateResult } from './types.js';
 import { mapHttpStatusToProviderError } from './errors.js';
 
@@ -39,7 +39,7 @@ export function parseProviderResponse(response: ProviderHttpResponse): ProviderG
     return { ok: false, error: { code: 'OUTPUT_INVALID', providerStatus: response.status, providerRequestId } };
   }
 
-  const validated = SuggestionOutputV1Schema.safeParse(parsed);
+  const validated = SuggestionDecisionV2Schema.safeParse(parsed);
   if (!validated.success) {
     return { ok: false, error: { code: 'OUTPUT_INVALID', providerStatus: response.status, providerRequestId } };
   }

@@ -19,6 +19,26 @@ const MIGRATION_PATH = join(
   'docs/06-data-interface/migrations/001_initial_schema.sql',
 );
 
+const MIGRATION_002_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/002_queue_timeout_reason.sql',
+);
+
+const MIGRATION_003_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/003_empty_normalized_reason.sql',
+);
+
+const MIGRATION_004_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/004_semantic_reason_codes.sql',
+);
+
+const MIGRATION_005_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/005_llm_semantic_reason_codes.sql',
+);
+
 const mockStorage = {
   isEncryptionAvailable: () => true,
   encryptString: (plaintext: string) => Buffer.from(plaintext, 'utf-8'),
@@ -45,7 +65,13 @@ describe('T-AUD-001: Audit Storage', () => {
     await keyManager.ensureKeys('v1');
     worker = new AuditStoreWorker({
       dbPath: join(testDir, 'audit.sqlite'),
-      migrations: [{ version: 1, path: MIGRATION_PATH }],
+      migrations: [
+        { version: 1, path: MIGRATION_PATH },
+        { version: 2, path: MIGRATION_002_PATH },
+        { version: 3, path: MIGRATION_003_PATH },
+        { version: 4, path: MIGRATION_004_PATH },
+        { version: 5, path: MIGRATION_005_PATH },
+      ],
       keyManager,
       keyVersion: 'v1',
     });
@@ -138,6 +164,74 @@ describe('T-AUD-001: Audit Storage', () => {
     // audit_reference integrity: each snapshot carries its linked content type + HMAC.
     expect(rendered.contentType).toBe('PROMPT_TEXT');
     expect(rendered.contentHmac).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('writes an LLM semantic reject snapshot and DISCARDED via migration 005 (llm-semantic-reject)', () => {
+    const sessionId = randomUUID();
+    const traceId = randomUUID();
+    const now = new Date().toISOString();
+    worker.createSession({ sessionId, roomReference: 'room', startedAt: now });
+    worker.createTrace({ traceId, sessionId, sourceMessageId: 'msg-1', receivedAt: now });
+
+    worker.appendTransition(traceId, null, 'RECEIVED', 'EVENT_RECEIVED');
+    worker.appendTransition(traceId, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
+    worker.appendTransition(traceId, 'NORMALIZED', 'ROUTED', 'PERSONA_ROUTED');
+    worker.appendTransition(traceId, 'ROUTED', 'RETRIEVING', 'RETRIEVAL_STARTED');
+    worker.appendTransition(traceId, 'RETRIEVING', 'PROMPT_RENDERED', 'LLM_REQUIRED', [
+      snap('PROMPT_TEXT', 'RENDERED_PROMPT', {
+        templateVersion: 'v2',
+        assemblerVersion: 'v3',
+        system: '你是一个主播。',
+        user: '弹幕：这个直播间真无聊',
+        personaId: 'p-1',
+        personaVersion: 'v-1',
+        personaContentHmac: 'hmac-v1',
+        safetyVersion: 'pol-v1',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED', [
+      snap('PROVIDER_META_JSON', 'LLM_REQUEST_META', {
+        providerId: 'deepseek',
+        adapterType: 'DEEPSEEK',
+        baseUrlOrigin: 'https://api.deepseek.com',
+        modelId: 'deepseek-chat',
+        callMode: 'non-streaming-json',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'LLM_PENDING', 'GENERATED', 'PROVIDER_SUCCEEDED', [
+      snap('PROVIDER_RESPONSE_JSON', 'LLM_RAW_RESPONSE', {
+        rawResponse: { choices: [{ message: { content: '{"action":"reject","semantic_type":"low_value"}' } }] },
+        httpStatus: 200,
+      }),
+      snap('SUGGESTION_JSON', 'LLM_PARSED_OUTPUT', {
+        action: 'reject',
+        semanticType: 'low_value',
+        parserVersion: 'SuggestionDecisionV2',
+      }),
+    ]);
+    worker.appendTransition(traceId, 'GENERATED', 'DISCARDED', 'LLM_SEMANTIC_DISCARD', [
+      snap('SUGGESTION_JSON', 'FINAL_REASON', {
+        reason: 'LLM_SEMANTIC_DISCARD',
+        semanticType: 'low_value',
+        note: 'llm semantic reject',
+      }),
+    ]);
+
+    const workflow = worker.getTraceWorkflow(traceId);
+    expect(workflow).not.toBeNull();
+    const allSnapshots = workflow!.transitions.flatMap((t) => t.snapshots);
+    const parsed = allSnapshots.find((s) => s.role === 'LLM_PARSED_OUTPUT')!;
+    expect(JSON.parse(parsed.plaintext.toString())).toEqual({
+      action: 'reject',
+      semanticType: 'low_value',
+      parserVersion: 'SuggestionDecisionV2',
+    });
+    const finalReason = allSnapshots.find((s) => s.role === 'FINAL_REASON')!;
+    expect(JSON.parse(finalReason.plaintext.toString())).toMatchObject({ reason: 'LLM_SEMANTIC_DISCARD' });
+
+    const discardTransition = workflow!.transitions.find((t) => t.toState === 'DISCARDED')!;
+    expect(discardTransition.fromState).toBe('GENERATED');
+    expect(discardTransition.reasonCode).toBe('LLM_SEMANTIC_DISCARD');
   });
 
   it('returns null for an unknown trace', () => {

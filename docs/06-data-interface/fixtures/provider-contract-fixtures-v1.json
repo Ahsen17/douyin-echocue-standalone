@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "note": "Fixtures contain no credential. Authorization is injected by Main from safeStorage.",
+  "schemaVersion": 2,
+  "note": "Fixtures contain no credential. Authorization is injected by Main from safeStorage. Since schemaVersion 2 the wire contract is suggestion-decision/v2: one call returns the semantic judgment and the optional reply (LLM §5.1).",
   "cases": [
     {
       "id": "deepseek-json-success",
@@ -26,10 +26,10 @@
         "status": 200,
         "body": {
           "id": "provider-request-id",
-          "choices": [{ "message": { "content": "{\"quick_reply\":\"谢谢你一直在呀\",\"cues\":[\"回应陪伴\",\"自然带动互动\"]}" } }]
+          "choices": [{ "message": { "content": "{\"action\":\"generate\",\"semantic_type\":\"persona_relevant\",\"quick_reply\":\"谢谢你一直在呀\",\"cues\":[\"回应陪伴\",\"自然带动互动\"]}" } }]
         }
       },
-      "expected": { "ok": true, "quick_reply": "谢谢你一直在呀", "cues": ["回应陪伴", "自然带动互动"] }
+      "expected": { "ok": true, "action": "generate", "semantic_type": "persona_relevant", "quick_reply": "谢谢你一直在呀", "cues": ["回应陪伴", "自然带动互动"] }
     },
     {
       "id": "openai-compatible-json-success",
@@ -55,10 +55,34 @@
         "status": 200,
         "body": {
           "id": "compatible-request-id",
-          "choices": [{ "message": { "content": "{\"quick_reply\":\"这个问题问得好\",\"cues\":[\"先给结论\",\"补充个人感受\"]}" } }]
+          "choices": [{ "message": { "content": "{\"action\":\"generate\",\"semantic_type\":\"interactive_question\",\"quick_reply\":\"这个问题问得好\",\"cues\":[\"先给结论\",\"补充个人感受\"]}" } }]
         }
       },
-      "expected": { "ok": true, "quick_reply": "这个问题问得好", "cues": ["先给结论", "补充个人感受"] }
+      "expected": { "ok": true, "action": "generate", "semantic_type": "interactive_question", "quick_reply": "这个问题问得好", "cues": ["先给结论", "补充个人感受"] }
+    },
+    {
+      "id": "llm-semantic-reject-parses",
+      "adapterType": "DEEPSEEK",
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "reject-request-id",
+          "choices": [{ "message": { "content": "{\"action\":\"reject\",\"semantic_type\":\"low_value\"}" } }]
+        }
+      },
+      "expected": { "ok": true, "action": "reject", "semantic_type": "low_value" }
+    },
+    {
+      "id": "reject-with-reply-fields-rejected",
+      "adapterType": "DEEPSEEK",
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "reject-with-reply-request-id",
+          "choices": [{ "message": { "content": "{\"action\":\"reject\",\"semantic_type\":\"filter_risk\",\"quick_reply\":\"不应出现\"}" } }]
+        }
+      },
+      "expected": { "ok": false, "providerError": "OUTPUT_INVALID", "domainError": "E_PROVIDER_OUTPUT_INVALID" }
     },
     {
       "id": "tool-calls-rejected-in-mvp",
@@ -80,7 +104,19 @@
       "adapterType": "OPENAI_COMPATIBLE",
       "response": {
         "status": 200,
-        "body": { "choices": [{ "message": { "content": "{\"quick_reply\":\"只有回复，没有提词\"}" } }] }
+        "body": { "choices": [{ "message": { "content": "{\"action\":\"generate\",\"semantic_type\":\"positive_praise\",\"quick_reply\":\"只有回复，没有提词\"}" } }] }
+      },
+      "expected": { "ok": false, "providerError": "OUTPUT_INVALID", "domainError": "E_PROVIDER_OUTPUT_INVALID" }
+    },
+    {
+      "id": "legacy-v1-shape-rejected",
+      "adapterType": "DEEPSEEK",
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "legacy-request-id",
+          "choices": [{ "message": { "content": "{\"quick_reply\":\"谢谢你一直在呀\",\"cues\":[\"回应陪伴\",\"自然带动互动\"]}" } }]
+        }
       },
       "expected": { "ok": false, "providerError": "OUTPUT_INVALID", "domainError": "E_PROVIDER_OUTPUT_INVALID" }
     }

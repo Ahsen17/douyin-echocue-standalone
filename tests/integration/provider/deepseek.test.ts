@@ -59,7 +59,7 @@ describe('DeepSeekProvider integration', () => {
       req.on('end', () => {
         receivedBody = JSON.parse(data);
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ choices: [{ message: { content: '{"quick_reply":"x","cues":["a","b"]}' } }] }));
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"x","cues":["a","b"]}' } }] }));
       });
     }));
     const provider = makeProvider();
@@ -134,7 +134,7 @@ describe('DeepSeekProvider integration', () => {
   it('audit record over the real transport excludes the key', async () => {
     ({ server } = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ choices: [{ message: { content: '{"quick_reply":"x","cues":["a","b"]}' } }] }));
+      res.end(JSON.stringify({ choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"x","cues":["a","b"]}' } }] }));
     }));
     const provider = makeProvider();
     await provider.generateReply(makeInput(portOf(), { apiKey: 'sk-integration-secret' }));
