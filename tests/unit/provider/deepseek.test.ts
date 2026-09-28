@@ -47,14 +47,18 @@ describe('DeepSeekProvider', () => {
     const provider = new DeepSeekProvider({
       fetchJsonImpl: async () => ({
         status: 200,
-        body: { choices: [{ message: { content: '{"quick_reply":"你好","cues":["回应","互动"]}' } }] },
+        body: {
+          choices: [
+            { message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"你好","cues":["回应","互动"]}' } },
+          ],
+        },
         finalUrl: 'https://api.deepseek.com/chat/completions',
       }),
     });
     const result = await provider.generateReply(makeInput());
     expect(result).toEqual({
       ok: true,
-      output: { quick_reply: '你好', cues: ['回应', '互动'] },
+      output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '你好', cues: ['回应', '互动'] },
     });
   });
 
@@ -107,7 +111,10 @@ describe('DeepSeekProvider', () => {
     const provider = new DeepSeekProvider({
       fetchJsonImpl: async () => ({
         status: 200,
-        body: { id: 'req-abc', choices: [{ message: { content: '{"quick_reply":"x","cues":["a","b"]}' } }] },
+        body: {
+          id: 'req-abc',
+          choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"x","cues":["a","b"]}' } }],
+        },
         finalUrl: 'x',
       }),
     });
@@ -125,7 +132,10 @@ describe('DeepSeekProvider', () => {
     const provider = new DeepSeekProvider({
       fetchJsonImpl: async () => ({
         status: 200,
-        body: { id: 'req-xyz', choices: [{ message: { content: '{"quick_reply":"x","cues":["a","b"]}' } }] },
+        body: {
+          id: 'req-xyz',
+          choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"x","cues":["a","b"]}' } }],
+        },
         finalUrl: 'x',
       }),
     });

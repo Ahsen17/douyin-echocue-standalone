@@ -7,6 +7,7 @@ import { FIXTURES, loadJsonFixture } from '../fixtures/loader.js';
 
 interface SnapshotRoleFixture {
   role: string;
+  variant?: string;
   contentType: string;
   minimal: Record<string, unknown>;
   forbiddenProbes: string[];
@@ -42,5 +43,23 @@ describe('T-AUD-001: audit snapshot fixtures (M5-09)', () => {
         expect(payloadText).not.toContain(probe.toLowerCase());
       }
     }
+  });
+
+  it('carries v2 generate and v2 reject LLM_PARSED_OUTPUT variants (llm-semantic-reject)', () => {
+    const v2Generate = fixture.roles.find((r) => r.role === 'LLM_PARSED_OUTPUT' && r.variant === 'v2_generate');
+    const v2Reject = fixture.roles.find((r) => r.role === 'LLM_PARSED_OUTPUT' && r.variant === 'v2_reject');
+    expect(v2Generate?.minimal).toMatchObject({
+      action: 'generate',
+      semanticType: 'positive_praise',
+      parserVersion: 'SuggestionDecisionV2',
+    });
+    expect(v2Reject?.minimal).toMatchObject({
+      action: 'reject',
+      semanticType: 'low_value',
+      parserVersion: 'SuggestionDecisionV2',
+    });
+    // The reject variant is structural only: no free-text reasoning, no reply content.
+    expect(v2Reject?.minimal).not.toHaveProperty('quickReply');
+    expect(v2Reject?.minimal).not.toHaveProperty('cues');
   });
 });

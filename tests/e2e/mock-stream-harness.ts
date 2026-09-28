@@ -216,7 +216,10 @@ export async function buildMockStreamHarness(
             );
           });
         }
-        return { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } };
+        return {
+          ok: true,
+          output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '谢谢你', cues: ['一', '二'] },
+        };
       },
       getAuditRecord: () => null,
     }),

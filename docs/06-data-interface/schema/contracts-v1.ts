@@ -209,7 +209,7 @@ export const TraceReasonCodeV1Schema = z.enum([
   'DISPLAY_WINDOW_ACTIVE', 'LOW_VALUE', 'FILTER_RISK_DISCARD', 'PERSONA_REVIEW_UNCERTAIN',
   'STALE_SESSION', 'STALE_WINDOW', 'DEADLINE_EXCEEDED',
   'QUEUE_TIMEOUT', 'AUDIT_FAILURE', 'SOURCE_ERROR', 'ROOM_ENDED', 'USER_STOPPED',
-  'PIPELINE_ERROR',
+  'PIPELINE_ERROR', 'LLM_SEMANTIC_DISCARD',
 ]);
 
 export const OutboxJobStateV1Schema = z.enum(['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED']);
@@ -288,6 +288,8 @@ export const ProviderFixtureResponseV1Schema = z.strictObject({
 
 export const ProviderFixtureExpectedV1Schema = z.strictObject({
   ok: z.boolean(),
+  action: z.enum(['generate', 'reject']).optional(),
+  semantic_type: SemanticTypeV1Schema.optional(),
   quick_reply: z.string().optional(),
   cues: z.array(z.string()).optional(),
   providerError: ProviderErrorV1Schema.optional(),
@@ -709,6 +711,30 @@ export const SuggestionOutputV1Schema = z.strictObject({
   cues: z.array(z.string().trim().min(1).max(40)).min(2).max(3),
 });
 
+// LLM wire contract v2 (LLM §5.1): one call returns BOTH the semantic judgment
+// and the optional reply. `semantic_type` reuses SemanticTypeV1 — never a second
+// semantic enum. The reject branch carries no reply fields and no free-text
+// reason: the discard reason is derived in code (resolveLlmDecision) so no
+// model prose enters the audit trail. A `generate` output whose semantic_type
+// is low_value/filter_risk stays schema-valid — the deterministic precedence
+// (reject wins) is code's job, not the schema's.
+export const SuggestionGenerateV2Schema = z.strictObject({
+  action: z.literal('generate'),
+  semantic_type: SemanticTypeV1Schema,
+  quick_reply: z.string().trim().min(1).max(80),
+  cues: z.array(z.string().trim().min(1).max(40)).min(2).max(3),
+});
+
+export const SuggestionRejectV2Schema = z.strictObject({
+  action: z.literal('reject'),
+  semantic_type: SemanticTypeV1Schema,
+});
+
+export const SuggestionDecisionV2Schema = z.discriminatedUnion('action', [
+  SuggestionGenerateV2Schema,
+  SuggestionRejectV2Schema,
+]);
+
 // Shared output validator reason codes (LLM §5.2). Mirrors TraceReasonCodeV1's
 // role as a contract-level enum; referenced by OUTPUT_VALIDATION snapshots.
 export const OutputValidationReasonV1Schema = z.enum([
@@ -893,6 +919,9 @@ export type MoveDataRootRequestV1 = z.infer<typeof MoveDataRootRequestV1Schema>;
 export type SettingsV1 = z.infer<typeof SettingsV1Schema>;
 export type ServiceViewState = z.infer<typeof ServiceViewStateSchema>;
 export type SuggestionOutputV1 = z.infer<typeof SuggestionOutputV1Schema>;
+export type SuggestionGenerateV2 = z.infer<typeof SuggestionGenerateV2Schema>;
+export type SuggestionRejectV2 = z.infer<typeof SuggestionRejectV2Schema>;
+export type SuggestionDecisionV2 = z.infer<typeof SuggestionDecisionV2Schema>;
 export type OutputValidationReasonV1 = z.infer<typeof OutputValidationReasonV1Schema>;
 export type SuggestionSourceV1 = z.infer<typeof SuggestionSourceV1Schema>;
 export type ValidatedSuggestionV1 = z.infer<typeof ValidatedSuggestionV1Schema>;

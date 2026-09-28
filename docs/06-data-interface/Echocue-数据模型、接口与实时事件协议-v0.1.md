@@ -69,7 +69,8 @@ type TraceReasonCodeV1 =
   | 'OUTPUT_INVALID' | 'OVERLAY_RENDERED' | 'DISPLAY_DURATION_ELAPSED'
   | 'DISPLAY_WINDOW_ACTIVE' | 'LOW_VALUE' | 'FILTER_RISK_DISCARD' | 'PERSONA_REVIEW_UNCERTAIN'
   | 'STALE_SESSION' | 'STALE_WINDOW' | 'DEADLINE_EXCEEDED' | 'QUEUE_TIMEOUT'
-  | 'AUDIT_FAILURE' | 'SOURCE_ERROR' | 'ROOM_ENDED' | 'USER_STOPPED' | 'PIPELINE_ERROR';
+  | 'AUDIT_FAILURE' | 'SOURCE_ERROR' | 'ROOM_ENDED' | 'USER_STOPPED' | 'PIPELINE_ERROR'
+  | 'LLM_SEMANTIC_DISCARD';
 type OutboxJobStateV1 = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 type OutboxActionV1 = 'UPSERT' | 'SET_BAD_CASE';
 type OutputValidationReasonV1 =
@@ -172,7 +173,7 @@ CREATE TABLE audit_transition (
   sequence_no INTEGER NOT NULL,
   from_state TEXT CHECK (from_state IS NULL OR from_state IN ('RECEIVED','NORMALIZED','FILTERED','ROUTED','RETRIEVING','DIRECT_READY','PROMPT_RENDERED','LLM_PENDING','GENERATED','DISPLAY_READY','DISPLAYED','HIDDEN','DISCARDED','FAILED')),
   to_state TEXT NOT NULL CHECK (to_state IN ('RECEIVED','NORMALIZED','FILTERED','ROUTED','RETRIEVING','DIRECT_READY','PROMPT_RENDERED','LLM_PENDING','GENERATED','DISPLAY_READY','DISPLAYED','HIDDEN','DISCARDED','FAILED')),
-  reason_code TEXT NOT NULL CHECK (reason_code IN ('EVENT_RECEIVED','NORMALIZATION_OK','EMPTY_NORMALIZED','INPUT_SAFETY_FILTERED','PERSONA_ROUTED','PERSONA_ROUTE_UNAVAILABLE','RETRIEVAL_STARTED','RETRIEVAL_FAILED','GOLDEN_DIRECT_ELIGIBLE','WINDOW_EVICTED','LLM_REQUIRED','PROVIDER_REQUESTED','PROVIDER_SUCCEEDED','PROVIDER_FAILED','OUTPUT_VALIDATED','OUTPUT_INVALID','OVERLAY_RENDERED','DISPLAY_DURATION_ELAPSED','DISPLAY_WINDOW_ACTIVE','LOW_VALUE','FILTER_RISK_DISCARD','PERSONA_REVIEW_UNCERTAIN','STALE_SESSION','STALE_WINDOW','DEADLINE_EXCEEDED','QUEUE_TIMEOUT','AUDIT_FAILURE','SOURCE_ERROR','ROOM_ENDED','USER_STOPPED','PIPELINE_ERROR')),
+  reason_code TEXT NOT NULL CHECK (reason_code IN ('EVENT_RECEIVED','NORMALIZATION_OK','EMPTY_NORMALIZED','INPUT_SAFETY_FILTERED','PERSONA_ROUTED','PERSONA_ROUTE_UNAVAILABLE','RETRIEVAL_STARTED','RETRIEVAL_FAILED','GOLDEN_DIRECT_ELIGIBLE','WINDOW_EVICTED','LLM_REQUIRED','PROVIDER_REQUESTED','PROVIDER_SUCCEEDED','PROVIDER_FAILED','OUTPUT_VALIDATED','OUTPUT_INVALID','OVERLAY_RENDERED','DISPLAY_DURATION_ELAPSED','DISPLAY_WINDOW_ACTIVE','LOW_VALUE','FILTER_RISK_DISCARD','PERSONA_REVIEW_UNCERTAIN','STALE_SESSION','STALE_WINDOW','DEADLINE_EXCEEDED','QUEUE_TIMEOUT','AUDIT_FAILURE','SOURCE_ERROR','ROOM_ENDED','USER_STOPPED','PIPELINE_ERROR','LLM_SEMANTIC_DISCARD')),
   occurred_at TEXT NOT NULL,
   previous_hmac TEXT,
   entry_hmac TEXT NOT NULL,
@@ -309,12 +310,12 @@ END;
 | `LLM_PENDING` | `FAILED` | `PROVIDER_FAILED` |
 | `LLM_PENDING` | `DISCARDED` | 兜底/取消/停服类 reason |
 | `GENERATED` | `DISPLAY_READY` | `OUTPUT_VALIDATED` |
-| `GENERATED` | `DISCARDED` | `OUTPUT_INVALID`、`PERSONA_REVIEW_UNCERTAIN`、兜底/取消/停服类 reason |
+| `GENERATED` | `DISCARDED` | `OUTPUT_INVALID`、`PERSONA_REVIEW_UNCERTAIN`、`LLM_SEMANTIC_DISCARD`、兜底/取消/停服类 reason |
 | `DISPLAY_READY` | `DISPLAYED` | `OVERLAY_RENDERED` |
 | `DISPLAY_READY` | `DISCARDED` | 兜底/取消/停服类 reason |
 | `DISPLAYED` | `HIDDEN` | `DISPLAY_DURATION_ELAPSED` |
 
-“兜底类 reason”只能是 `PIPELINE_ERROR`（未预期管线异常，允许出现在所有 `DISCARDED` 出边，细节错误码进 `FINAL_REASON` 快照）；“取消/停服类 reason”只能是 `STALE_SESSION`、`STALE_WINDOW`、`DEADLINE_EXCEEDED`、`AUDIT_FAILURE`、`SOURCE_ERROR`、`ROOM_ENDED` 或 `USER_STOPPED`。`LOW_VALUE` 仅由语义初筛（`discardedBy='low_value'`）产出，`FILTER_RISK_DISCARD` 仅由语义初筛（`discardedBy='filter_risk'`）产出，二者必带 `GOLDEN_QUERY_RESULT`/`PRE_QUERY_RESULT`/`RERANK_DECISION` 快照；检索异常为 `RETRIEVAL_FAILED`，窗口淘汰为 `WINDOW_EVICTED`，路由不可用为 `PERSONA_ROUTE_UNAVAILABLE`。`AuditStoreWorker.appendTransition()` 必须用上表同时校验 from/to/reason 三元组；reason 的细节（具体安全类别、Provider error）进入对应快照，不得另造 trace reason 字符串。
+“兜底类 reason”只能是 `PIPELINE_ERROR`（未预期管线异常，允许出现在所有 `DISCARDED` 出边，细节错误码进 `FINAL_REASON` 快照）；“取消/停服类 reason”只能是 `STALE_SESSION`、`STALE_WINDOW`、`DEADLINE_EXCEEDED`、`AUDIT_FAILURE`、`SOURCE_ERROR`、`ROOM_ENDED` 或 `USER_STOPPED`。`LOW_VALUE` 仅由语义初筛（`discardedBy='low_value'`）产出，`FILTER_RISK_DISCARD` 仅由语义初筛（`discardedBy='filter_risk'`）产出，二者必带 `GOLDEN_QUERY_RESULT`/`PRE_QUERY_RESULT`/`RERANK_DECISION` 快照；检索异常为 `RETRIEVAL_FAILED`，窗口淘汰为 `WINDOW_EVICTED`，路由不可用为 `PERSONA_ROUTE_UNAVAILABLE`。`LLM_SEMANTIC_DISCARD` 仅由 LLM 单次调用语义驳回（`resolveLlmDecision` 判定 `action:'reject'`，或 `action:'generate'` 但 `semantic_type` 为 `low_value`/`filter_risk` 被代码覆写）产出，必带 `LLM_RAW_RESPONSE`、reject 形态 `LLM_PARSED_OUTPUT` 与 `FINAL_REASON` 快照（具体语义类型记入 `semanticType` 字段，复用 `SemanticTypeV1` 七值枚举），不替代语义初筛、也不进入共用输出校验器。`AuditStoreWorker.appendTransition()` 必须用上表同时校验 from/to/reason 三元组；reason 的细节（具体安全类别、Provider error）进入对应快照，不得另造 trace reason 字符串。
 
 `audit_snapshot` 的 `content_type` 和 `audit_reference.role` 只能是下表值。
 
@@ -325,7 +326,7 @@ END;
 | `ROUTED` | `PERSONA_ROUTE`、`PERSONA_VERSION_SNAPSHOT` |
 | `RETRIEVING` | `GOLDEN_QUERY_RESULT`、`PRE_QUERY_RESULT`、`RERANK_DECISION` |
 | `PROMPT_RENDERED` / `LLM_PENDING` | `RENDERED_PROMPT`、`LLM_REQUEST_META` |
-| `GENERATED` | `LLM_RAW_RESPONSE`、`LLM_PARSED_OUTPUT`、`OUTPUT_VALIDATION` |
+| `GENERATED` | `LLM_RAW_RESPONSE`、`LLM_PARSED_OUTPUT`；`OUTPUT_VALIDATION` 仅 generate 分支（语义驳回不进共用校验器） |
 | `DIRECT_READY` | `DIRECT_PAYLOAD`、`DIRECT_DECISION` |
 | `DISPLAYED` / `HIDDEN` / 其他终态 | `OVERLAY_RESULT`、`FINAL_REASON` |
 
@@ -420,6 +421,8 @@ interface GoldenSetPayload {
 ### 4.3 初筛分类动作
 
 两路命中按 `retrieval_confidence` 校准/rerank 后，先聚合 `semantic_type`：`filter_risk` 或 `low_value` 只有在同类命中置信度达到内部“明确丢弃”阈值且没有更高置信度正向互动命中时，才记为 `DISCARDED`；任何灰区均进入候选/LLM 路径。`persona_relevant`、`positive_praise`、`funny_joke`、`interactive_question`、`atmosphere_boost` 是正向互动类型。硬规则永远先于此逻辑。
+
+初筛只覆盖历史案例能命中的弹幕。进入 LLM 路径后，单次生成调用同时输出 `semantic_type` 判定与 `action`（第 6 节 `suggestion-decision/v2`）：判定为 `low_value`/`filter_risk` 的弹幕由 `resolveLlmDecision` 以 `LLM_SEMANTIC_DISCARD` 丢弃，不生成回复。该判定发生在 `GENERATED` 阶段，与初筛枚举同源，但**不替代**初筛丢弃——初筛命中时在 `RETRIEVING` 阶段即丢弃并免付 LLM 调用成本，LLM 判定只兜检索无证据的盲区。
 
 bad case 对象必须明确：仅当当前浮窗建议由 `golden_set` point 直接推送时，拒绝且无修正可对该 `source_collection='golden_set'`、`source_point_id` 执行 `SET_BAD_CASE`。LLM fallback 或 `pre_set` 参考命中被拒绝时，不得标坏任何 `pre_set` point，也不得自动创建负例 point；只在审计中保留拒绝反馈。这样 bad case 仅排除其自身，不泛化为相似语义的负面判断。
 
@@ -560,14 +563,18 @@ Provider 到领域错误映射固定为：`AUTH→E_PROVIDER_AUTH`、`BILLING→
 
 `ProcessingComment` 由 Service Orchestrator 在适配器输出 `SourceComment` 后创建；它分配 `traceId` 并绑定当前 session/window。`SourceComment.receivedMonotonicMs` 必须在 client 收到原始 WS frame 时立即采样，是统一 `t0`，不得在解析/规范化后重置。`freshnessDeadlineMonotonicMs = min(t0 + 10000ms, candidateSelectedAt + 10000ms, windowOpenedAt + windowMaxAgeMs)`（2026-08-25：LLM 时间窗口放宽到 10s，四项预算同步；`windowMaxAgeMs` 默认 10000，为内部配置/POC 校准值）。`SuggestionAttempt` 在检索、生成和浮窗调用前后都必须二次比对 `sessionId + traceId + windowVersion + freshnessDeadlineMonotonicMs`；任一不符写 `DISCARDED`，reason code 为 `STALE_SESSION`、`STALE_WINDOW` 或 `DEADLINE_EXCEEDED`。`t1=筛选完成`，`t2=本地输出校验完成`，`t_end=浮窗首帧确认`，全部写入对应审计快照；上游 `createTime` 只做旁路观测。
 
-模型必须返回 JSON：
+模型必须返回 JSON（`suggestion-decision/v2` 双分支形态；`semantic_type` 与 `SemanticTypeV1` 七值枚举同源）：
 
 ```json
 {
-  "quick_reply": "一句可直接口播的短回复",
-  "cues": ["两到三条组织语言提示", "每条简短可执行"]
+  "action": "generate 或 reject",
+  "semantic_type": "persona_relevant / positive_praise / funny_joke / interactive_question / atmosphere_boost / low_value / filter_risk 七选一",
+  "quick_reply": "action 为 generate 时必填：一句可直接口播的短回复",
+  "cues": ["action 为 generate 时必填：两到三条组织语言提示", "每条简短可执行"]
 }
 ```
+
+`action: "reject"` 时只有 `action` 与 `semantic_type` 两个字段。reject 是**成功的 provider 解析**而非 `ProviderErrorV1`：`LLM_PENDING → GENERATED` 正常写入，随后由 `resolveLlmDecision` 按确定性优先级归约——`action:'reject'` 一律驳回（含积极类型的 fail-safe）；`action:'generate'` 但 `semantic_type` 为 `low_value`/`filter_risk` 时代码覆写为驳回——进入 `GENERATED → DISCARDED` 写 `LLM_SEMANTIC_DISCARD`，不建候选、不进共用输出校验器；具体语义类型记入 `LLM_PARSED_OUTPUT` 与 `FINAL_REASON` 快照，无模型自由文本理由。
 
 业务层只依赖 `TextGenerationProvider.generateReply()`，不感知具体协议。首个 `DeepSeekProvider` 使用经校验的 Base URL 与 OpenAI-compatible `POST /chat/completions`；非流式、非思考模式、请求不包含 `tools`，传递 `response_format: { type: 'json_object' }`。其他适配器必须实现同一输出和 `ProviderErrorV1` 映射。MVP 收到任何 `tool_calls` 字段均归一为 `PROTOCOL`，不执行工具；完整 DeepSeek Tool Call 专用适配器属于后续 backlog。业务层只接收统一错误与结构化结果，`rawResponse` 只写加密审计快照，不向业务/Renderer 返回。
 

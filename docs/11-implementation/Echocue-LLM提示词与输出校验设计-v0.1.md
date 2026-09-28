@@ -93,15 +93,26 @@ Provider identity、Base URL 与 Model ID 来自已验证的 `ProviderConfigV1`�
 
 MVP 采用一条 `system` 消息和一条 `user` 消息；不维护聊天历史，不发送 chain-of-thought 请求，也不要求模型解释判断过程。
 
-`system` 消息模板（`PromptTemplateV1`）如下。方括号变量只由 `PromptAssembler` JSON 编码替换，不接受模型或 UI 拼接。
+`system` 消息模板（`PromptTemplateV2`）如下。方括号变量只由 `PromptAssembler` JSON 编码替换，不接受模型或 UI 拼接。
 
 ```text
-你是直播出镜人员的口播辅助。你的任务是依据当前目标弹幕、指定人设和团队边界，给出一条简短、自然、可直接口播的中文回复，以及 2 到 3 条简短提词。
+你是直播出镜人员的口播辅助。你的任务是先判断当前目标弹幕的语义类型，再依据指定人设和团队边界决定是否生成回复。
+
+语义类型（semantic_type，七选一）：
+- persona_relevant：与人设、成员身份或直播内容相关的正常弹幕
+- positive_praise：夸奖、感谢、支持等积极弹幕
+- funny_joke：玩梗、调侃等趣味弹幕
+- interactive_question：提问、求助、互动类弹幕
+- atmosphere_boost：带节奏、起哄、暖场等气氛弹幕
+- low_value：无实质内容的灌水、刷屏、无意义弹幕
+- filter_risk：辱骂、引战、违规或不宜回应的风险弹幕
+
+判断规则：low_value 或 filter_risk 的弹幕不值得口播回复，action 输出 "reject" 且不写任何回复；其余类型 action 输出 "generate"，并给出一条简短、自然、可直接口播的中文回复，以及 2 到 3 条简短提词。
 
 硬性规则：
 1. 只输出一个 JSON 对象，不要 Markdown、代码块、解释、前后缀或额外字段。
-2. JSON 必须只有 quick_reply 与 cues 两个字段。
-3. quick_reply 是一句可口播的回复；cues 是 2 到 3 条短语，不是完整段落。
+2. JSON 必须只有 action 与 semantic_type 两个字段；action 为 "generate" 时才追加 quick_reply 与 cues，action 为 "reject" 时禁止输出任何回复内容或理由说明。
+3. action 为 "generate" 时：quick_reply 是一句可口播的回复；cues 是 2 到 3 条短语，不是完整段落。
 4. 不得自动回复、代替用户执行任何操作，也不得声称已经执行或发送内容。
 5. 不得输出个人隐私、联系方式、侮辱谩骂、歧视、威胁、违法引导，或违反团队禁忌的内容。
 6. 只能以输入中指定的当前人设为准；不可虚构事实、经历、关系、商品、承诺或直播间外部信息。
@@ -134,13 +145,15 @@ MVP 采用一条 `system` 消息和一条 `user` 消息；不维护聊天历史�
     }
   ],
   "output_contract": {
-    "quick_reply": "非空、最多 80 个汉字的一句短回复",
-    "cues": ["2 到 3 条、每条最多 40 个汉字的短提词"]
+    "action": "generate 或 reject",
+    "semantic_type": "七选一：persona_relevant / positive_praise / funny_joke / interactive_question / atmosphere_boost / low_value / filter_risk",
+    "quick_reply": "action 为 generate 时必填：非空、最多 80 个汉字的一句短回复",
+    "cues": ["action 为 generate 时必填：2 到 3 条、每条最多 40 个汉字的短提词"]
   }
 }
 ```
 
-Prompt 不含 `contract`/`persona_id`/`persona_version`/`team_boundaries.version` 等内部 id/version 标记——它们对模型无信息价值（仅作内部契约标识，见 `PROMPT_ASSEMBLER_VERSION_V1 = v2` / `USER_CONTRACT_ID_V1`），也不含 retrieval 原始分数、归一置信度、直出阈值、bad-case、同步状态、Qdrant point ID、内部 reason code 或审计密钥。它们既不利于生成，也不应泄露给模型提供商。
+Prompt 不含 `contract`/`persona_id`/`persona_version`/`team_boundaries.version` 等内部 id/version 标记——它们对模型无信息价值（仅作内部契约标识，见 `PROMPT_ASSEMBLER_VERSION_V1 = v3` / `USER_CONTRACT_ID_V1`），也不含 retrieval 原始分数、归一置信度、直出阈值、bad-case、同步状态、Qdrant point ID、内部 reason code 或审计密钥。它们既不利于生成，也不应泄露给模型提供商。
 
 ### 3.3 版本化、可复现性与 POC 项
 
@@ -174,6 +187,8 @@ const request = {
 
 JSON Output 仅是 provider 的 JSON 模式，不等价于应用已获得严格 JSON Schema 保证；响应仍必须经第 5 节的本地校验。禁止为了“修复”模型输出而追加第二次模型调用。
 
+单次调用内同时完成语义判断与回复生成：同一请求中模型先输出 `semantic_type` 并以 `action` 声明是否生成回复（见 5.1 的 `suggestion-decision/v2`）。不因分类而增加第二次往返，P95 ≤3 秒目标不变。
+
 ### 4.2 Tool Calls：MVP 拒绝，专用封装进入后续 backlog
 
 DeepSeek 的 Tool Calls 不能当作通用 OpenAI Tool Call 对象直接透传。MVP 生成路径的 `tools`、`tool_choice` 均不得出现，且响应出现 `tool_calls` 或不含文本 JSON 时按 `PROTOCOL` 失败处理。MVP 只实现这一拒绝 fixture，不实现或实例化完整 Tool Call adapter。
@@ -184,7 +199,7 @@ DeepSeek 的 Tool Calls 不能当作通用 OpenAI Tool Call 对象直接透传�
 
 ### 5.1 逻辑 JSON Schema
 
-此 schema 同时用于 LLM 输出和 golden 直出 payload 的本地校验；它是应用契约，不宣称已作为 DeepSeek strict schema 发送。
+`suggestion-output/v1` 用于 golden 直出 payload 的本地校验，并作为 v1 历史快照的复现依据保留：
 
 ```json
 {
@@ -205,9 +220,58 @@ DeepSeek 的 Tool Calls 不能当作通用 OpenAI Tool Call 对象直接透传�
 }
 ```
 
+LLM 输出线上门禁为 `suggestion-decision/v2`（discriminated union，判别字段 `action`，`additionalProperties: false`）。`generate` 分支在 v1 基础上增加 `action` 与 `semantic_type`；`reject` 分支只有 `action` 与 `semantic_type`，不含任何回复字段：
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "echocue://schema/suggestion-decision/v2",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "semantic_type", "quick_reply", "cues"],
+      "properties": {
+        "action": { "const": "generate" },
+        "semantic_type": { "enum": ["persona_relevant", "positive_praise", "funny_joke", "interactive_question", "atmosphere_boost", "low_value", "filter_risk"] },
+        "quick_reply": { "type": "string", "minLength": 1 },
+        "cues": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "semantic_type"],
+      "properties": {
+        "action": { "const": "reject" },
+        "semantic_type": { "enum": ["persona_relevant", "positive_praise", "funny_joke", "interactive_question", "atmosphere_boost", "low_value", "filter_risk"] }
+      }
+    }
+  ]
+}
+```
+
+`semantic_type` 枚举与数据协议 §2 的 `SemanticTypeV1` 同源复用，不另造第二套语义枚举。reject 分支不含模型自由文本理由：丢弃原因由代码按确定性规则推导（见 5.2），避免模型复述弹幕原文进入审计。
+
 字符上限不由 JSON Schema 的 `maxLength` 单独承担，因为 JavaScript code unit 与“汉字”计数并不等价。实现必须用同一 `countHanCharacters`/Unicode 计数函数，明确按用户可见汉字计数：`quick_reply <= 80`；`cues` 必为 2–3 条且每条 `<= 40`。字符串 `trim()` 后不能为空；数组元素不得重复、不得是仅标点/空白。不得静默截断模型输出：超过上限即拒绝，避免改变语义。
 
 ### 5.2 校验顺序
+
+**LLM 决策解析（`resolveLlmDecision`）先于共用校验器**。provider 解析成功（`suggestion-decision/v2` 通过）后，编排器先以纯函数把决策归约为两种结局之一，`reject` 分支**不进入** `SuggestionOutputValidator`——无可展示内容即无安全校验对象，直接 `GENERATED → DISCARDED` 写 `LLM_SEMANTIC_DISCARD`（具体语义类型记入 `LLM_PARSED_OUTPUT` 与 `FINAL_REASON` 快照的 `semanticType` 字段）。确定性优先级真值表：
+
+| 模型输出 action | 模型输出 semantic_type | 代码结论 |
+| --- | --- | --- |
+| reject | low_value / filter_risk | 驳回（`LLM_SEMANTIC_DISCARD`） |
+| reject | 任一积极类型 | 仍驳回（fail-safe：无可展示内容） |
+| generate | low_value / filter_risk | **代码覆写为驳回**（模型自我裁定不可信） |
+| generate | 任一积极类型 | 进入共用校验器，按 v1 规则校验 quick_reply/cues |
+
+golden 直出路径不经过 `resolveLlmDecision`，仍直接进入共用校验器。
 
 `SuggestionOutputValidator.validate(candidate, context)` 固定按如下次序运行，并返回机器可读 `reasonCodes`：
 
@@ -245,6 +309,7 @@ type OutputValidationReason =
 | 400 / 422 | 映射 `VALIDATION`，不重试。 | `FAILED`。 | 主窗口可诊断，不泄露 prompt。 |
 | 429、5xx、网络错误 | 映射 `RATE_LIMIT` / `SERVER` / `NETWORK`，本 attempt 不重试。 | `FAILED`。 | 回监听；诊断显示可理解摘要。 |
 | JSON/Tool Call/输出校验错误 | 映射 `PROTOCOL` 或 `OUTPUT_INVALID`，不重试。 | 解析/协议失败：`LLM_PENDING → FAILED`；已解析但校验拒绝：`LLM_PENDING → GENERATED → DISCARDED`，保留拒绝原因。 | 不展示原始内容。 |
+| 模型判定 `action: "reject"`（或 `generate` + discard 语义被代码覆写） | 不建候选、不进共用校验器，直接丢弃。 | `LLM_PENDING → GENERATED → DISCARDED`，写 `LLM_SEMANTIC_DISCARD`；`semanticType` 记入快照，无自由文本理由。 | 不展示、不排队；浮窗无感知。 |
 
 `AbortError` 的归属以本地取消原因决定：主动停止或过期为 `ABORTED`/`DISCARDED`，硬超时为 `TIMEOUT`/`FAILED`。Provider 返回恰好与取消同时发生时，始终以取消为准。请求错误不影响既有审计永久保存规则；只有**审计首次写入失败**才按上游设计停止服务。
 
@@ -257,7 +322,7 @@ type OutputValidationReason =
 | 渲染完成 | `RENDERED_PROMPT` | `template_version`、实际 system/user 内容、截断清单、`persona_id/version/content_hmac`、禁忌版本、TopK case ID/来源及渲染字段 | API Key、Authorization、原始 BM25 score、内部阈值。 |
 | 发起请求 | `LLM_REQUEST_META` | `provider_id`、adapter type、Base URL origin、Model ID、调用模式、开始时间、deadline、attempt/window 标识 | header、API Key、完整 URL query、未脱敏 SDK 对象。 |
 | 接收响应 | `LLM_RAW_RESPONSE` | 原始 provider body、HTTP 状态、provider request ID（若有）、完成时间 | Authorization、SDK 配置中的密钥。 |
-| 解析成功 | `LLM_PARSED_OUTPUT` | `quick_reply`、`cues`、解析器/schema 版本 | 推理文本；若 provider 混入推理或多余文本，仅保存在 raw response，绝不展示。 |
+| 解析成功 | `LLM_PARSED_OUTPUT` | v2 双形态：generate 为 `action`、`semantic_type`、`quick_reply`、`cues`、解析器/schema 版本；reject 为 `action`、`semantic_type`、解析器/schema 版本 | 推理文本与自由文本理由；若 provider 混入推理或多余文本，仅保存在 raw response，绝不展示。 |
 | 校验完成 | `OUTPUT_VALIDATION` | validator 版本、通过/拒绝、reason codes、当前 persona/禁忌版本、新鲜度结论 | 用户不可见内部阈值、密钥。 |
 | 终态 | `FINAL_REASON` | provider error code/status/request ID、取消原因或展示/丢弃结论 | 原文复制到普通日志。 |
 
@@ -282,5 +347,6 @@ type OutputValidationReason =
 | 当前人设/禁忌版本与双库 TopK 上下文 | 架构 4.2/4.3；数据协议 Qdrant 契约 | `PromptAssembler`、审计快照。 |
 | 80/40、2–3 条与共用校验 | PRD FR-06；UI 打标约束；数据协议 6 节 | `SuggestionOutputValidator`、golden 回流入库前校验。 |
 | 审计 role、加密与 UI 隐私边界 | PRD FR-10；数据建模；UI 设计 | `AuditStoreWorker`、受限 IPC。 |
+| 单次调用语义判断（`suggestion-decision/v2`、`action` 双分支） | 数据协议 6 节 Provider 统一输出；数据协议 4.3 初筛分类动作 | `resolveLlmDecision`、`LLM_SEMANTIC_DISCARD` reason code（迁移 005）、`PromptTemplateV2`/assembler v3。 |
 
-本文件的 schema、模板或校验规则发生任何变更时，必须新增版本号并同步更新审计快照、golden 回流校验、测试 fixture 与验收用例；不得静默改变历史语义。
+本文件的 schema、模板或校验规则发生任何变更时，必须新增版本号并同步更新审计快照、golden 回流校验、测试 fixture 与验收用例；不得静默改变历史语义。当前版本：决策 schema `suggestion-decision/v2`、`PromptTemplateV2`、`PROMPT_ASSEMBLER_VERSION_V1 = v3`、trace reason 迁移 005。

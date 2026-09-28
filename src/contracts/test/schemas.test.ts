@@ -42,6 +42,7 @@ import {
   ProviderFixtureExpectedV1Schema,
   OverlayPreferenceV1Schema,
   SuggestionOutputV1Schema,
+  SuggestionDecisionV2Schema,
   OutputValidationReasonV1Schema,
   SuggestionSourceV1Schema,
   ValidatedSuggestionV1Schema,
@@ -653,6 +654,73 @@ test('rejects cue > 40 chars', () => expectInvalid(SuggestionOutputV1Schema, {
   quick_reply: '感谢',
   cues: ['一', 'a'.repeat(41)],
 }, 'cue 41 chars'));
+
+// SuggestionDecisionV2Schema
+console.log('\nSuggestionDecisionV2Schema');
+const SEMANTIC_TYPES = [
+  'persona_relevant', 'positive_praise', 'funny_joke',
+  'interactive_question', 'atmosphere_boost', 'low_value', 'filter_risk',
+];
+test('valid generate decision for every semantic type', () => {
+  for (const semantic_type of SEMANTIC_TYPES) {
+    expectValid(SuggestionDecisionV2Schema, {
+      action: 'generate',
+      semantic_type,
+      quick_reply: '感谢支持！',
+      cues: ['欢迎关注', '点赞收藏'],
+    }, `generate ${semantic_type}`);
+  }
+});
+test('valid reject decision', () => expectValid(SuggestionDecisionV2Schema, {
+  action: 'reject',
+  semantic_type: 'low_value',
+}, 'reject'));
+// The precedence (reject wins over generate) is code's job — the schema must
+// keep accepting a generate output typed low_value/filter_risk so the
+// deterministic override stays observable in the audit trail.
+test('generate + discard semantic_type stays schema-valid', () => {
+  expectValid(SuggestionDecisionV2Schema, {
+    action: 'generate',
+    semantic_type: 'filter_risk',
+    quick_reply: '感谢',
+    cues: ['一', '二'],
+  }, 'generate filter_risk');
+});
+test('rejects reject decision with reply fields (strict)', () => expectInvalid(SuggestionDecisionV2Schema, {
+  action: 'reject',
+  semantic_type: 'low_value',
+  quick_reply: '不应出现',
+}, 'reject with quick_reply'));
+test('rejects decision missing action', () => expectInvalid(SuggestionDecisionV2Schema, {
+  semantic_type: 'low_value',
+  quick_reply: '感谢',
+  cues: ['一', '二'],
+}, 'missing action'));
+test('rejects unknown semantic_type', () => expectInvalid(SuggestionDecisionV2Schema, {
+  action: 'reject',
+  semantic_type: 'spam',
+}, 'unknown semantic_type'));
+test('rejects generate without cues', () => expectInvalid(SuggestionDecisionV2Schema, {
+  action: 'generate',
+  semantic_type: 'positive_praise',
+  quick_reply: '感谢',
+}, 'generate without cues'));
+test('rejects generate with 4 cues', () => expectInvalid(SuggestionDecisionV2Schema, {
+  action: 'generate',
+  semantic_type: 'positive_praise',
+  quick_reply: '感谢',
+  cues: ['一', '二', '三', '四'],
+}, 'generate 4 cues'));
+test('rejects generate with oversized reply', () => expectInvalid(SuggestionDecisionV2Schema, {
+  action: 'generate',
+  semantic_type: 'positive_praise',
+  quick_reply: 'a'.repeat(81),
+  cues: ['一', '二'],
+}, 'generate oversized reply'));
+test('rejects legacy v1 shape (no action)', () => expectInvalid(SuggestionDecisionV2Schema, {
+  quick_reply: '感谢支持！',
+  cues: ['欢迎关注', '点赞收藏'],
+}, 'legacy v1 shape'));
 
 // OutputValidationReasonV1Schema
 console.log('\nOutputValidationReasonV1Schema');

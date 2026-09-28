@@ -92,10 +92,14 @@ sequenceDiagram
       S->>O: validated payload
     else LLM fallback
       S->>S: 渲染 prompt
-      S->>D: 单次 JSON 输出请求
+      S->>D: 单次 JSON 输出请求（含 semantic_type 判定）
       D-->>S: raw response
       S->>A: LLM_PENDING/GENERATED + 原文
-      S->>O: validated output
+      alt 模型判定 reject / 代码覆写驳回
+        S->>A: DISCARDED（LLM_SEMANTIC_DISCARD，不展示）
+      else generate 通过校验
+        S->>O: validated output
+      end
     end
     O-->>S: 首帧完成
     S->>A: DISPLAYED
@@ -143,7 +147,7 @@ Qdrant 始终维护两个独立 collection：`pre_set`（预置相似案例库�
 
 检索前，`golden_set` 以当前 `persona_id`、`persona_version`、`enabled=true`、`is_bad_case=false` 做 payload filter；`pre_set` 是通用库，不按人设版本过滤，只过滤 `enabled=true`、`is_bad_case=false`。检索后才由类型投票进行初筛，避免按未知类型预过滤。`is_bad_case` 默认 `false`，所以未打标案例仍能参加召回。随后对 `golden_set` 与 `pre_set` 发起两路并行 jieba-BM25 召回：输入统一经过 regex 清理、Unicode NFKC 标准化及 `jieba-wasm.cut_for_search`；文档向量已预计算 BM25 文档侧权重，查询向量的去重 token 权重固定为 `1`，Qdrant `modifier: 'idf'` 在查询时动态加权。原始 BM25 分数不能跨 collection 直接比较，必须通过 POC 固定、版本化的 score calibration 归一为 `retrieval_confidence ∈ [0.00, 1.00]`，再以该置信度为主排序/rerank 得到统一 TopK；每条结果保留 `source_collection`，审计记录两路原始结果、归一参数和最终名次。
 
-若 Top-1 来源为 `golden_set`、payload filter 全部满足、`retrieval_confidence >= direct_push_threshold`（初始建议 `0.85`，由 POC 校准并仅作为内部配置固化）且弹幕仍在最新窗口，先经当前人设版本、当前禁忌规则版本、结构、长度和安全类别的共用输出校验器；通过后才直接选用该条 `reply`/`cues` 推送浮窗，不调用 LLM。任何条件不满足（包括 Top-1 来自 `pre_set`）均把合并 TopK 作为上下文，调用一次 LLM 生成新的回复与提词。`GENERATED → DISPLAY_READY` 也必须调用同一校验器；校验输入、规则版本、结果与拒绝原因写入审计。
+若 Top-1 来源为 `golden_set`、payload filter 全部满足、`retrieval_confidence >= direct_push_threshold`（初始建议 `0.85`，由 POC 校准并仅作为内部配置固化）且弹幕仍在最新窗口，先经当前人设版本、当前禁忌规则版本、结构、长度和安全类别的共用输出校验器；通过后才直接选用该条 `reply`/`cues` 推送浮窗，不调用 LLM。任何条件不满足（包括 Top-1 来自 `pre_set`）均把合并 TopK 作为上下文，调用一次 LLM——同一请求内先输出 `semantic_type` 判定再决定是否生成回复（数据协议第 6 节 `suggestion-decision/v2`）。判定为 `low_value`/`filter_risk`（含 `action:'reject'` 或代码覆写）时 `GENERATED → DISCARDED` 写 `LLM_SEMANTIC_DISCARD`，不建候选、不进校验器、不展示；其余类型经 `GENERATED → DISPLAY_READY` 调用同一校验器生成新的回复与提词；校验输入、规则版本、结果与拒绝原因写入审计。LLM 语义判定不替代 4.3 的初筛丢弃——初筛在 `RETRIEVING` 阶段命中即丢弃并免付 LLM 调用成本，LLM 判定只兜检索无证据的盲区。
 
 ### 4.4 安全规则执行契约
 

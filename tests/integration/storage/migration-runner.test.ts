@@ -26,6 +26,11 @@ const MIGRATION_004_PATH = join(
   'docs/06-data-interface/migrations/004_semantic_reason_codes.sql',
 );
 
+const MIGRATION_005_PATH = join(
+  process.cwd(),
+  'docs/06-data-interface/migrations/005_llm_semantic_reason_codes.sql',
+);
+
 describe('MigrationRunner', () => {
   let testDir: string;
   let dbPath: string;
@@ -200,19 +205,20 @@ THIS IS NOT SQL;
     db.close();
   });
 
-  it('003/004 rebuild accepts EMPTY_NORMALIZED and every reason-code enum value', () => {
+  it('003/004/005 rebuild accepts EMPTY_NORMALIZED and every reason-code enum value', () => {
     const runner = new MigrationRunner(dbPath, [
       { version: 1, path: MIGRATION_PATH },
       { version: 2, path: MIGRATION_002_PATH },
       { version: 3, path: MIGRATION_003_PATH },
       { version: 4, path: MIGRATION_004_PATH },
+      { version: 5, path: MIGRATION_005_PATH },
     ]);
     const db = runner.run();
 
     const applied = db
       .prepare('SELECT version FROM schema_migration ORDER BY version')
       .all() as Array<{ version: number }>;
-    expect(applied.map((r) => r.version)).toEqual([1, 2, 3, 4]);
+    expect(applied.map((r) => r.version)).toEqual([1, 2, 3, 4, 5]);
 
     const now = '2026-08-25T00:00:00.000Z';
     db.prepare('INSERT INTO live_session (session_id, room_reference, started_at) VALUES (?,?,?)').run(
@@ -223,7 +229,8 @@ THIS IS NOT SQL;
     ).run('t1', 's1', 'm1', now, now);
 
     // Every enum value must satisfy the reason_code CHECK — EMPTY_NORMALIZED was
-    // added by 003, so this guards against enum/CHECK drift (C1 regression).
+    // added by 003 and LLM_SEMANTIC_DISCARD by 005, so this guards against
+    // enum/CHECK drift (C1 regression).
     const insert = db.prepare(
       `INSERT INTO audit_transition (trace_id, sequence_no, from_state, to_state, reason_code, occurred_at, previous_hmac, entry_hmac)
        VALUES (?,?,?,?,?,?,?,?)`,

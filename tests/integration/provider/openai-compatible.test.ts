@@ -59,7 +59,7 @@ describe('OpenAiCompatibleProvider integration', () => {
       req.on('end', () => {
         seenBody = JSON.parse(data);
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ choices: [{ message: { content: '{"quick_reply":"x","cues":["a","b"]}' } }] }));
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"x","cues":["a","b"]}' } }] }));
       });
     }));
     const provider = makeProvider();
@@ -105,7 +105,7 @@ describe('OpenAiCompatibleProvider integration', () => {
   it('rejects invalid output over the real transport', async () => {
     ({ server } = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ choices: [{ message: { content: '{"quick_reply":"only reply"}' } }] }));
+      res.end(JSON.stringify({ choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"only reply"}' } }] }));
     }));
     const provider = makeProvider();
     const result = await provider.generateReply(makeInput(portOf()));

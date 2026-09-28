@@ -244,6 +244,17 @@ describe('extract* helpers', () => {
     expect(extractSuggestion(llm)).toEqual({ quickReply: 'b', cues: ['3', '4'] });
     expect(extractSuggestion(workflow())).toBeNull();
   });
+
+  it('returns null for an LLM semantic reject snapshot, never inventing a reply (llm-semantic-reject)', () => {
+    const reject = workflow(
+      snap('LLM_PARSED_OUTPUT', 'SUGGESTION_JSON', {
+        action: 'reject',
+        semanticType: 'low_value',
+        parserVersion: 'SuggestionDecisionV2',
+      }),
+    );
+    expect(extractSuggestion(reject)).toBeNull();
+  });
 });
 
 describe('readGoldenProfile', () => {

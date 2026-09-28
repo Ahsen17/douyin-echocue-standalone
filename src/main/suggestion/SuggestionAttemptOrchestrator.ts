@@ -23,6 +23,7 @@ import { formatOverlaySentTime } from './format-overlay-sent-time.js';
 import type { SuggestionOrchestratorDeps } from './types.js';
 import type { PendingCandidate, ProcessingComment, SuggestionAttempt } from './types.js';
 import type { CancelTraceReason, OutputValidationContext, TeamMemberNameV1 } from '../validation/types.js';
+import { resolveLlmDecision } from '../validation/index.js';
 
 // Full freshness deadline (CONTRACT §6): min(t0+10000, selectedAt+10000,
 // t0+windowMaxAgeMs). The windowOpenedAt term is the candidate's own entry time
@@ -644,6 +645,18 @@ export class SuggestionAttemptOrchestrator {
       }
       return;
     }
+    // LLM_PARSED_OUTPUT (LLM §7): reject carries no free-text reasoning, only
+    // action/semanticType — the model's own conclusion, not code's decision.
+    const parsedOutputSnapshot =
+      result.output.action === 'reject'
+        ? { action: 'reject' as const, semanticType: result.output.semantic_type, parserVersion: 'SuggestionDecisionV2' }
+        : {
+            action: 'generate' as const,
+            semanticType: result.output.semantic_type,
+            quickReply: result.output.quick_reply,
+            cues: result.output.cues,
+            parserVersion: 'SuggestionDecisionV2',
+          };
     this.transition(candidate.processingComment, 'LLM_PENDING', 'GENERATED', 'PROVIDER_SUCCEEDED', [
       // LLM_RAW_RESPONSE + LLM_PARSED_OUTPUT (LLM §7): the received (key-scrubbed)
       // body and the parsed output that feeds the shared validator.
@@ -653,15 +666,21 @@ export class SuggestionAttemptOrchestrator {
         rawResponse: attempt.providerAuditRecord?.rawResponse,
         completedAtMonotonicMs: responseCompletedAtMonotonicMs,
       }),
-      this.snap('SUGGESTION_JSON', 'LLM_PARSED_OUTPUT', {
-        quickReply: result.output.quick_reply,
-        cues: result.output.cues,
-        parserVersion: 'SuggestionOutputV1',
-      }),
+      this.snap('SUGGESTION_JSON', 'LLM_PARSED_OUTPUT', parsedOutputSnapshot),
     ]);
 
+    // Deterministic precedence over the model's own judgment (LLM §5.2):
+    // reject always discards (fail-safe even on a positive semantic_type);
+    // generate with a discard-type semantic_type is overridden in code. The
+    // model's self-judgment is never trusted on its own.
+    const decision = resolveLlmDecision(result.output);
+    if (decision.kind === 'reject') {
+      this.discard(attempt, 'LLM_SEMANTIC_DISCARD', { semanticType: decision.semanticType });
+      return;
+    }
+
     const validation = this.deps.validator.validate(
-      result.output,
+      decision.candidate,
       this.validationContext(candidate, attempt, 'llm'),
     );
     if (!validation.ok) {
@@ -763,10 +782,14 @@ export class SuggestionAttemptOrchestrator {
     this.clearAttempt();
   }
 
-  private discard(attempt: SuggestionAttempt, reason: TraceReasonCodeV1): void {
+  private discard(
+    attempt: SuggestionAttempt,
+    reason: TraceReasonCodeV1,
+    finalReasonExtra?: Record<string, unknown>,
+  ): void {
     this.deps.onSuggestionResult?.('discarded');
     // Close from the actual last written state (GENERATED / DISPLAY_READY / …).
-    this.closeChain(attempt.comment, reason);
+    this.closeChain(attempt.comment, reason, finalReasonExtra);
     this.clearAttempt();
   }
 
@@ -779,13 +802,17 @@ export class SuggestionAttemptOrchestrator {
     this.clearAttempt();
   }
 
-  private closeChain(comment: ProcessingComment, reason: TraceReasonCodeV1): void {
+  private closeChain(
+    comment: ProcessingComment,
+    reason: TraceReasonCodeV1,
+    finalReasonExtra?: Record<string, unknown>,
+  ): void {
     const last = this.traceState.get(comment.traceId) ?? 'RECEIVED';
     switch (last) {
       case 'RECEIVED':
         this.transition(comment, 'RECEIVED', 'NORMALIZED', 'NORMALIZATION_OK');
         this.transition(comment, 'NORMALIZED', 'DISCARDED', reason, [
-          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason }),
+          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason, ...finalReasonExtra }),
         ]);
         return;
       case 'NORMALIZED':
@@ -794,25 +821,25 @@ export class SuggestionAttemptOrchestrator {
       case 'GENERATED':
       case 'DISPLAY_READY':
         this.transition(comment, last, 'DISCARDED', reason, [
-          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason }),
+          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason, ...finalReasonExtra }),
         ]);
         return;
       case 'ROUTED':
         this.transition(comment, 'ROUTED', 'RETRIEVING', 'RETRIEVAL_STARTED');
         this.transition(comment, 'RETRIEVING', 'DISCARDED', reason, [
-          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason }),
+          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason, ...finalReasonExtra }),
         ]);
         return;
       case 'DIRECT_READY':
         this.transition(comment, 'DIRECT_READY', 'DISPLAY_READY', 'OUTPUT_VALIDATED');
         this.transition(comment, 'DISPLAY_READY', 'DISCARDED', reason, [
-          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason }),
+          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason, ...finalReasonExtra }),
         ]);
         return;
       case 'PROMPT_RENDERED':
         this.transition(comment, 'PROMPT_RENDERED', 'LLM_PENDING', 'PROVIDER_REQUESTED');
         this.transition(comment, 'LLM_PENDING', 'DISCARDED', reason, [
-          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason }),
+          this.snap('FINAL_REASON_JSON', 'FINAL_REASON', { reason, ...finalReasonExtra }),
         ]);
         return;
       case 'DISPLAYED':

@@ -3,6 +3,7 @@ import type {
   GoldenSetPayloadV1,
   OverlayDisplayPayloadV1,
   SourceComment,
+  SuggestionDecisionV2,
   TraceState,
   ValidatedSuggestionV1,
 } from '@echocue/contracts';
@@ -115,14 +116,17 @@ function makeRetriever(hits: RetrievalRawHit[]) {
 interface FakeProvider {
   calls: number;
   result:
-    | { ok: true; output: { quick_reply: string; cues: string[] } }
+    | { ok: true; output: SuggestionDecisionV2 }
     | { ok: false; error: { code: string } };
 }
 
 function makeProvider(result?: FakeProvider['result']): FakeProvider & TextGenerationProviderLike {
   const provider: FakeProvider & TextGenerationProviderLike = {
     calls: 0,
-    result: result ?? { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } },
+    result: result ?? {
+      ok: true,
+      output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '谢谢你', cues: ['一', '二'] },
+    },
     adapterType: 'OPENAI_COMPATIBLE',
     async generateReply() {
       provider.calls += 1;
@@ -786,7 +790,7 @@ describe('SuggestionAttemptOrchestrator', () => {
             await new Promise<void>((resolve) => {
               releaseGeneration = resolve;
             });
-            return { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } };
+            return { ok: true, output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '谢谢你', cues: ['一', '二'] } };
           },
           getAuditRecord: () => null,
         }) as never,
@@ -951,7 +955,7 @@ describe('SuggestionAttemptOrchestrator', () => {
           await new Promise<void>((resolve) => {
             releaseGeneration = resolve;
           });
-          return { ok: true, output: { quick_reply: '谢谢你', cues: ['一', '二'] } };
+          return { ok: true, output: { action: 'generate', semantic_type: 'positive_praise', quick_reply: '谢谢你', cues: ['一', '二'] } };
         },
         getAuditRecord: () => null,
       };
@@ -1208,6 +1212,70 @@ describe('SuggestionAttemptOrchestrator', () => {
       expect(roles).not.toContain('LLM_RAW_RESPONSE');
       expect(roles).not.toContain('LLM_PARSED_OUTPUT');
       expect(roles).toContain('FINAL_REASON');
+    });
+  });
+
+  describe('LLM semantic reject (llm-semantic-reject)', () => {
+    it('reject action discards without validating or displaying', async () => {
+      const provider = makeProvider({
+        ok: true,
+        output: { action: 'reject', semantic_type: 'low_value' },
+      });
+      const { audit, orchestrator, sink } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        createProvider: () => provider as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await flush();
+      const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+      expect(discard?.from).toBe('GENERATED');
+      expect(discard?.reason).toBe('LLM_SEMANTIC_DISCARD');
+      const finalReason = audit.snapshots.find((s) => s.role === 'FINAL_REASON');
+      expect(finalReason?.payload).toMatchObject({ reason: 'LLM_SEMANTIC_DISCARD', semanticType: 'low_value' });
+      const roles = audit.snapshots.map((s) => s.role);
+      expect(roles).not.toContain('OUTPUT_VALIDATION');
+      expect(sink.shown.length).toBe(0);
+    });
+
+    it('overrides a generate action carrying a discard-type semantic_type (precedence)', async () => {
+      const provider = makeProvider({
+        ok: true,
+        output: { action: 'generate', semantic_type: 'low_value', quick_reply: '不该出现', cues: ['一', '二'] },
+      });
+      const { audit, orchestrator, sink } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        createProvider: () => provider as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await flush();
+      const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+      expect(discard?.from).toBe('GENERATED');
+      expect(discard?.reason).toBe('LLM_SEMANTIC_DISCARD');
+      const roles = audit.snapshots.map((s) => s.role);
+      expect(roles).not.toContain('OUTPUT_VALIDATION');
+      expect(sink.shown.length).toBe(0);
+    });
+
+    it('fail-safe: a reject action is discarded even with a positive semantic_type', async () => {
+      const provider = makeProvider({
+        ok: true,
+        output: { action: 'reject', semantic_type: 'positive_praise' },
+      });
+      const { audit, orchestrator, sink } = harness({
+        retriever: makeRetriever([preHit(0.9)]) as never,
+        createProvider: () => provider as never,
+      });
+      await orchestrator.startSession({ sessionId: 's1' });
+      orchestrator.handleComment(makeComment());
+      await flush();
+      const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+      expect(discard?.from).toBe('GENERATED');
+      expect(discard?.reason).toBe('LLM_SEMANTIC_DISCARD');
+      const finalReason = audit.snapshots.find((s) => s.role === 'FINAL_REASON');
+      expect(finalReason?.payload).toMatchObject({ semanticType: 'positive_praise' });
+      expect(sink.shown.length).toBe(0);
     });
   });
 });

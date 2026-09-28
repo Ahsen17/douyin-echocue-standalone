@@ -43,7 +43,7 @@ function makeInput(overrides: Partial<ProviderGenerateInput> = {}): ProviderGene
 describe('T-PROV-001: Provider Contract Fixtures', () => {
   it('should load provider contract fixture', () => {
     expect(fixture.cases.length).toBeGreaterThan(0);
-    expect(fixture.schemaVersion).toBe(1);
+    expect(fixture.schemaVersion).toBe(2);
   });
 
   // M-1: the machine-readable schema must accept every authoritative fixture case,
@@ -70,7 +70,12 @@ describe('T-PROV-001: Provider Contract Fixtures', () => {
     });
     expect(result).toEqual({
       ok: true,
-      output: { quick_reply: c.expected.quick_reply, cues: c.expected.cues },
+      output: {
+        action: c.expected.action,
+        semantic_type: c.expected.semantic_type,
+        quick_reply: c.expected.quick_reply,
+        cues: c.expected.cues,
+      },
       providerRequestId: 'provider-request-id',
     });
   });
@@ -83,9 +88,49 @@ describe('T-PROV-001: Provider Contract Fixtures', () => {
     });
     expect(result).toEqual({
       ok: true,
-      output: { quick_reply: c.expected.quick_reply, cues: c.expected.cues },
+      output: {
+        action: c.expected.action,
+        semantic_type: c.expected.semantic_type,
+        quick_reply: c.expected.quick_reply,
+        cues: c.expected.cues,
+      },
       providerRequestId: 'compatible-request-id',
     });
+  });
+
+  it('should parse an LLM semantic reject as a successful call', () => {
+    const c = findCase('llm-semantic-reject-parses');
+    expect(c.expected.ok).toBe(true);
+    expect(c.expected.action).toBe('reject');
+    const result = parseProviderResponse({
+      status: c.response?.status ?? 200,
+      body: c.response?.body,
+    });
+    expect(result).toEqual({
+      ok: true,
+      output: { action: 'reject', semantic_type: c.expected.semantic_type },
+      providerRequestId: 'reject-request-id',
+    });
+  });
+
+  it('should reject a reject decision that carries reply fields', () => {
+    const c = findCase('reject-with-reply-fields-rejected');
+    const result = parseProviderResponse({
+      status: c.response?.status ?? 200,
+      body: c.response?.body,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('OUTPUT_INVALID');
+  });
+
+  it('should reject the legacy v1 wire shape without action', () => {
+    const c = findCase('legacy-v1-shape-rejected');
+    const result = parseProviderResponse({
+      status: c.response?.status ?? 200,
+      body: c.response?.body,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('OUTPUT_INVALID');
   });
 
   it('should reject tool_calls with E_PROVIDER_PROTOCOL', () => {

@@ -6,7 +6,7 @@
 import type {
   ProviderConfigV1,
   ProviderErrorV1,
-  SuggestionOutputV1,
+  SuggestionDecisionV2,
 } from '@echocue/contracts';
 
 export type { ConnectionTestResultV1 as ConnectionTestResult } from '@echocue/contracts';
@@ -51,7 +51,8 @@ export interface ProviderGenerateInput {
 
 export interface ProviderGenerateOk {
   ok: true;
-  output: SuggestionOutputV1;
+  /** Wire contract v2: a reject decision is a successful parse, not an error. */
+  output: SuggestionDecisionV2;
   providerRequestId?: string;
 }
 

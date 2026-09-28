@@ -57,6 +57,30 @@
         "parserVersion": "SuggestionOutputV1"
       },
       "forbiddenProbes": ["reasoning", "thought", "thinking"]
+    },
+    {
+      "role": "LLM_PARSED_OUTPUT",
+      "variant": "v2_generate",
+      "contentType": "SUGGESTION_JSON",
+      "minimal": {
+        "action": "generate",
+        "semanticType": "positive_praise",
+        "quickReply": "谢谢你",
+        "cues": ["一", "二"],
+        "parserVersion": "SuggestionDecisionV2"
+      },
+      "forbiddenProbes": ["reasoning", "thought", "thinking"]
+    },
+    {
+      "role": "LLM_PARSED_OUTPUT",
+      "variant": "v2_reject",
+      "contentType": "SUGGESTION_JSON",
+      "minimal": {
+        "action": "reject",
+        "semanticType": "low_value",
+        "parserVersion": "SuggestionDecisionV2"
+      },
+      "forbiddenProbes": ["reasoning", "thought", "thinking", "quickreply", "cues"]
     }
   ]
 }

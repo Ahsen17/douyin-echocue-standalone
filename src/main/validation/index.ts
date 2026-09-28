@@ -1,4 +1,6 @@
 export { SuggestionOutputValidator } from './SuggestionOutputValidator.js';
+export { resolveLlmDecision } from './LlmDecisionResolver.js';
+export type { LlmDecision } from './LlmDecisionResolver.js';
 export {
   SUGGESTION_OUTPUT_MIN_REPLY_LENGTH,
   SUGGESTION_OUTPUT_MAX_REPLY_HAN,

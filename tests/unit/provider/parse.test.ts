@@ -10,6 +10,8 @@ interface ProviderFixtureCase {
   response?: { status?: number; body?: unknown; abortAtMs?: number };
   expected: {
     ok: boolean;
+    action?: 'generate' | 'reject';
+    semantic_type?: string;
     quick_reply?: string;
     cues?: string[];
     providerError?: string;
@@ -27,19 +29,57 @@ interface ProviderFixture {
 const fixture = loadJsonFixture<ProviderFixture>(FIXTURES.PROVIDER_CONTRACT);
 
 describe('provider response parsing', () => {
-  it('parses a successful DeepSeek JSON response', () => {
+  it('parses a successful DeepSeek JSON response (generate branch)', () => {
     const result = parseProviderResponse({
       status: 200,
       body: {
         id: 'provider-request-id',
-        choices: [{ message: { content: '{"quick_reply":"谢谢你一直在呀","cues":["回应陪伴","自然带动互动"]}' } }],
+        choices: [{ message: { content: '{"action":"generate","semantic_type":"persona_relevant","quick_reply":"谢谢你一直在呀","cues":["回应陪伴","自然带动互动"]}' } }],
       },
     });
     expect(result).toEqual({
       ok: true,
-      output: { quick_reply: '谢谢你一直在呀', cues: ['回应陪伴', '自然带动互动'] },
+      output: {
+        action: 'generate',
+        semantic_type: 'persona_relevant',
+        quick_reply: '谢谢你一直在呀',
+        cues: ['回应陪伴', '自然带动互动'],
+      },
       providerRequestId: 'provider-request-id',
     });
+  });
+
+  it('parses a semantic reject as a successful call', () => {
+    const result = parseProviderResponse({
+      status: 200,
+      body: {
+        id: 'reject-request-id',
+        choices: [{ message: { content: '{"action":"reject","semantic_type":"low_value"}' } }],
+      },
+    });
+    expect(result).toEqual({
+      ok: true,
+      output: { action: 'reject', semantic_type: 'low_value' },
+      providerRequestId: 'reject-request-id',
+    });
+  });
+
+  it('rejects a reject decision that carries reply fields with OUTPUT_INVALID', () => {
+    const result = parseProviderResponse({
+      status: 200,
+      body: { choices: [{ message: { content: '{"action":"reject","semantic_type":"filter_risk","quick_reply":"不应出现"}' } }] },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('OUTPUT_INVALID');
+  });
+
+  it('rejects the legacy v1 wire shape (no action) with OUTPUT_INVALID', () => {
+    const result = parseProviderResponse({
+      status: 200,
+      body: { choices: [{ message: { content: '{"quick_reply":"谢谢你一直在呀","cues":["回应陪伴","自然带动互动"]}' } }] },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('OUTPUT_INVALID');
   });
 
   it('rejects a tool_calls response with PROTOCOL', () => {
@@ -71,7 +111,7 @@ describe('provider response parsing', () => {
   it('rejects JSON that fails the suggestion schema with OUTPUT_INVALID', () => {
     const result = parseProviderResponse({
       status: 200,
-      body: { choices: [{ message: { content: '{"quick_reply":"只有回复，没有提词"}' } }] },
+      body: { choices: [{ message: { content: '{"action":"generate","semantic_type":"positive_praise","quick_reply":"只有回复，没有提词"}' } }] },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('OUTPUT_INVALID');
