@@ -57,3 +57,12 @@
 
 - 停用词表误杀需试运行反馈：在 `assets/stopwords-curated.txt` 删行 → `npm run stopwords:generate` → bump 版本 → 重新导入。
 - `docs/03-research/Echocue-Qdrant-jieba-BM25-POC记录模板-v0.1.md` 的版本样例同步 v2，POC 校准记录仍待甲方样本（M3-09）。
+
+## 审查修复（第一轮 Subagent 审查，2026-09-29）
+
+- 版本守卫从「首次 search 缓存」改为**每次 search 校验**：原实现会在同进程 re-import 迁移成功后仍永久返回空结果（审查阻断项 #1）。
+- `E_TOKENIZER_MISMATCH` 提升为契约常量 `E_TOKENIZER_MISMATCH_V1`，主进程与 renderer 引用同一来源（审查严重项 #3）。
+- 服务启动门禁 `isRetrievalReady` 增加「两个集合都存在且分词版本匹配」校验，版本不匹配时拒绝启动（审查严重项 #2）。
+- 三处版本判定统一走 `hasTokenizerVersionMismatch`（审查一般项 #5）。
+- stopwords 测试首条用例改为确实含停用词的文本（审查建议项 #8）。
+- `hasVersionMismatch()` 公共方法随缓存一并移除（审查建议项 #12）。
