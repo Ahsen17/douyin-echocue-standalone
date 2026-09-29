@@ -365,13 +365,13 @@ interface ProviderConfigV1 {
 
 ## 4. Qdrant collection 契约
 
-两库均为单路稀疏 **jieba-BM25** collection，固定 vector name 为 `bm25_zh_jieba_v1`；由随安装包分发的 Qdrant Server `>= 1.19.0` 提供 sparse index 与 query-time `modifier: 'idf'`。`pre_set` 初始导入由甲方提交的标准 JSONL 完成，`golden_set` 初始为空、由审计打标生成。`Bm25TextPipeline` 固定版本 `zh_jieba_search_v1`：regex 移除无关符号、Unicode NFKC/全半角统一、空白折叠、受控同义/热词归一，再以 `jieba-wasm.cut_for_search` 分词；每个 point 写入 `tokenizer_version`。具体 Qdrant REST 请求由 `SuggestionRetriever` 封装，业务层不直接发请求。
+两库均为单路稀疏 **jieba-BM25** collection，固定 vector name 为 `bm25_zh_jieba_v1`；由随安装包分发的 Qdrant Server `>= 1.19.0` 提供 sparse index 与 query-time `modifier: 'idf'`。`pre_set` 初始导入由甲方提交的标准 JSONL 完成，`golden_set` 初始为空、由审计打标生成。`Bm25TextPipeline` 固定版本 `zh_jieba_search_v2`：regex 移除无关符号、Unicode NFKC/全半角统一、空白折叠、受控同义/热词归一，再以 `jieba-wasm.cut_for_search` 分词；每个 point 写入 `tokenizer_version`。具体 Qdrant REST 请求由 `SuggestionRetriever` 封装，业务层不直接发请求。
 
 `case_id` 是业务稳定 ID；Qdrant `point_id` 为确定性 UUIDv5：`UUIDv5('echocue:{collection}:{case_id}')`。`pre_set` 的 JSONL `id` 映射为 `case_id`，不得直接假设其符合 Qdrant point ID 格式；检索、审计、bad-case 更新同时记录二者。
 
 collection bootstrap 必须创建 `bm25_zh_jieba_v1` 稀疏向量（`modifier: 'idf'`）及 payload index：`enabled`、`is_bad_case`、`semantic_type`，以及 `golden_set` 的 `persona_id`、`persona_version`。导入器拒绝不支持的 `schema_version`，且将 `pre_set` 的 `schema_version`、`case_id`、`tokenizer_version` 写入 payload。查询阶段**不得**按未知 `semantic_type` 预过滤；先检索全类型可用样本，再按第 4.3 节投票得出初筛结论，避免“先知道类型才能检索”的循环。
 
-`Bm25TextPipelineV1` 是唯一允许的文本处理器，写入与查询必须使用完全相同的 regex、Unicode 规范、同义/热词词表和 `jieba-wasm.cut_for_search`。它以 Qdrant FastEmbed BM25 的文档侧权重语义为算法参照，但中文 token 以 jieba 结果替代其英文 Snowball stemmer/stopword pipeline。分词后删除空 token 与纯标点，保留 token 出现次数 `tf(t,d)`；token 的 index 必须与 FastEmbed `compute_token_id` 对齐：`abs(MurmurHash3_x86_32(UTF8(token), seed=0))`，不得维护词典或改用 SHA/其他 hash。TS 使用 `murmurhash3js-revisited` 对 UTF-8 bytes 计算 x86 32-bit hash，再转换为 signed 32-bit 后取绝对值；每个发布版本必须通过 FastEmbed/Python `mmh3` 的跨语言 index fixture（含中文、emoji、ASCII）。32-bit hash 碰撞是理论可发生的；MVP 记录 collision 指标，若单文档检测到不同 token 映射到同一 ID，则保留审计诊断并纳入 POC 评估，不能悄然改用有状态词典破坏 index 稳定性。对文档 `d`，写入值严格为：`w_d(t) = tf(t,d) * (k1 + 1) / (tf(t,d) + k1 * (1 - b + b * doc_len / avg_doc_len))`；其中 `doc_len` 是分词后的 token 总数，`k1`、`b` 与 `avg_doc_len_baseline` 由真实中文样本 POC 校准并固化在 `Bm25ZhJiebaProfileV1`（FastEmbed 默认值为 `1.2`、`0.75`，仅作为 POC 初始值）。`avg_doc_len_baseline` 在首次导入完整 `pre_set` 后，以其有效案例的 token 长度均值计算；两个 collection 都复用该值，运行中不可变。**写入值不含 IDF。** Qdrant 的 `modifier: 'idf'` 按各 collection 当前文档频率在查询时自动计算并乘入 IDF；IDF 不依赖 `avg_doc_len_baseline`，将 IDF 预写入文档会双重加权，禁止。
+`Bm25TextPipelineV1` 是唯一允许的文本处理器，写入与查询必须使用完全相同的 regex、Unicode 规范、同义/热词词表和 `jieba-wasm.cut_for_search`。它以 Qdrant FastEmbed BM25 的文档侧权重语义为算法参照，但中文 token 以 jieba 结果替代其英文 Snowball stemmer/stopword pipeline，并补回中文停用词过滤（`zh_jieba_search_v2` 起）：分词结果先经整词匹配的停用词表（人工维护于 `assets/stopwords-curated.txt`，构建期 codegen 为 `stopwords.generated.ts`，其 SHA-256 参与版本指纹）过滤，再删除空 token 与纯标点。停用词表变更必须 bump `tokenizer_version` 并按 §4.1 重建 collection，禁止在旧版本 collection 上混用新旧分词结果。分词后保留 token 出现次数 `tf(t,d)`；token 的 index 必须与 FastEmbed `compute_token_id` 对齐：`abs(MurmurHash3_x86_32(UTF8(token), seed=0))`，不得维护词典或改用 SHA/其他 hash。TS 使用 `murmurhash3js-revisited` 对 UTF-8 bytes 计算 x86 32-bit hash，再转换为 signed 32-bit 后取绝对值；每个发布版本必须通过 FastEmbed/Python `mmh3` 的跨语言 index fixture（含中文、emoji、ASCII）。32-bit hash 碰撞是理论可发生的；MVP 记录 collision 指标，若单文档检测到不同 token 映射到同一 ID，则保留审计诊断并纳入 POC 评估，不能悄然改用有状态词典破坏 index 稳定性。对文档 `d`，写入值严格为：`w_d(t) = tf(t,d) * (k1 + 1) / (tf(t,d) + k1 * (1 - b + b * doc_len / avg_doc_len))`；其中 `doc_len` 是分词后的 token 总数，`k1`、`b` 与 `avg_doc_len_baseline` 由真实中文样本 POC 校准并固化在 `Bm25ZhJiebaProfileV1`（FastEmbed 默认值为 `1.2`、`0.75`，仅作为 POC 初始值）。`avg_doc_len_baseline` 在首次导入完整 `pre_set` 后，以其有效案例的 token 长度均值计算；两个 collection 都复用该值，运行中不可变。**写入值不含 IDF。** Qdrant 的 `modifier: 'idf'` 按各 collection 当前文档频率在查询时自动计算并乘入 IDF；IDF 不依赖 `avg_doc_len_baseline`，将 IDF 预写入文档会双重加权，禁止。
 
 查询路径执行同一前处理与分词，将 token 去重后写为 `{ index, value: 1 }`，不计算 tf、文档长度或 IDF；发送 named sparse vector `{ name: 'bm25_zh_jieba_v1', indices, values }`，同时带本次 collection 的 payload filter。Qdrant 负责将 query term 以 IDF 修正并与文档侧 `w_d(t)` 点积，得到 BM25 raw score。单次 golden 回流仅按当前固定 profile 写入一个 point，禁止重算已有点或重建 collection。只有 `avg_doc_len_baseline`、`k1`、`b`、tokenizer、归一/热词规则或 token-index namespace 变更，才创建新 profile/collection，批量重编码 `pre_set` 与有效 `golden_set`，完成校验后原子切换；不能在直播中途静默改变。Qdrant 版本、`tokenizer_version`、`bm25_profile_id`、同义词词表版本和 calibration artifact ID 必须写入 collection metadata 与每次检索审计。
 
@@ -381,7 +381,7 @@ collection bootstrap 必须创建 `bm25_zh_jieba_v1` 稀疏向量（`modifier: '
 interface PreSetPayload {
   schema_version: '1.0';
   case_id: string;
-  tokenizer_version: 'zh_jieba_search_v1';
+  tokenizer_version: 'zh_jieba_search_v2';
   text: string;
   semantic_type: SemanticTypeV1;
   description: string;
@@ -400,7 +400,7 @@ interface PreSetPayload {
 ```ts
 interface GoldenSetPayload {
   case_id: string;
-  tokenizer_version: 'zh_jieba_search_v1';
+  tokenizer_version: 'zh_jieba_search_v2';
   source_trace_id: string;
   persona_id: string;
   persona_version: string;

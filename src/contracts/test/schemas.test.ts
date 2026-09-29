@@ -4,6 +4,7 @@
  */
 import { strict as assert } from 'assert';
 import {
+  BM25_TOKENIZER_VERSION_V1,
   SettingsV1Schema,
   SystemPromptV1Schema,
   ServiceViewStateSchema,
@@ -1197,7 +1198,7 @@ test('accepts an ok import result with a frozen profile', () => {
     ok: true,
     profile: {
       profileId: '018f00000000000000000000',
-      tokenizerVersion: 'zh_jieba_search_v1',
+      tokenizerVersion: BM25_TOKENIZER_VERSION_V1,
       normalizationVersion: 'zh_bm25_normalize_v1',
       preSetSha256: '0'.repeat(64),
       avgDocLenBaseline: 12.5,

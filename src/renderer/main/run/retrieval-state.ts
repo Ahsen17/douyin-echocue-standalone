@@ -7,6 +7,7 @@ export type RetrievalBlockState =
   | { kind: 'loading' }
   | { kind: 'unavailable' }
   | { kind: 'needs-import' }
+  | { kind: 'version-mismatch' }
   | { kind: 'ready'; profileId?: string; preSetSha256?: string }
 
 export function deriveRetrievalBlock(
@@ -15,7 +16,11 @@ export function deriveRetrievalBlock(
 ): RetrievalBlockState {
   if (loading) return { kind: 'loading' }
   if (!status || !status.qdrantHealthy) return { kind: 'unavailable' }
-  if (!status.ready) return { kind: 'needs-import' }
+  if (!status.ready) {
+    return status.error === 'E_TOKENIZER_MISMATCH'
+      ? { kind: 'version-mismatch' }
+      : { kind: 'needs-import' }
+  }
   return { kind: 'ready', profileId: status.profileId, preSetSha256: status.preSetSha256 }
 }
 

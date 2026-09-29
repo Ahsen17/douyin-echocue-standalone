@@ -25,6 +25,15 @@ describe('deriveRetrievalBlock', () => {
     expect(deriveRetrievalBlock(status({}), false)).toEqual({ kind: 'needs-import' });
   });
 
+  it('maps version-mismatch only for the tokenizer error code', () => {
+    expect(deriveRetrievalBlock(status({ error: 'E_TOKENIZER_MISMATCH' }), false)).toEqual({
+      kind: 'version-mismatch',
+    });
+    expect(deriveRetrievalBlock(status({ error: 'E_QDRANT_UNAVAILABLE' }), false)).toEqual({
+      kind: 'needs-import',
+    });
+  });
+
   it('maps ready with the profile facts', () => {
     expect(deriveRetrievalBlock(status({ ready: true, profileId: 'p-1', preSetSha256: SHA }), false)).toEqual({
       kind: 'ready',

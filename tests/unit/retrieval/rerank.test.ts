@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import type { RetrievalRawHit } from '../../../src/main/retrieval/index.js';
 import { rerank } from '../../../src/main/retrieval/index.js';
@@ -18,7 +19,7 @@ function hit(overrides: Partial<RetrievalRawHit> & { rawScore: number; pointId: 
     payload: {
       schema_version: '1.0',
       case_id: `case-${overrides.pointId}`,
-      tokenizer_version: 'zh_jieba_search_v1',
+      tokenizer_version: BM25_TOKENIZER_VERSION_V1,
       text: '中性样例文本',
       semantic_type: 'positive_praise',
       description: '描述',

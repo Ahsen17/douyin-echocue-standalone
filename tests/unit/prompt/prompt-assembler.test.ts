@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import type { GoldenSetPayloadV1, PreSetPayloadV1, RetrievalHitV1 } from '@echocue/contracts';
 import {
@@ -10,7 +11,7 @@ import type { PersonaSnapshot, SafetySnapshot } from '../../../src/main/prompt/i
 
 const GOLDEN_PAYLOAD: GoldenSetPayloadV1 = {
   case_id: 'golden-000001',
-  tokenizer_version: 'zh_jieba_search_v1',
+  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
   source_trace_id: '01932a3b-4c5d-7000-8000-000000000001',
   persona_id: 'p-1',
   persona_version: '01932a3b-4c5d-7000-8000-000000000002',
@@ -28,7 +29,7 @@ const GOLDEN_PAYLOAD: GoldenSetPayloadV1 = {
 const PRE_PAYLOAD = {
   schema_version: '1.0',
   case_id: 'pre-000001',
-  tokenizer_version: 'zh_jieba_search_v1',
+  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
   text: '主播今天好可爱',
   semantic_type: 'positive_praise',
   description: '夸赞主播外形',
@@ -151,7 +152,7 @@ describe('renderPrompt', () => {
 
   it('omits optional case fields when the payload does not carry them', () => {
     const pre = preHit('p-1', 1);
-    const minimal = { ...pre, payload: { schema_version: '1.0', case_id: 'p-1', tokenizer_version: 'zh_jieba_search_v1', text: '好可爱', semantic_type: 'positive_praise', description: '夸赞', enabled: true, is_bad_case: false } satisfies PreSetPayloadV1 };
+    const minimal = { ...pre, payload: { schema_version: '1.0', case_id: 'p-1', tokenizer_version: BM25_TOKENIZER_VERSION_V1, text: '好可爱', semantic_type: 'positive_praise', description: '夸赞', enabled: true, is_bad_case: false } satisfies PreSetPayloadV1 };
     const { user } = renderPrompt({ ...BASE_INPUT, mergedTopK: [minimal] });
     const [caseObj] = parseUser(user).reference_cases;
     expect(caseObj).toEqual({

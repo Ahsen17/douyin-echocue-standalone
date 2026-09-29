@@ -5,6 +5,7 @@ import type {
   PreSetPayloadV1,
 } from '@echocue/contracts';
 import {
+  BM25_TOKENIZER_VERSION_V1,
   BM25_VECTOR_NAME_V1,
   Bm25ZhJiebaProfileV1Schema,
   PreSetPayloadV1Schema,
@@ -93,7 +94,7 @@ export function toPreSetPayload(entry: PreSetEntryV1, caseId: string): PreSetPay
   const payload = {
     schema_version: '1.0',
     case_id: caseId,
-    tokenizer_version: 'zh_jieba_search_v1',
+    tokenizer_version: BM25_TOKENIZER_VERSION_V1,
     text: entry.text,
     semantic_type: entry.semantic_type,
     description: entry.description,

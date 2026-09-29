@@ -36,6 +36,7 @@
     "start": "electron .",
     "preview": "npm run build && npm run start",
     "icons": "tsx scripts/generate-icons.ts",
+    "stopwords:generate": "tsx scripts/generate-stopwords.ts",
     "package:win": "electron-builder --win nsis --x64 --publish never",
     "package:win:local": "bash scripts/build-local.sh",
     "package:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/win-install-verify.ps1",

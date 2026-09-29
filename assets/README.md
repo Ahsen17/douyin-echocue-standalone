@@ -13,3 +13,11 @@
 - `douyinLive_windows.exe`（Windows x64）SHA-256: `7738538a9dba51f07b1c9433560db6b6645c0fcec47423a7011c0d63999f463b`
 
 运行：`douyinLive --port 1088`，客户端监听 `ws://127.0.0.1:1088/ws/<room_id>`。
+
+## BM25 停用词表
+
+- `stopwords.txt`：上游原始表（只读参考，不参与构建）。
+- `stopwords-curated.txt`：生效源（人工审查版：剔除实义单字与误收词条后的子集）。修改后必须：
+  1. `npm run stopwords:generate` 重新生成 `src/main/retrieval/stopwords.generated.ts`；
+  2. bump `BM25_TOKENIZER_VERSION_V1`（`src/contracts/src/schemas.ts`，同步镜像 `docs/06-data-interface/schema/contracts-v1.ts`）；
+  3. 按数据接口文档 §4.1 重建 pre_set / golden_set collection（重新导入 pre_set）。

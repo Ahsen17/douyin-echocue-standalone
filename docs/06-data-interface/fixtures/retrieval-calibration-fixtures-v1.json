@@ -19,7 +19,7 @@
         "payload": {
           "schema_version": "1.0",
           "case_id": "pre-000001",
-          "tokenizer_version": "zh_jieba_search_v1",
+          "tokenizer_version": "zh_jieba_search_v2",
           "text": "今天状态真好，太有活力了",
           "semantic_type": "positive_praise",
           "description": "夸赞",
@@ -36,7 +36,7 @@
         "payload": {
           "schema_version": "1.0",
           "case_id": "pre-000002",
-          "tokenizer_version": "zh_jieba_search_v1",
+          "tokenizer_version": "zh_jieba_search_v2",
           "text": "这反应太快了",
           "semantic_type": "funny_joke",
           "description": "玩笑",
@@ -54,7 +54,7 @@
         "rank": 1,
         "payload": {
           "case_id": "golden-000001",
-          "tokenizer_version": "zh_jieba_search_v1",
+          "tokenizer_version": "zh_jieba_search_v2",
           "source_trace_id": "01932a3b-4c5d-7000-8000-000000000001",
           "persona_id": "p-1",
           "persona_version": "01932a3b-4c5d-7000-8000-000000000002",

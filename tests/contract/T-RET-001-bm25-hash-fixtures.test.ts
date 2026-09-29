@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Bm25ZhJiebaProfileV1Schema } from '@echocue/contracts';
+import { BM25_TOKENIZER_VERSION_V1, Bm25ZhJiebaProfileV1Schema } from '@echocue/contracts';
 import { tokenId } from '../../src/main/retrieval/index.js';
 import { FIXTURES, loadJsonFixture } from '../fixtures/loader.js';
 
@@ -36,7 +36,7 @@ describe('T-RET-001 cross-language token index fixture', () => {
 describe('T-RET-001 Bm25ZhJiebaProfileV1 schema', () => {
   const validProfile = {
     profileId: 'bm25-zh-jieba-v1-0001',
-    tokenizerVersion: 'zh_jieba_search_v1',
+    tokenizerVersion: BM25_TOKENIZER_VERSION_V1,
     normalizationVersion: 'zh_bm25_normalize_v1',
     preSetSha256: 'a'.repeat(64),
     avgDocLenBaseline: 12.5,
@@ -51,7 +51,7 @@ describe('T-RET-001 Bm25ZhJiebaProfileV1 schema', () => {
   });
 
   it('rejects a non-canonical tokenizer version', () => {
-    const bad = { ...validProfile, tokenizerVersion: 'zh_jieba_search_v2' };
+    const bad = { ...validProfile, tokenizerVersion: 'zh_jieba_search_v1' };
     expect(Bm25ZhJiebaProfileV1Schema.safeParse(bad).success).toBe(false);
   });
 

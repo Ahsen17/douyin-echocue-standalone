@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { QdrantClient } from '@qdrant/js-client-rest';
+import { BM25_NORMALIZATION_VERSION_V1, BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import {
   SuggestionRetriever,
   normalizeHits,
@@ -36,8 +37,19 @@ describe('normalizeHits', () => {
   });
 });
 
-function mockClient(queryImpl: (collection: string, options: unknown) => Promise<unknown>) {
-  return { query: queryImpl } as unknown as QdrantClient;
+function mockClient(
+  queryImpl: (collection: string, options: unknown) => Promise<unknown>,
+  metadata: Record<string, unknown> | 'missing' = {
+    tokenizer_version: BM25_TOKENIZER_VERSION_V1,
+    normalization_version: BM25_NORMALIZATION_VERSION_V1,
+  },
+) {
+  return {
+    query: queryImpl,
+    getCollection: async () => ({
+      config: { metadata: metadata === 'missing' ? {} : metadata },
+    }),
+  } as unknown as QdrantClient;
 }
 
 describe('SuggestionRetriever', () => {
@@ -129,5 +141,83 @@ describe('SuggestionRetriever', () => {
     expect(result.goldenHits).toHaveLength(2);
     expect(result.goldenHits[0]).toMatchObject({ collection: 'golden_set', rank: 1, rawScore: 9.5 });
     expect(result.preHits).toHaveLength(2);
+  });
+});
+
+describe('SuggestionRetriever tokenizer version guard', () => {
+  const V1_METADATA = {
+    tokenizer_version: 'zh_jieba_search_v1',
+    normalization_version: BM25_NORMALIZATION_VERSION_V1,
+  };
+
+  it('returns no hits and never queries when a collection was built with a stale tokenizer', async () => {
+    let queried = false;
+    const client = mockClient(async () => {
+      queried = true;
+      return { points: [] };
+    }, V1_METADATA);
+    const retriever = new SuggestionRetriever(client);
+
+    const result = await retriever.search({ queryText: '状态' });
+
+    expect(result).toEqual({ preHits: [], goldenHits: [] });
+    expect(queried).toBe(false);
+    expect(retriever.hasVersionMismatch()).toBe(true);
+  });
+
+  it('treats missing metadata as incompatible (pre-versioning data)', async () => {
+    let queried = false;
+    const client = mockClient(async () => {
+      queried = true;
+      return { points: [] };
+    }, 'missing');
+    const retriever = new SuggestionRetriever(client);
+
+    const result = await retriever.search({ queryText: '状态' });
+
+    expect(result).toEqual({ preHits: [], goldenHits: [] });
+    expect(queried).toBe(false);
+  });
+
+  it('flags a mismatch when only one of the two collections is stale', async () => {
+    let calls = 0;
+    const base = {
+      query: async () => {
+        calls += 1;
+        return { points: [] };
+      },
+      getCollection: async (alias: string) => ({
+        config: {
+          metadata:
+            alias === 'pre_set'
+              ? V1_METADATA
+              : {
+                  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
+                  normalization_version: BM25_NORMALIZATION_VERSION_V1,
+                },
+        },
+      }),
+    };
+    const retriever = new SuggestionRetriever(base as unknown as QdrantClient);
+
+    const result = await retriever.search({ queryText: '状态' });
+
+    expect(result).toEqual({ preHits: [], goldenHits: [] });
+    expect(calls).toBe(0);
+    expect(retriever.hasVersionMismatch()).toBe(true);
+  });
+
+  it('queries normally when both collections carry the current versions', async () => {
+    let queried = false;
+    const client = mockClient(async () => {
+      queried = true;
+      return { points: [] };
+    });
+    const retriever = new SuggestionRetriever(client);
+
+    await retriever.search({ queryText: '状态' });
+
+    expect(queried).toBe(true);
+    expect(retriever.hasVersionMismatch()).toBe(false);
   });
 });

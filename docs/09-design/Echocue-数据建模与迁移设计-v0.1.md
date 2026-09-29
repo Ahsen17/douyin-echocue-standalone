@@ -218,14 +218,14 @@ flowchart TD
 ```ts
 interface PreSetPayload {
   schema_version: '1.0'; case_id: string;
-  tokenizer_version: 'zh_jieba_search_v1';
+  tokenizer_version: 'zh_jieba_search_v2';
   text: string; semantic_type: string; description: string;
   reference_reply?: string; reference_cues?: string[]; tags?: string[];
   enabled: boolean; is_bad_case: boolean;
 }
 
 interface GoldenSetPayload {
-  case_id: string; tokenizer_version: 'zh_jieba_search_v1';
+  case_id: string; tokenizer_version: 'zh_jieba_search_v2';
   source_trace_id: string; persona_id: string; persona_version: string;
   text: string; semantic_type: string; reply: string; cues: string[];
   quality_score: number; enabled: boolean; is_bad_case: boolean;

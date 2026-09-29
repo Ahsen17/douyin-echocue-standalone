@@ -4,9 +4,16 @@ import {
   BM25_TOKENIZER_VERSION_V1,
 } from '@echocue/contracts';
 import type { Bm25Analysis } from './types.js';
+import { CHINESE_STOP_WORDS_V2 } from './stopwords.generated.js';
 
 // Versioned hotword/synonym map; POC-calibrated. Longest key applied first.
 const DEFAULT_HOTWORD_MAP_V1: Readonly<Record<string, string>> = {};
+
+// Whole-token match only: multi-char tokens that merely contain a stop word
+// ("好活", "上分") must survive. Without this filter the high-frequency
+// function words inflate BM25 scores on the small local collections where
+// query-time IDF is unstable.
+const STOP_WORD_SET = new Set<string>(CHINESE_STOP_WORDS_V2);
 
 const CONTROL_NON_WS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g;
 const WHITESPACE_RE = /\s+/g;
@@ -57,7 +64,9 @@ export function createBm25TextPipeline(
   }
 
   function tokenize(normalized: string): string[] {
-    return cut_for_search(normalized).filter(isKeepableToken);
+    return cut_for_search(normalized).filter(
+      (t) => isKeepableToken(t) && !STOP_WORD_SET.has(t),
+    );
   }
 
   function analyze(text: string): Bm25Analysis {

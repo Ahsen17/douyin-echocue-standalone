@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import type { RetrievalRawHit } from '../../../src/main/retrieval/index.js';
 import {
@@ -110,7 +111,7 @@ function rawHit(overrides: Partial<RetrievalRawHit>): RetrievalRawHit {
     payload: {
       schema_version: '1.0',
       case_id: 'c-1',
-      tokenizer_version: 'zh_jieba_search_v1',
+      tokenizer_version: BM25_TOKENIZER_VERSION_V1,
       text: '今天状态真好',
       semantic_type: 'positive_praise',
       description: '夸赞',

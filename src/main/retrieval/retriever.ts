@@ -1,6 +1,10 @@
 import type { QdrantClient } from '@qdrant/js-client-rest';
 import type { GoldenSetPayloadV1, PreSetPayloadV1, SourceCollectionV1 } from '@echocue/contracts';
-import { BM25_VECTOR_NAME_V1 } from '@echocue/contracts';
+import {
+  BM25_NORMALIZATION_VERSION_V1,
+  BM25_TOKENIZER_VERSION_V1,
+  BM25_VECTOR_NAME_V1,
+} from '@echocue/contracts';
 import { createBm25TextPipeline, type Bm25TextPipeline } from './Bm25TextPipeline.js';
 import { tokenId } from './token-id.js';
 import { QDRANT_ALIAS_GOLDEN_SET, QDRANT_ALIAS_PRE_SET } from './bootstrap.js';
@@ -76,6 +80,10 @@ export interface SuggestionRetrieverOptions {
 export class SuggestionRetriever {
   private readonly pipeline: Bm25TextPipeline;
   private readonly aliases: { preSet: string; goldenSet: string };
+  // Cached after the first search: mixing tokenizations across versions makes
+  // pre_set/golden scores incomparable, so the retriever refuses to query and
+  // the UI routes the host to a re-import instead of serving wrong results.
+  private versionMismatch: boolean | null = null;
 
   constructor(
     private readonly client: QdrantClient,
@@ -85,9 +93,32 @@ export class SuggestionRetriever {
     this.aliases = options.aliases ?? { preSet: QDRANT_ALIAS_PRE_SET, goldenSet: QDRANT_ALIAS_GOLDEN_SET };
   }
 
+  hasVersionMismatch(): boolean {
+    return this.versionMismatch === true;
+  }
+
+  private async ensureVersionCompatible(): Promise<boolean> {
+    if (this.versionMismatch !== null) return !this.versionMismatch;
+    const infos = await Promise.all([
+      this.client.getCollection(this.aliases.preSet),
+      this.client.getCollection(this.aliases.goldenSet),
+    ]);
+    this.versionMismatch = !infos.every((info) => {
+      const metadata = (info.config?.metadata ?? {}) as Record<string, unknown>;
+      return (
+        metadata.tokenizer_version === BM25_TOKENIZER_VERSION_V1 &&
+        metadata.normalization_version === BM25_NORMALIZATION_VERSION_V1
+      );
+    });
+    return !this.versionMismatch;
+  }
+
   async search(options: RetrievalSearchOptions): Promise<RetrievalSearchResult> {
     if ((options.personaId === undefined) !== (options.personaVersion === undefined)) {
       throw new Error('personaId and personaVersion must be provided together');
+    }
+    if (!(await this.ensureVersionCompatible())) {
+      return { preHits: [], goldenHits: [] };
     }
     const tokens = this.pipeline.queryTokens(options.queryText);
     if (tokens.length === 0) return { preHits: [], goldenHits: [] };

@@ -4,7 +4,7 @@ import type {
   PreSetImportResultV1,
   RetrievalInitStatusV1,
 } from '@echocue/contracts';
-import { PreSetImportRequestV1Schema } from '@echocue/contracts';
+import { PreSetImportRequestV1Schema, BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import type { QdrantClient } from '@qdrant/js-client-rest';
 import type { QdrantSidecarManager } from '../qdrant/index.js';
 import { importPreSet as importPreSetStrict } from './pre-set-importer.js';
@@ -63,6 +63,11 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
       const metadata = collection.config?.metadata as Record<string, unknown> | undefined;
       const profileId = typeof metadata?.profile_id === 'string' ? metadata.profile_id : undefined;
       const preSetSha256 = typeof metadata?.pre_set_sha256 === 'string' ? metadata.pre_set_sha256 : undefined;
+      if (metadata?.tokenizer_version !== BM25_TOKENIZER_VERSION_V1) {
+        // Import built with a different tokenizer: scores from this collection
+        // are not comparable with the current pipeline, force a re-import.
+        return { qdrantHealthy: true, ready: false, error: 'E_TOKENIZER_MISMATCH' };
+      }
       return { qdrantHealthy: true, ready: true, profileId, preSetSha256 };
     } catch {
       return { qdrantHealthy: true, ready: false, error: 'E_QDRANT_UNAVAILABLE' };

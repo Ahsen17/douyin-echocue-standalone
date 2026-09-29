@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import type { GoldenSetPayloadV1, RetrievalHitV1 } from '@echocue/contracts';
 import {
@@ -7,7 +8,7 @@ import {
 
 const GOLDEN_PAYLOAD: GoldenSetPayloadV1 = {
   case_id: 'golden-000001',
-  tokenizer_version: 'zh_jieba_search_v1',
+  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
   source_trace_id: '01932a3b-4c5d-7000-8000-000000000001',
   persona_id: 'p-1',
   persona_version: '01932a3b-4c5d-7000-8000-000000000002',
@@ -25,7 +26,7 @@ const GOLDEN_PAYLOAD: GoldenSetPayloadV1 = {
 const PRE_PAYLOAD = {
   schema_version: '1.0',
   case_id: 'pre-000001',
-  tokenizer_version: 'zh_jieba_search_v1',
+  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
   text: '今天状态真好',
   semantic_type: 'positive_praise',
   description: '夸赞',

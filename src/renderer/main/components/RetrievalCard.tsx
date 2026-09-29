@@ -93,6 +93,11 @@ export default function RetrievalCard({ serviceLifecycle, onNavigate }: Retrieva
       {block.kind === 'needs-import' ? (
         <p>检索库未初始化：导入 pre_set 数据后即可启动服务。</p>
       ) : null}
+      {block.kind === 'version-mismatch' ? (
+        <p className="danger-text">
+          检索数据版本不匹配：现有检索库由旧版分词器构建，与当前版本不兼容，请重新导入 pre_set 数据（服务停止状态下）。
+        </p>
+      ) : null}
       {block.kind === 'ready' ? (
         <p>
           检索库已就绪
