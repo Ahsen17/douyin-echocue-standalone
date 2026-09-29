@@ -41,6 +41,7 @@ function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
       buildThresholdUpdate(
         validation.directPush,
         validation.semanticDiscard,
+        validation.minReference,
         validation.preSet,
         validation.goldenSet,
       ),
@@ -80,6 +81,20 @@ function ThresholdsCard({ config }: { config: ConfigViewV1 }) {
             value={form.semanticDiscard}
             onChange={(e) => {
               setForm((f) => ({ ...f, semanticDiscard: e.target.value }))
+              setFieldError(null)
+            }}
+          />
+        </label>
+        <label>
+          参考案例置信度地板（默认 0.75）
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.01"
+            value={form.minReference}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, minReference: e.target.value }))
               setFieldError(null)
             }}
           />

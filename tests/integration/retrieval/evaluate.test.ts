@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import type { GoldenSetPayloadV1 } from '@echocue/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -37,7 +38,7 @@ const VALID_CONTENT = [
 
     const golden: GoldenSetPayloadV1 = {
       case_id: 'gc-1',
-      tokenizer_version: 'zh_jieba_search_v1',
+      tokenizer_version: BM25_TOKENIZER_VERSION_V1,
       source_trace_id: uuidv7(),
       persona_id: 'p-1',
       persona_version: uuidv7(),

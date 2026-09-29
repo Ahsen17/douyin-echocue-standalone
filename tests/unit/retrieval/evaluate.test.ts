@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import type { RetrievalRawHit } from '../../../src/main/retrieval/index.js';
 import { evaluateRetrieval } from '../../../src/main/retrieval/index.js';
@@ -13,7 +14,7 @@ function rawHit(pointId: string, rawScore: number, collection: 'pre_set' | 'gold
     payload: isGolden
       ? {
           case_id: pointId,
-          tokenizer_version: 'zh_jieba_search_v1',
+          tokenizer_version: BM25_TOKENIZER_VERSION_V1,
           source_trace_id: '01932a3b-4c5d-7000-8000-000000000001',
           persona_id: 'p-1',
           persona_version: '01932a3b-4c5d-7000-8000-000000000002',
@@ -30,7 +31,7 @@ function rawHit(pointId: string, rawScore: number, collection: 'pre_set' | 'gold
       : {
           schema_version: '1.0',
           case_id: pointId,
-          tokenizer_version: 'zh_jieba_search_v1',
+          tokenizer_version: BM25_TOKENIZER_VERSION_V1,
           text: '中性文本',
           semantic_type: 'positive_praise',
           description: '描述',

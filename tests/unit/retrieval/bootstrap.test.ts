@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import { PreSetPayloadV1Schema } from '@echocue/contracts';
 import { importPreSet } from '../../../src/main/retrieval/index.js';
@@ -64,7 +65,7 @@ describe('toPreSetPayload', () => {
     const entry = validEntries()[0];
     const payload = toPreSetPayload(entry, entry.id);
     expect(payload.case_id).toBe(entry.id);
-    expect(payload.tokenizer_version).toBe('zh_jieba_search_v1');
+    expect(payload.tokenizer_version).toBe(BM25_TOKENIZER_VERSION_V1);
     expect(payload.schema_version).toBe('1.0');
     expect(payload.text).toBe(entry.text);
     expect(payload.semantic_type).toBe(entry.semantic_type);

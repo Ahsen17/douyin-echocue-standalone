@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import type { Bm25ZhJiebaProfileV1 } from '@echocue/contracts';
 import { createBm25TextPipeline } from '../../../src/main/retrieval/index.js';
@@ -11,7 +12,7 @@ import {
 
 const profile: Bm25ZhJiebaProfileV1 = {
   profileId: 'test-profile',
-  tokenizerVersion: 'zh_jieba_search_v1',
+  tokenizerVersion: BM25_TOKENIZER_VERSION_V1,
   normalizationVersion: 'zh_bm25_normalize_v1',
   preSetSha256: 'a'.repeat(64),
   avgDocLenBaseline: 10,

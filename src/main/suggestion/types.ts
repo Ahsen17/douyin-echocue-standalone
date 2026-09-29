@@ -107,6 +107,8 @@ export interface SuggestionOrchestratorDeps {
   /** WP-4: live reads of the run-page thresholds; frozen per session. */
   getDirectPushThreshold?: () => Promise<number>;
   getSemanticDiscardConfidence?: () => Promise<number>;
+  /** TD-12 (provisional): LLM reference-case confidence floor; frozen per session. */
+  getReferenceConfidenceFloor?: () => Promise<number>;
   /** Per-collection sigmoid calibration params (center/scale); frozen per session. */
   getCalibrationParams?: () => Promise<{ preSet: SigmoidCalibrationV1; goldenSet: SigmoidCalibrationV1 } | null>;
   maxContextBudget?: number;

@@ -90,3 +90,17 @@
 - **影响**：主播在浮窗看不到发送弹幕观众的真实用户名；如需针对特定观众互动或连麦，无法直接点名。
 - **修复方向**：真实用户名依赖上游接入方式——例如 douyinLive 边车启用登录态 Cookie（有凭证安全风险，需 DPAPI 保护、UI 禁止回显、日志脱敏）或更换接入方案；需另立任务评估后实施。接受现状期间，浮窗继续显示上游提供的昵称。
 - **关联**：M4-02（ws-adapter）、M6-07（浮窗）、research §3.4 douyinLive 选型。
+
+## TD-10 BM25 检索无停用词过滤，不相干内容匹配分数虚高（已完成 TD-10/11/12）
+
+- **现象**：不相关弹幕也能拿到很高的检索匹配分。排查确认：`Bm25TextPipeline` 无停用词过滤（设计文档有意用 jieba 替代 FastEmbed 英文 stopword pipeline 但未补中文方案）；叠加占位校准 `{center:0, scale:2}` 无区分度、LLM 路径对 `mergedTopK` 无分数门槛。
+- **影响**：低相关命中拉高分数、污染 LLM 参考案例；direct-push/语义丢弃两门依赖失真 confidence。
+- **修复**：TD-10 新增 curated 停用词表（整词过滤，tokenizer_version v2 bump + retriever 版本守卫 + `E_TOKENIZER_MISMATCH`）；TD-11 集合重建迁移（golden payload scroll 重编码，双别名原子切换）；TD-12 LLM 参考案例置信度地板（`minReferenceConfidence`，默认 0.75，运行页可调，provisional）。
+- **遗留（M3-09 必办）**：真实样本校准 sigmoid 定参时，必须连同 `minReferenceConfidence` 与 direct-push/语义丢弃阈值一起重推——停用词过滤使 `avg_doc_len` 基线下降，占位校准下置信度分布整体上移，各阈值的实际松紧已改变。
+- **关联**：M3-02/03（分词与权重）、M3-07（校准）、M3-09（阻塞中）。
+
+## TD-11 遗留登记（第二轮审查，2026-09-29）
+
+- **G-3 纯停用词 golden 点随旧集合删除而不可逆丢失**：这些点在 v1 分词下可能可检索，v2 下零 token 被跳过（计数已上报 UI），但删除旧集合后 payload 本体消失（SQLite 标签可回流再生，非唯一真源丢失）。改进方向：删除旧集合前导出被跳过点的 payload，或将旧 golden 集合保留为 `golden_set__retired-*`。
+- **重放路径无并发窗口集成测试**：迁移窗口内回流写竞态用 fake client 单元测试覆盖（bootstrap-golden-recovery.test.ts），真实 Qdrant 并发窗口难以确定性构造。
+- **改进候选**：`STOP_WORDS_SHA256_V2` 当前仅完整性测试消费，若要真正"参与版本指纹"应写入 collection metadata；golden 增长后重编码/重放需分批 upsert；golden 若未来引入删除路径，迁移重放需改为差量对账（当前只 upsert 不删，删除点会被重放复活——现无此路径）。

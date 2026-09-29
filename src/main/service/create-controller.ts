@@ -1,6 +1,7 @@
 import { statfsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OverlayDisplayPayloadV1, ServiceViewState } from '@echocue/contracts';
+import { DEFAULT_MIN_REFERENCE_CONFIDENCE_V1 } from '@echocue/contracts';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { SettingsStore } from '../config/index.js';
 import { CredentialStore, type SafeStorageLike } from '../credentials/index.js';
@@ -237,6 +238,13 @@ export async function createServiceController(
         return (await settings.get())?.internalRetrieval.semanticDiscardConfidence ?? 0.9;
       } catch {
         return 0.9;
+      }
+    },
+    getReferenceConfidenceFloor: async () => {
+      try {
+        return (await settings.get())?.internalRetrieval.minReferenceConfidence ?? DEFAULT_MIN_REFERENCE_CONFIDENCE_V1;
+      } catch {
+        return DEFAULT_MIN_REFERENCE_CONFIDENCE_V1;
       }
     },
     // null = user has not explicitly configured the sigmoid params, so the

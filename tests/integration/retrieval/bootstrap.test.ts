@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { randomUUID } from 'node:crypto';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -94,7 +95,7 @@ const VALID_CONTENT = [
           vector: { bm25_zh_jieba_v1: { indices: vector.indices, values: vector.values } },
           payload: {
             case_id: 'g-kept',
-            tokenizer_version: 'zh_jieba_search_v1',
+            tokenizer_version: BM25_TOKENIZER_VERSION_V1,
             source_trace_id: randomUUID(),
             persona_id: 'p-1',
             persona_version: randomUUID(),

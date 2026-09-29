@@ -93,6 +93,11 @@ export default function RetrievalCard({ serviceLifecycle, onNavigate }: Retrieva
       {block.kind === 'needs-import' ? (
         <p>检索库未初始化：导入 pre_set 数据后即可启动服务。</p>
       ) : null}
+      {block.kind === 'version-mismatch' ? (
+        <p className="danger-text">
+          检索数据版本不匹配：现有检索库由旧版分词器构建，与当前版本不兼容，请重新导入 pre_set 数据（服务停止状态下）。
+        </p>
+      ) : null}
       {block.kind === 'ready' ? (
         <p>
           检索库已就绪
@@ -134,6 +139,13 @@ function renderResult(result: PreSetImportResultV1): ReactNode {
     return (
       <p className="success-text">
         已导入 {result.entryCount} 条（profile {result.profile.profileId.slice(0, 8)}…）
+        {result.goldenMigration
+          ? `；历史建议库迁移 ${result.goldenMigration.reencoded} 条${
+              result.goldenMigration.skippedEmptyVector > 0
+                ? `，跳过 ${result.goldenMigration.skippedEmptyVector} 条无可检索词的旧点`
+                : ''
+            }`
+          : ''}
       </p>
     )
   }

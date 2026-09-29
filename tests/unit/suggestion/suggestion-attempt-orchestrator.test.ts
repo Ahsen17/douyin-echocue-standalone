@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it } from 'vitest';
 import type {
   GoldenSetPayloadV1,
@@ -56,7 +57,7 @@ class FakeAudit {
 
 const GOLDEN_PAYLOAD: GoldenSetPayloadV1 = {
   case_id: 'golden-1',
-  tokenizer_version: 'zh_jieba_search_v1',
+  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
   source_trace_id: '01932a3b-4c5d-7000-8000-000000000001',
   persona_id: 'p-1',
   persona_version: 'v-1',
@@ -74,7 +75,7 @@ const GOLDEN_PAYLOAD: GoldenSetPayloadV1 = {
 const PRE_PAYLOAD = {
   schema_version: '1.0',
   case_id: 'pre-1',
-  tokenizer_version: 'zh_jieba_search_v1',
+  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
   text: '主播今天好可爱',
   semantic_type: 'positive_praise',
   description: '夸赞主播外形',
@@ -638,6 +639,73 @@ describe('SuggestionAttemptOrchestrator', () => {
         preSet: { center: 0, scale: 1 },
         goldenSet: { center: 0, scale: 1 },
       }),
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await flush();
+    expect(provider.calls).toBe(0);
+    const discard = audit.transitions.find((t) => t.to === 'DISCARDED');
+    expect(discard?.from).toBe('RETRIEVING');
+    expect(discard?.reason).toBe('LOW_VALUE');
+  });
+
+  it('TD-12: freezes getReferenceConfidenceFloor at session start and excludes low hits from reference cases', async () => {
+    // sigmoid(4/2) ≈ 0.881 < frozen 0.9; sigmoid(10/2) ≈ 0.9999 ≥ 0.9.
+    const low = { ...preHit(0.88), rawScore: 4, pointId: 'pre-low', caseId: 'pre-low', rank: 2 };
+    const high = preHit(0.99);
+    const provider = makeProvider();
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([high, low]) as never,
+      createProvider: () => provider as never,
+      getReferenceConfidenceFloor: async () => 0.9,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await waitFor(() => audit.snapshots.some((s) => s.role === 'RENDERED_PROMPT'));
+    const rendered = audit.snapshots.find((s) => s.role === 'RENDERED_PROMPT')?.payload as Record<string, any>;
+    const user = JSON.parse(rendered.user);
+    expect(user.reference_cases).toHaveLength(1);
+    expect(JSON.stringify(user.reference_cases)).not.toContain('pre-low');
+    expect(rendered.truncationLog.excludedLowConfidence).toEqual([
+      { caseId: 'pre-low', collection: 'pre_set', confidence: expect.any(Number) },
+    ]);
+    expect(provider.calls).toBe(1);
+  });
+
+  it('TD-12: keeps low-confidence hits as reference cases when no floor getter is wired', async () => {
+    // sigmoid(1/2) ≈ 0.622: below the default 0.75 but no getter means no floor.
+    const low = { ...preHit(0.62), rawScore: 1 };
+    const provider = makeProvider();
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([low]) as never,
+      createProvider: () => provider as never,
+    });
+    await orchestrator.startSession({ sessionId: 's1' });
+    orchestrator.handleComment(makeComment());
+    await waitFor(() => audit.snapshots.some((s) => s.role === 'RENDERED_PROMPT'));
+    const rendered = audit.snapshots.find((s) => s.role === 'RENDERED_PROMPT')?.payload as Record<string, any>;
+    expect(JSON.parse(rendered.user).reference_cases).toHaveLength(1);
+    expect(rendered.truncationLog.excludedLowConfidence).toBeUndefined();
+  });
+
+  it('TD-12: the floor never affects the semantic-discard path or direct push', async () => {
+    // low_value hit at sigmoid(3/2) ≈ 0.818: below the frozen floor 0.9 (so it
+    // must not reach reference cases) but above the frozen discard 0.7 (so the
+    // DISCARD vote must still see it).
+    const lowValue = {
+      pointId: 'pre-low',
+      caseId: 'pre-low',
+      collection: 'pre_set' as const,
+      rawScore: 3,
+      rank: 1,
+      payload: { ...PRE_PAYLOAD, case_id: 'pre-low', semantic_type: 'low_value' },
+    } satisfies RetrievalRawHit;
+    const provider = makeProvider();
+    const { audit, orchestrator } = harness({
+      retriever: makeRetriever([lowValue]) as never,
+      createProvider: () => provider as never,
+      getReferenceConfidenceFloor: async () => 0.9,
+      getSemanticDiscardConfidence: async () => 0.7,
     });
     await orchestrator.startSession({ sessionId: 's1' });
     orchestrator.handleComment(makeComment());

@@ -4,11 +4,16 @@ import type {
   PreSetImportResultV1,
   RetrievalInitStatusV1,
 } from '@echocue/contracts';
-import { PreSetImportRequestV1Schema } from '@echocue/contracts';
+import { PreSetImportRequestV1Schema, E_TOKENIZER_MISMATCH_V1 } from '@echocue/contracts';
 import type { QdrantClient } from '@qdrant/js-client-rest';
 import type { QdrantSidecarManager } from '../qdrant/index.js';
 import { importPreSet as importPreSetStrict } from './pre-set-importer.js';
-import { QDRANT_ALIAS_GOLDEN_SET, QDRANT_ALIAS_PRE_SET, bootstrapPreSet } from './bootstrap.js';
+import {
+  QDRANT_ALIAS_GOLDEN_SET,
+  QDRANT_ALIAS_PRE_SET,
+  bootstrapPreSet,
+  hasTokenizerVersionMismatch,
+} from './bootstrap.js';
 import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 
 export interface RetrievalControlDeps {
@@ -63,6 +68,27 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
       const metadata = collection.config?.metadata as Record<string, unknown> | undefined;
       const profileId = typeof metadata?.profile_id === 'string' ? metadata.profile_id : undefined;
       const preSetSha256 = typeof metadata?.pre_set_sha256 === 'string' ? metadata.pre_set_sha256 : undefined;
+      // Same judgement as the service gate and the retriever guard: both active
+      // collections must exist and carry the current tokenizer/normalization
+      // version, else the status must route the host to a re-import.
+      if (await hasTokenizerVersionMismatch(deps.client, QDRANT_ALIAS_PRE_SET)) {
+        return { qdrantHealthy: true, ready: false, error: E_TOKENIZER_MISMATCH_V1 };
+      }
+      const golden = await (async (): Promise<'ok' | 'missing' | 'stale' | 'unavailable'> => {
+        try {
+          if (!(await deps.client.collectionExists(QDRANT_ALIAS_GOLDEN_SET)).exists) return 'missing';
+          return (await hasTokenizerVersionMismatch(deps.client, QDRANT_ALIAS_GOLDEN_SET)) ? 'stale' : 'ok';
+        } catch {
+          return 'unavailable';
+        }
+      })();
+      if (golden === 'unavailable') {
+        // Transient read failure must not be reported as a version problem.
+        return { qdrantHealthy: true, ready: false, error: 'E_QDRANT_UNAVAILABLE' };
+      }
+      if (golden !== 'ok') {
+        return { qdrantHealthy: true, ready: false, error: E_TOKENIZER_MISMATCH_V1 };
+      }
       return { qdrantHealthy: true, ready: true, profileId, preSetSha256 };
     } catch {
       return { qdrantHealthy: true, ready: false, error: 'E_QDRANT_UNAVAILABLE' };
@@ -115,8 +141,20 @@ export function createRetrievalControlHandlers(deps: RetrievalControlDeps): Retr
           truncated: imported.errors.length > MAX_REPORTED_ERRORS,
         };
       }
-      const profile = await doBootstrap(deps.client, { content, riskFilter });
-      return { ok: true, profile, entryCount: imported.entries.length };
+      let goldenMigration: { reencoded: number; skippedEmptyVector: number } | undefined;
+      const profile = await doBootstrap(deps.client, {
+        content,
+        riskFilter,
+        onGoldenMigration: (info) => {
+          goldenMigration = info;
+        },
+      });
+      return {
+        ok: true,
+        profile,
+        entryCount: imported.entries.length,
+        ...(goldenMigration !== undefined ? { goldenMigration } : {}),
+      };
     })();
     chain = task.catch(() => undefined);
     return task;

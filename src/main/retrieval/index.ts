@@ -47,6 +47,12 @@ export type {
   SourceCollection,
   SuggestionRetrieverOptions,
 } from './retriever.js';
+export { readGoldenEntries, reencodeGoldenEntries } from './collection-reencode.js';
+export type {
+  GoldenCollectionEntry,
+  ReencodedGoldenPoint,
+  ReencodeResult,
+} from './collection-reencode.js';
 export { createRetrievalControlHandlers } from './retrieval-control-handlers.js';
 export type { RetrievalControlDeps, RetrievalControlHandlers } from './retrieval-control-handlers.js';
 export { wireRetrievalControl } from './retrieval-control-ipc.js';

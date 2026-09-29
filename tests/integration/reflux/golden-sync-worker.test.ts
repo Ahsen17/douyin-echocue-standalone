@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm } from 'fs/promises';
@@ -286,7 +287,7 @@ afterEach(async () => {
     const pipeline = createBm25TextPipeline();
     const golden: GoldenSetPayloadV1 = {
       case_id: 'seeded-1',
-      tokenizer_version: 'zh_jieba_search_v1',
+      tokenizer_version: BM25_TOKENIZER_VERSION_V1,
       source_trace_id: uuidv7(),
       persona_id: 'p-1',
       persona_version: personaVersion,

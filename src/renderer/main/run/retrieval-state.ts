@@ -1,4 +1,5 @@
 import type { PreSetImportErrorV1, RetrievalInitStatusV1 } from '@echocue/contracts'
+import { E_TOKENIZER_MISMATCH_V1 } from '@echocue/contracts'
 
 // Run-page「检索初始化」卡片四态映射。renderer 不解析 Qdrant 细节，只翻译
 // main 提供的 RetrievalInitStatusV1；import 结果仅展示 profile 摘要与错误码，
@@ -7,6 +8,7 @@ export type RetrievalBlockState =
   | { kind: 'loading' }
   | { kind: 'unavailable' }
   | { kind: 'needs-import' }
+  | { kind: 'version-mismatch' }
   | { kind: 'ready'; profileId?: string; preSetSha256?: string }
 
 export function deriveRetrievalBlock(
@@ -15,7 +17,11 @@ export function deriveRetrievalBlock(
 ): RetrievalBlockState {
   if (loading) return { kind: 'loading' }
   if (!status || !status.qdrantHealthy) return { kind: 'unavailable' }
-  if (!status.ready) return { kind: 'needs-import' }
+  if (!status.ready) {
+    return status.error === E_TOKENIZER_MISMATCH_V1
+      ? { kind: 'version-mismatch' }
+      : { kind: 'needs-import' }
+  }
   return { kind: 'ready', profileId: status.profileId, preSetSha256: status.preSetSha256 }
 }
 

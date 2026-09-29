@@ -41,7 +41,7 @@
 ```json
 {
   "profileId": "待填",
-  "tokenizerVersion": "zh_jieba_search_v1",
+  "tokenizerVersion": "zh_jieba_search_v2",
   "normalizationVersion": "待填",
   "preSetSha256": "待填",
   "avgDocLenBaseline": null,

@@ -1,3 +1,4 @@
+import { BM25_NORMALIZATION_VERSION_V1, BM25_TOKENIZER_VERSION_V1, E_TOKENIZER_MISMATCH_V1 } from '@echocue/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { Bm25ZhJiebaProfileV1 } from '@echocue/contracts';
 import { PreSetImportResultV1Schema } from '@echocue/contracts';
@@ -7,7 +8,7 @@ import { createRetrievalControlHandlers } from '../../../src/main/retrieval/inde
 
 const PROFILE: Bm25ZhJiebaProfileV1 = {
   profileId: '018f0a1b2c3d4e5f6a7b8c9d',
-  tokenizerVersion: 'zh_jieba_search_v1',
+  tokenizerVersion: BM25_TOKENIZER_VERSION_V1,
   normalizationVersion: 'zh_bm25_normalize_v1',
   preSetSha256: 'a'.repeat(64),
   avgDocLenBaseline: 12.5,
@@ -77,7 +78,14 @@ describe('retrieval.getStatus', () => {
     const fakes = makeFakes();
     fakes.client.collectionExists.mockResolvedValue({ exists: true });
     fakes.client.getCollection.mockResolvedValue({
-      config: { metadata: { profile_id: PROFILE.profileId, pre_set_sha256: PROFILE.preSetSha256 } },
+      config: {
+        metadata: {
+          profile_id: PROFILE.profileId,
+          pre_set_sha256: PROFILE.preSetSha256,
+          tokenizer_version: BM25_TOKENIZER_VERSION_V1,
+          normalization_version: BM25_NORMALIZATION_VERSION_V1,
+        },
+      },
     });
     const handlers = makeHandlers(fakes);
     await expect(handlers.getStatus()).resolves.toEqual({
@@ -85,6 +93,26 @@ describe('retrieval.getStatus', () => {
       ready: true,
       profileId: PROFILE.profileId,
       preSetSha256: PROFILE.preSetSha256,
+    });
+  });
+
+  it('reports not-ready with E_TOKENIZER_MISMATCH when metadata holds a stale tokenizer', async () => {
+    const fakes = makeFakes();
+    fakes.client.collectionExists.mockResolvedValue({ exists: true });
+    fakes.client.getCollection.mockResolvedValue({
+      config: {
+        metadata: {
+          profile_id: PROFILE.profileId,
+          pre_set_sha256: PROFILE.preSetSha256,
+          tokenizer_version: 'zh_jieba_search_v1',
+        },
+      },
+    });
+    const handlers = makeHandlers(fakes);
+    await expect(handlers.getStatus()).resolves.toEqual({
+      qdrantHealthy: true,
+      ready: false,
+      error: E_TOKENIZER_MISMATCH_V1,
     });
   });
 

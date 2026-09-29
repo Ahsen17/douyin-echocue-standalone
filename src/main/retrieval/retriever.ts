@@ -3,7 +3,7 @@ import type { GoldenSetPayloadV1, PreSetPayloadV1, SourceCollectionV1 } from '@e
 import { BM25_VECTOR_NAME_V1 } from '@echocue/contracts';
 import { createBm25TextPipeline, type Bm25TextPipeline } from './Bm25TextPipeline.js';
 import { tokenId } from './token-id.js';
-import { QDRANT_ALIAS_GOLDEN_SET, QDRANT_ALIAS_PRE_SET } from './bootstrap.js';
+import { QDRANT_ALIAS_GOLDEN_SET, QDRANT_ALIAS_PRE_SET, hasTokenizerVersionMismatch } from './bootstrap.js';
 
 export type SourceCollection = SourceCollectionV1;
 
@@ -89,6 +89,13 @@ export class SuggestionRetriever {
     if ((options.personaId === undefined) !== (options.personaVersion === undefined)) {
       throw new Error('personaId and personaVersion must be provided together');
     }
+    // Re-checked on every search (two local getCollection calls are cheap
+    // relative to a sparse query): mixing tokenizations across versions makes
+    // pre_set/golden scores incomparable, and a cached verdict would keep
+    // serving empty results after a same-process migration re-import.
+    if (await this.hasVersionMismatch()) {
+      return { preHits: [], goldenHits: [] };
+    }
     const tokens = this.pipeline.queryTokens(options.queryText);
     if (tokens.length === 0) return { preHits: [], goldenHits: [] };
     const indices = tokens.map((token) => tokenId(token));
@@ -113,5 +120,12 @@ export class SuggestionRetriever {
       preHits: normalizeHits(preResult.points ?? [], 'pre_set'),
       goldenHits: normalizeHits(goldenResult.points ?? [], 'golden_set'),
     };
+  }
+
+  private async hasVersionMismatch(): Promise<boolean> {
+    return (
+      (await hasTokenizerVersionMismatch(this.client, this.aliases.preSet)) ||
+      (await hasTokenizerVersionMismatch(this.client, this.aliases.goldenSet))
+    );
   }
 }

@@ -1,3 +1,4 @@
+import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'fs/promises';
 import { join } from 'path';
@@ -50,7 +51,7 @@ const mockStorage = {
 
 const GOLDEN_PAYLOAD: GoldenSetPayloadV1 = {
   case_id: 'golden-1',
-  tokenizer_version: 'zh_jieba_search_v1',
+  tokenizer_version: BM25_TOKENIZER_VERSION_V1,
   source_trace_id: '01932a3b-4c5d-7000-8000-000000000001',
   persona_id: 'p-1',
   persona_version: 'v-1',
@@ -86,7 +87,7 @@ function preHit(): RetrievalRawHit {
     payload: {
       schema_version: '1.0',
       case_id: 'pre-1',
-      tokenizer_version: 'zh_jieba_search_v1',
+      tokenizer_version: BM25_TOKENIZER_VERSION_V1,
       text: '主播今天好可爱',
       semantic_type: 'positive_praise',
       description: '夸赞主播外形',
