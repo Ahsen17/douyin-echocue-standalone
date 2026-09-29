@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RetrievalInitStatusV1 } from '@echocue/contracts';
+import { E_TOKENIZER_MISMATCH_V1 } from '@echocue/contracts';
 import {
   deriveRetrievalBlock,
   describeImportFailure,
@@ -26,7 +27,7 @@ describe('deriveRetrievalBlock', () => {
   });
 
   it('maps version-mismatch only for the tokenizer error code', () => {
-    expect(deriveRetrievalBlock(status({ error: 'E_TOKENIZER_MISMATCH' }), false)).toEqual({
+    expect(deriveRetrievalBlock(status({ error: E_TOKENIZER_MISMATCH_V1 }), false)).toEqual({
       kind: 'version-mismatch',
     });
     expect(deriveRetrievalBlock(status({ error: 'E_QDRANT_UNAVAILABLE' }), false)).toEqual({

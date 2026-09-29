@@ -237,22 +237,35 @@ export async function bootstrapPreSet(
   // WP-8: only the first bootstrap creates the golden_set collection/alias. A
   // re-import must never replace an existing golden collection, or the host
   // label reflux into golden_set would be wiped (old collection orphaned).
-  // The one exception is a tokenizer-version migration: the golden points stay
-  // (scroll → re-encode under the new profile) but the collection itself is
-  // rebuilt, since mixing tokenizations would make the two collections'
-  // scores incomparable.
+  // Two more golden sources exist: a partially failed alias switch can strand
+  // the previous golden collection without its alias — adopting that orphan is
+  // the only way to keep the host's reflux data reachable — and a stale version
+  // triggers a tokenizer-version migration (scroll → re-encode under the new
+  // profile) instead of creating an empty golden.
   const aliases = await client.getAliases();
   const aliasMap = new Map(aliases.aliases.map((a) => [a.alias_name, a.collection_name]));
   const existing = new Set(aliasMap.keys());
-  const goldenExists = existing.has(QDRANT_ALIAS_GOLDEN_SET);
-  const goldenMigration =
-    goldenExists && (await hasTokenizerVersionMismatch(client, aliasMap.get(QDRANT_ALIAS_GOLDEN_SET)!));
+
+  let goldenState: 'missing' | 'ok' | 'stale' = 'missing';
+  let goldenSource = aliasMap.get(QDRANT_ALIAS_GOLDEN_SET);
+  if (goldenSource !== undefined) {
+    goldenState = (await hasTokenizerVersionMismatch(client, goldenSource)) ? 'stale' : 'ok';
+  } else {
+    const orphan = await findOrphanGoldenCollection(client);
+    if (orphan !== undefined) {
+      goldenSource = orphan.name;
+      goldenState = orphan.stale ? 'stale' : 'ok';
+    }
+  }
+  const goldenMigration = goldenState === 'stale';
+  const adoptGoldenCollection =
+    goldenState === 'ok' && !existing.has(QDRANT_ALIAS_GOLDEN_SET) ? goldenSource! : undefined;
 
   const preSetCollection = `${QDRANT_ALIAS_PRE_SET}__${profile.profileId}`;
   const goldenSetCollection = `${QDRANT_ALIAS_GOLDEN_SET}__${profile.profileId}`;
   await createCollectionWithSparse(client, { collectionName: preSetCollection, profile, golden: false });
   let createdGolden = false;
-  if (!goldenExists || goldenMigration) {
+  if (goldenState !== 'ok') {
     await createCollectionWithSparse(client, { collectionName: goldenSetCollection, profile, golden: true });
     createdGolden = true;
   }
@@ -274,11 +287,10 @@ export async function bootstrapPreSet(
       }
     }
 
-    const oldGoldenCollection = aliasMap.get(QDRANT_ALIAS_GOLDEN_SET);
     let migrationInfo: GoldenMigrationInfo | undefined;
     if (goldenMigration) {
       migrationInfo = await reencodeGoldenCollection(client, {
-        oldGoldenCollection: oldGoldenCollection!,
+        oldGoldenCollection: goldenSource!,
         goldenSetCollection,
         profile,
         pipeline,
@@ -294,11 +306,13 @@ export async function bootstrapPreSet(
       actions.push({ delete_alias: { alias_name: QDRANT_ALIAS_PRE_SET } });
     }
     actions.push({ create_alias: { collection_name: preSetCollection, alias_name: QDRANT_ALIAS_PRE_SET } });
+    if (goldenMigration && existing.has(QDRANT_ALIAS_GOLDEN_SET)) {
+      actions.push({ delete_alias: { alias_name: QDRANT_ALIAS_GOLDEN_SET } });
+    }
     if (createdGolden) {
-      if (goldenMigration) {
-        actions.push({ delete_alias: { alias_name: QDRANT_ALIAS_GOLDEN_SET } });
-      }
       actions.push({ create_alias: { collection_name: goldenSetCollection, alias_name: QDRANT_ALIAS_GOLDEN_SET } });
+    } else if (adoptGoldenCollection !== undefined) {
+      actions.push({ create_alias: { collection_name: adoptGoldenCollection, alias_name: QDRANT_ALIAS_GOLDEN_SET } });
     }
     await client.updateCollectionAliases({ actions });
 
@@ -312,13 +326,13 @@ export async function bootstrapPreSet(
       // only delete the old collections when that replay succeeded — otherwise
       // they stay as a read-only backup instead of losing the stragglers.
       const replayed = await replayLateGoldenWrites(client, {
-        oldGoldenCollection: oldGoldenCollection!,
+        oldGoldenCollection: goldenSource!,
         goldenSetCollection,
         profile,
         pipeline,
       }).catch(() => false);
       if (replayed) {
-        for (const name of [oldPreSetCollection, oldGoldenCollection]) {
+        for (const name of [oldPreSetCollection, goldenSource]) {
           if (name !== undefined) await client.deleteCollection(name).catch(() => undefined);
         }
       }
@@ -332,6 +346,26 @@ export async function bootstrapPreSet(
     }
     throw err;
   }
+}
+
+/**
+ * Un-aliased golden_set__* collection left behind by a partially failed alias
+ * switch. A version-compatible one is adopted as-is; a stale one is migrated.
+ */
+async function findOrphanGoldenCollection(
+  client: QdrantClient,
+): Promise<{ name: string; stale: boolean } | undefined> {
+  const collections = await client.getCollections();
+  const orphans = collections.collections
+    .map((c) => c.name)
+    .filter((n) => n.startsWith(`${QDRANT_ALIAS_GOLDEN_SET}__`));
+  let staleOrphan: { name: string; stale: boolean } | undefined;
+  for (const name of orphans) {
+    const stale = await hasTokenizerVersionMismatch(client, name).catch(() => true);
+    if (!stale) return { name, stale: false };
+    staleOrphan ??= { name, stale: true };
+  }
+  return staleOrphan;
 }
 
 async function reencodeGoldenCollection(

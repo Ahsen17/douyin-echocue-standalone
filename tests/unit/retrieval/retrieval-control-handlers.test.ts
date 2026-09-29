@@ -1,4 +1,4 @@
-import { BM25_NORMALIZATION_VERSION_V1, BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
+import { BM25_NORMALIZATION_VERSION_V1, BM25_TOKENIZER_VERSION_V1, E_TOKENIZER_MISMATCH_V1 } from '@echocue/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { Bm25ZhJiebaProfileV1 } from '@echocue/contracts';
 import { PreSetImportResultV1Schema } from '@echocue/contracts';
@@ -112,7 +112,7 @@ describe('retrieval.getStatus', () => {
     await expect(handlers.getStatus()).resolves.toEqual({
       qdrantHealthy: true,
       ready: false,
-      error: 'E_TOKENIZER_MISMATCH',
+      error: E_TOKENIZER_MISMATCH_V1,
     });
   });
 

@@ -37,6 +37,9 @@ function makeClient(opts: { goldenAliasExists: boolean; existingGoldenCollection
     getAliases: async () => ({
       aliases: [...state.aliases].map(([alias_name, collection_name]) => ({ alias_name, collection_name })),
     }),
+    getCollections: async () => ({
+      collections: [...state.collections].map((name) => ({ name })),
+    }),
     createCollection: async (name: string) => {
       state.collections.add(name);
       state.created.push(name);
