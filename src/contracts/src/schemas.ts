@@ -59,6 +59,15 @@ export const BM25_TOKENIZER_VERSION_V1 = 'zh_jieba_search_v2';
 export const BM25_NORMALIZATION_VERSION_V1 = 'zh_bm25_normalize_v1';
 export const BM25_VECTOR_NAME_V1 = 'bm25_zh_jieba_v1';
 
+// RetrievalInitStatusV1.error code set by getStatus when the active collections
+// were built with a different tokenizer; the renderer maps it to its own copy of
+// the re-import guidance. Shared constant so main/renderer cannot drift.
+export const E_TOKENIZER_MISMATCH_V1 = 'E_TOKENIZER_MISMATCH';
+
+// Provisional default for internalRetrieval.minReferenceConfidence (TD-12);
+// M3-09 calibration must re-derive it together with the sigmoid params.
+export const DEFAULT_MIN_REFERENCE_CONFIDENCE_V1 = 0.75;
+
 // Frozen Bm25 profile (CONTRACT §4.5 / DATA §7.2 in 09-design); changed params
 // require a new profile + collection + atomic alias switch, never an in-place edit.
 export const Bm25ZhJiebaProfileV1Schema = z.strictObject({
@@ -164,6 +173,12 @@ export const PreSetImportResultV1Schema = z.discriminatedUnion('ok', [
     ok: z.literal(true),
     profile: Bm25ZhJiebaProfileV1Schema,
     entryCount: z.number().int().nonnegative(),
+    // TD-11: present when the import triggered a tokenizer-version migration.
+    // Counts are anonymous facts, not case data.
+    goldenMigration: z.strictObject({
+      reencoded: z.number().int().nonnegative(),
+      skippedEmptyVector: z.number().int().nonnegative(),
+    }).optional(),
   }),
   z.strictObject({
     ok: z.literal(false),

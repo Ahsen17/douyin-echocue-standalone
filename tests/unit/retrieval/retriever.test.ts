@@ -162,7 +162,6 @@ describe('SuggestionRetriever tokenizer version guard', () => {
 
     expect(result).toEqual({ preHits: [], goldenHits: [] });
     expect(queried).toBe(false);
-    expect(retriever.hasVersionMismatch()).toBe(true);
   });
 
   it('treats missing metadata as incompatible (pre-versioning data)', async () => {
@@ -204,7 +203,6 @@ describe('SuggestionRetriever tokenizer version guard', () => {
 
     expect(result).toEqual({ preHits: [], goldenHits: [] });
     expect(calls).toBe(0);
-    expect(retriever.hasVersionMismatch()).toBe(true);
   });
 
   it('queries normally when both collections carry the current versions', async () => {
@@ -218,6 +216,32 @@ describe('SuggestionRetriever tokenizer version guard', () => {
     await retriever.search({ queryText: '状态' });
 
     expect(queried).toBe(true);
-    expect(retriever.hasVersionMismatch()).toBe(false);
+  });
+
+  it('recovers querying after the collections are re-imported in the same process', async () => {
+    let stale = true;
+    let queried = false;
+    const client = {
+      query: async () => {
+        queried = true;
+        return { points: [] };
+      },
+      getCollection: async () => ({
+        config: {
+          metadata: stale
+            ? V1_METADATA
+            : {
+                tokenizer_version: BM25_TOKENIZER_VERSION_V1,
+                normalization_version: BM25_NORMALIZATION_VERSION_V1,
+              },
+        },
+      }),
+    };
+    const retriever = new SuggestionRetriever(client as unknown as QdrantClient);
+    expect(await retriever.search({ queryText: '状态' })).toEqual({ preHits: [], goldenHits: [] });
+
+    stale = false;
+    await retriever.search({ queryText: '状态' });
+    expect(queried).toBe(true);
   });
 });

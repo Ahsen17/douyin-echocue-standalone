@@ -201,7 +201,7 @@ export function renderPrompt(input: PromptInput): RenderedPrompt {
     assemblerVersion: PROMPT_ASSEMBLER_VERSION_V1,
     truncationLog: {
       excludedCases: excluded,
-      ...(excludedLowConfidence !== undefined ? { excludedLowConfidence } : {}),
+      ...(excludedLowConfidence !== undefined ? { excludedLowConfidence, appliedFloor: floor } : {}),
     },
   };
 }

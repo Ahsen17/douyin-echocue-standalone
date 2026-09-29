@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { QdrantClient } from '@qdrant/js-client-rest';
 import type {
   Bm25ZhJiebaProfileV1,
+  GoldenSetPayloadV1,
   PreSetPayloadV1,
 } from '@echocue/contracts';
 import {
@@ -28,6 +29,24 @@ import { tokenId } from './token-id.js';
 
 export const QDRANT_ALIAS_PRE_SET = 'pre_set';
 export const QDRANT_ALIAS_GOLDEN_SET = 'golden_set';
+
+/**
+ * True when the collection behind the alias was built with a different
+ * tokenizer/normalization (or carries no version metadata at all). The single
+ * shared check for the retriever guard, the service gate, getStatus and the
+ * migration branch, so all of them judge versions the same way.
+ */
+export async function hasTokenizerVersionMismatch(
+  client: QdrantClient,
+  alias: string,
+): Promise<boolean> {
+  const info = await client.getCollection(alias);
+  const metadata = (info.config?.metadata ?? {}) as Record<string, unknown>;
+  return (
+    metadata.tokenizer_version !== BM25_TOKENIZER_VERSION_V1 ||
+    metadata.normalization_version !== BM25_NORMALIZATION_VERSION_V1
+  );
+}
 
 export const PRE_SET_PAYLOAD_INDEX_FIELDS = ['enabled', 'is_bad_case', 'semantic_type'] as const;
 export const GOLDEN_SET_PAYLOAD_INDEX_FIELDS = [
@@ -188,12 +207,19 @@ async function smokeQuery(
   return (result.points?.length ?? 0) > 0;
 }
 
+export interface GoldenMigrationInfo {
+  reencoded: number;
+  skippedEmptyVector: number;
+}
+
 export interface BootstrapPreSetOptions {
   content: Buffer | string;
   profile?: Bm25ZhJiebaProfileV1;
   pipeline?: Bm25TextPipeline;
   /** WP-10: configured risk filter (empty ⇒ no risk filtering on import). */
   riskFilter?: CompiledRiskFilter | null;
+  /** TD-11: reports what the version migration re-encoded, for the import result. */
+  onGoldenMigration?: (info: GoldenMigrationInfo) => void;
 }
 
 export async function bootstrapPreSet(
@@ -220,7 +246,7 @@ export async function bootstrapPreSet(
   const existing = new Set(aliasMap.keys());
   const goldenExists = existing.has(QDRANT_ALIAS_GOLDEN_SET);
   const goldenMigration =
-    goldenExists && (await goldenCollectionNeedsReencode(client, aliasMap.get(QDRANT_ALIAS_GOLDEN_SET)!));
+    goldenExists && (await hasTokenizerVersionMismatch(client, aliasMap.get(QDRANT_ALIAS_GOLDEN_SET)!));
 
   const preSetCollection = `${QDRANT_ALIAS_PRE_SET}__${profile.profileId}`;
   const goldenSetCollection = `${QDRANT_ALIAS_GOLDEN_SET}__${profile.profileId}`;
@@ -249,13 +275,15 @@ export async function bootstrapPreSet(
     }
 
     const oldGoldenCollection = aliasMap.get(QDRANT_ALIAS_GOLDEN_SET);
+    let migrationInfo: GoldenMigrationInfo | undefined;
     if (goldenMigration) {
-      await reencodeGoldenCollection(client, {
+      migrationInfo = await reencodeGoldenCollection(client, {
         oldGoldenCollection: oldGoldenCollection!,
         goldenSetCollection,
         profile,
         pipeline,
       });
+      options.onGoldenMigration?.(migrationInfo);
     }
 
     const actions: Array<
@@ -278,8 +306,21 @@ export async function bootstrapPreSet(
     // best-effort so a failed delete never rolls back a finished migration.
     const oldPreSetCollection = aliasMap.get(QDRANT_ALIAS_PRE_SET);
     if (goldenMigration) {
-      for (const name of [oldPreSetCollection, oldGoldenCollection]) {
-        if (name !== undefined) await client.deleteCollection(name).catch(() => undefined);
+      // Label reflux writes to the golden alias independently of the service,
+      // so points may have landed in the old collection between the migration
+      // scroll and the alias switch. Replay them into the new collection and
+      // only delete the old collections when that replay succeeded — otherwise
+      // they stay as a read-only backup instead of losing the stragglers.
+      const replayed = await replayLateGoldenWrites(client, {
+        oldGoldenCollection: oldGoldenCollection!,
+        goldenSetCollection,
+        profile,
+        pipeline,
+      }).catch(() => false);
+      if (replayed) {
+        for (const name of [oldPreSetCollection, oldGoldenCollection]) {
+          if (name !== undefined) await client.deleteCollection(name).catch(() => undefined);
+        }
       }
     }
 
@@ -293,18 +334,6 @@ export async function bootstrapPreSet(
   }
 }
 
-async function goldenCollectionNeedsReencode(
-  client: QdrantClient,
-  collectionName: string,
-): Promise<boolean> {
-  const info = await client.getCollection(collectionName);
-  const metadata = (info.config?.metadata ?? {}) as Record<string, unknown>;
-  return (
-    metadata.tokenizer_version !== BM25_TOKENIZER_VERSION_V1 ||
-    metadata.normalization_version !== BM25_NORMALIZATION_VERSION_V1
-  );
-}
-
 async function reencodeGoldenCollection(
   client: QdrantClient,
   deps: {
@@ -313,7 +342,7 @@ async function reencodeGoldenCollection(
     profile: Bm25ZhJiebaProfileV1;
     pipeline: Bm25TextPipeline;
   },
-): Promise<void> {
+): Promise<GoldenMigrationInfo> {
   const entries = await readGoldenEntries(client, deps.oldGoldenCollection);
   const result = reencodeGoldenEntries(entries, deps.profile, deps.pipeline);
   // A migration that silently drops points is data loss; refuse before any
@@ -323,16 +352,7 @@ async function reencodeGoldenCollection(
       `golden_set re-encode found ${result.skippedInvalidPayload} invalid payload(s); refusing to migrate`,
     );
   }
-  if (result.points.length > 0) {
-    await client.upsert(deps.goldenSetCollection, {
-      wait: true,
-      points: result.points.map((p) => ({
-        id: p.id,
-        vector: p.vector,
-        payload: p.payload,
-      })),
-    });
-  }
+  await upsertReencodedGolden(client, deps.goldenSetCollection, result);
   const info = await client.getCollection(deps.goldenSetCollection);
   const pointCount = info.points_count ?? 0;
   if (pointCount !== result.points.length) {
@@ -340,4 +360,42 @@ async function reencodeGoldenCollection(
       `golden_set re-encode point count mismatch: expected ${result.points.length}, got ${pointCount}`,
     );
   }
+  return { reencoded: result.points.length, skippedEmptyVector: result.skippedEmptyVector };
+}
+
+/**
+ * Post-switch replay of golden writes that landed in the old collection during
+ * the migration window. Idempotent: re-encoding the same point yields the same
+ * id/payload/vector, so overlapping upserts are harmless overwrites.
+ */
+async function replayLateGoldenWrites(
+  client: QdrantClient,
+  deps: {
+    oldGoldenCollection: string;
+    goldenSetCollection: string;
+    profile: Bm25ZhJiebaProfileV1;
+    pipeline: Bm25TextPipeline;
+  },
+): Promise<boolean> {
+  const entries = await readGoldenEntries(client, deps.oldGoldenCollection);
+  const result = reencodeGoldenEntries(entries, deps.profile, deps.pipeline);
+  if (result.skippedInvalidPayload > 0) return false;
+  await upsertReencodedGolden(client, deps.goldenSetCollection, result);
+  return true;
+}
+
+async function upsertReencodedGolden(
+  client: QdrantClient,
+  collection: string,
+  result: { points: Array<{ id: string; vector: Record<string, { indices: number[]; values: number[] }>; payload: GoldenSetPayloadV1 }> },
+): Promise<void> {
+  if (result.points.length === 0) return;
+  await client.upsert(collection, {
+    wait: true,
+    points: result.points.map((p) => ({
+      id: p.id,
+      vector: p.vector,
+      payload: p.payload,
+    })),
+  });
 }

@@ -1,8 +1,9 @@
 import type { ConfigUpdateRequestV1, ConfigViewV1 } from '@echocue/contracts'
+import { DEFAULT_MIN_REFERENCE_CONFIDENCE_V1 } from '@echocue/contracts'
 
 export const DEFAULT_DIRECT_PUSH_THRESHOLD = 0.85
 export const DEFAULT_SEMANTIC_DISCARD_CONFIDENCE = 0.9
-export const DEFAULT_MIN_REFERENCE_CONFIDENCE = 0.75
+export const DEFAULT_MIN_REFERENCE_CONFIDENCE = DEFAULT_MIN_REFERENCE_CONFIDENCE_V1
 export const DEFAULT_PRE_SET_CALIBRATION = { center: 0, scale: 2 }
 export const DEFAULT_GOLDEN_SET_CALIBRATION = { center: 0, scale: 2 }
 

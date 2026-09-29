@@ -117,6 +117,7 @@ describe('renderPrompt reference confidence floor (TD-12)', () => {
     expect(out.truncationLog.excludedLowConfidence).toEqual([
       { caseId: 'p-1', collection: 'pre_set', confidence: 0.4 },
     ]);
+    expect(out.truncationLog.appliedFloor).toBe(0.75);
     expect(out.user).not.toContain('0.4');
     expect(out.user).not.toContain('retrievalConfidence');
   });
@@ -130,6 +131,14 @@ describe('renderPrompt reference confidence floor (TD-12)', () => {
     const out = renderPrompt(input);
     expect(out.truncationLog.excludedLowConfidence).toEqual([]);
     expect(parseUser(out.user).reference_cases).toHaveLength(1);
+  });
+
+  it('drops every hit at the extreme floor of 1 and keeps the user message valid', () => {
+    const out = renderPrompt({ ...BASE_INPUT, minReferenceConfidence: 1 });
+    const parsed = parseUser(out.user);
+    expect(parsed.reference_cases).toEqual([]);
+    expect(out.truncationLog.excludedLowConfidence).toHaveLength(2);
+    expect(out.truncationLog.appliedFloor).toBe(1);
   });
 
   it('keeps everything when the floor is absent or zero', () => {

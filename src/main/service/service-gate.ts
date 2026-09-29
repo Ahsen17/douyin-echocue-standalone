@@ -1,5 +1,9 @@
 import type { QdrantClient } from '@qdrant/js-client-rest';
-import { QDRANT_ALIAS_PRE_SET } from '../retrieval/bootstrap.js';
+import {
+  QDRANT_ALIAS_GOLDEN_SET,
+  QDRANT_ALIAS_PRE_SET,
+  hasTokenizerVersionMismatch,
+} from '../retrieval/bootstrap.js';
 import { uuidv7 } from '../util/index.js';
 import { CredentialStore } from '../credentials/index.js';
 import type { SettingsStore } from '../config/index.js';
@@ -77,7 +81,14 @@ export function createServiceGateChecks(deps: ServiceGateDependencies): ServiceG
     async isRetrievalReady(): Promise<boolean> {
       if (!(await deps.qdrant.isHealthy())) return false;
       try {
-        return (await deps.qdrantClient.collectionExists(QDRANT_ALIAS_PRE_SET)).exists;
+        // Both collections must exist AND carry the current tokenizer version:
+        // starting the service over stale collections would silently produce
+        // reference-free LLM suggestions (search refuses cross-version scores).
+        for (const alias of [QDRANT_ALIAS_PRE_SET, QDRANT_ALIAS_GOLDEN_SET]) {
+          if (!(await deps.qdrantClient.collectionExists(alias)).exists) return false;
+          if (await hasTokenizerVersionMismatch(deps.qdrantClient, alias)) return false;
+        }
+        return true;
       } catch {
         return false;
       }

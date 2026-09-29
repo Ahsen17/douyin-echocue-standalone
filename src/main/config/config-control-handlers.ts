@@ -1,4 +1,4 @@
-import { ConfigUpdateRequestV1Schema, OverlayPreferenceV1Schema, type ConfigViewV1, type OverlayPreferenceV1, type ProviderConfigV1, type SettingsV1, type SystemPromptV1 } from '@echocue/contracts';
+import { ConfigUpdateRequestV1Schema, DEFAULT_MIN_REFERENCE_CONFIDENCE_V1, OverlayPreferenceV1Schema, type ConfigViewV1, type OverlayPreferenceV1, type ProviderConfigV1, type SettingsV1, type SystemPromptV1 } from '@echocue/contracts';
 import { DEEPSEEK_DEFAULT_BASE_URL, type ProviderConfigService } from '../provider/index.js';
 import { CredentialStore } from '../credentials/index.js';
 import { uuidv7 } from '../util/index.js';
@@ -41,7 +41,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         semanticDiscardConfidence:
           settings.internalRetrieval.semanticDiscardConfidence ?? 0.9,
         minReferenceConfidence:
-          settings.internalRetrieval.minReferenceConfidence ?? 0.75,
+          settings.internalRetrieval.minReferenceConfidence ?? DEFAULT_MIN_REFERENCE_CONFIDENCE_V1,
         preSetCalibration:
           settings.internalRetrieval.preSetCalibration ?? { center: 0, scale: 2 },
         goldenSetCalibration:

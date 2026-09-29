@@ -139,6 +139,13 @@ function renderResult(result: PreSetImportResultV1): ReactNode {
     return (
       <p className="success-text">
         已导入 {result.entryCount} 条（profile {result.profile.profileId.slice(0, 8)}…）
+        {result.goldenMigration
+          ? `；历史建议库迁移 ${result.goldenMigration.reencoded} 条${
+              result.goldenMigration.skippedEmptyVector > 0
+                ? `，跳过 ${result.goldenMigration.skippedEmptyVector} 条无可检索词的旧点`
+                : ''
+            }`
+          : ''}
       </p>
     )
   }

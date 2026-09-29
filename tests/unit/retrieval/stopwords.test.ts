@@ -13,12 +13,14 @@ const pipeline = createBm25TextPipeline();
 
 describe('stop-word filtered tokenization', () => {
   it('drops high-frequency function words from indexed tokens', () => {
-    const tokens = pipeline.tokenize(pipeline.normalize('主播今天状态真好'));
+    const tokens = pipeline.tokenize(pipeline.normalize('主播的状态是真好吗'));
     expect(tokens).toContain('主播');
+    expect(tokens).toContain('状态');
     expect(tokens).not.toContain('的');
-    expect(tokens).not.toContain('了');
     expect(tokens).not.toContain('是');
     expect(tokens).not.toContain('吗');
+    const withLe = pipeline.tokenize(pipeline.normalize('太有活力了'));
+    expect(withLe).not.toContain('了');
   });
 
   it('filters the query side identically to the index side', () => {

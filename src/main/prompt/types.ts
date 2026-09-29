@@ -67,6 +67,8 @@ export interface TruncationLog {
     collection: SourceCollectionV1;
     confidence: number;
   }>;
+  /** TD-12: the effective floor, so audit replay can reproduce the filtering. */
+  appliedFloor?: number;
 }
 
 /** Rendered system+user messages plus audit metadata. */

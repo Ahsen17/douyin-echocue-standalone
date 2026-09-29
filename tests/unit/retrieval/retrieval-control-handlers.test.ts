@@ -1,4 +1,4 @@
-import { BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
+import { BM25_NORMALIZATION_VERSION_V1, BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { Bm25ZhJiebaProfileV1 } from '@echocue/contracts';
 import { PreSetImportResultV1Schema } from '@echocue/contracts';
@@ -83,6 +83,7 @@ describe('retrieval.getStatus', () => {
           profile_id: PROFILE.profileId,
           pre_set_sha256: PROFILE.preSetSha256,
           tokenizer_version: BM25_TOKENIZER_VERSION_V1,
+          normalization_version: BM25_NORMALIZATION_VERSION_V1,
         },
       },
     });

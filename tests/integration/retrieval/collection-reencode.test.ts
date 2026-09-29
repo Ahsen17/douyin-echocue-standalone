@@ -1,4 +1,4 @@
-import { BM25_TOKENIZER_VERSION_V1, type Bm25ZhJiebaProfileV1 } from '@echocue/contracts';
+import { BM25_TOKENIZER_VERSION_V1, E_TOKENIZER_MISMATCH_V1, type Bm25ZhJiebaProfileV1 } from '@echocue/contracts';
 import { randomUUID } from 'node:crypto';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,9 +7,11 @@ import {
   QDRANT_ALIAS_PRE_SET,
   bootstrapPreSet,
   createCollectionWithSparse,
+  createRetrievalControlHandlers,
   readGoldenEntries,
   tokenId,
 } from '../../../src/main/retrieval/index.js';
+import { createServiceGateChecks } from '../../../src/main/service/service-gate.js';
 import { resolveQdrantBinary, startTestQdrant, type TestQdrant } from './qdrant-test-utils.js';
 import { uuidv7 } from '../../../src/main/util/index.js';
 
@@ -73,6 +75,13 @@ async function seedLegacyGolden(
   await createCollectionWithSparse(client, { collectionName: legacy, profile: stale, golden: true });
   await client.updateCollectionAliases({
     actions: [{ create_alias: { collection_name: legacy, alias_name: QDRANT_ALIAS_GOLDEN_SET } }],
+  });
+  // A real upgrade also has a stale pre_set behind its alias; without it the
+  // status would report plain needs-import instead of the mismatch code.
+  const legacyPreSet = 'pre_set__legacy';
+  await createCollectionWithSparse(client, { collectionName: legacyPreSet, profile: stale, golden: false });
+  await client.updateCollectionAliases({
+    actions: [{ create_alias: { collection_name: legacyPreSet, alias_name: QDRANT_ALIAS_PRE_SET } }],
   });
   if (payloads.length > 0) {
     await client.upsert(legacy, {
@@ -158,13 +167,46 @@ async function seedLegacyGolden(
       (await client.getAliases()).aliases.map((a) => [a.alias_name, a.collection_name]),
     );
     expect(byAlias.get(QDRANT_ALIAS_GOLDEN_SET)).toBe(legacyGolden);
-    expect(byAlias.get(QDRANT_ALIAS_PRE_SET)).toBeUndefined();
+    expect(byAlias.get(QDRANT_ALIAS_PRE_SET)).toBe('pre_set__legacy');
     expect((await client.getCollection(legacyGolden)).points_count).toBe(1);
     // The failed run left no new collections behind.
     const leftovers = (await client.getCollections()).collections
       .map((c) => c.name)
       .filter((n) => n.startsWith('pre_set__') || n.startsWith('golden_set__'));
-    expect(leftovers).toEqual([legacyGolden]);
+    expect(leftovers).toEqual([legacyGolden, 'pre_set__legacy']);
+  }, 60_000);
+
+  it('routes a stale collection to mismatch in getStatus and blocks the service gate until migrated', async () => {
+    const qdrant = await startTestQdrant();
+    active.push(qdrant);
+    const client = new QdrantClient({ host: '127.0.0.1', port: qdrant.manager.httpPort });
+    const handlers = createRetrievalControlHandlers({
+      qdrant: qdrant.manager,
+      client,
+      isServiceStopped: () => true,
+    });
+    const gate = createServiceGateChecks({
+      settings: {} as never,
+      credentials: {} as never,
+      audit: {} as never,
+      persona: {} as never,
+      safety: {} as never,
+      qdrant: qdrant.manager,
+      qdrantClient: client,
+    });
+
+    await seedLegacyGolden(client, seedProfile(), [goldenPayload()]);
+    await expect(handlers.getStatus()).resolves.toEqual({
+      qdrantHealthy: true,
+      ready: false,
+      error: E_TOKENIZER_MISMATCH_V1,
+    });
+    await expect(gate.isRetrievalReady()).resolves.toBe(false);
+
+    await bootstrapPreSet(client, { content: VALID_CONTENT });
+
+    await expect(handlers.getStatus()).resolves.toMatchObject({ qdrantHealthy: true, ready: true });
+    await expect(gate.isRetrievalReady()).resolves.toBe(true);
   }, 60_000);
 
   it('keeps a version-compatible golden collection untouched on re-import', async () => {
