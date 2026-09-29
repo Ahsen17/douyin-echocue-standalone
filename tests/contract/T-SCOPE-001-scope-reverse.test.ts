@@ -38,6 +38,7 @@ const FORBIDDEN_USER_VISIBLE_KEY = [
 const SANCTIONED_CONFIG_VIEW_KEYS = new Set([
   'directPushThreshold',
   'semanticDiscardConfidence',
+  'minReferenceConfidence',
   'preSetCalibration',
   'goldenSetCalibration',
 ]);

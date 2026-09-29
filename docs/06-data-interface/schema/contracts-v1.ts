@@ -406,6 +406,10 @@ export const SettingsV1Schema = z.strictObject({
     // Optional so pre-existing settings.json (without the field) still parse;
     // getDefaults / runtime fall back to DEFAULT_CALIBRATION_ARTIFACT_V1 (0.9).
     semanticDiscardConfidence: z.number().min(0).max(1).optional(),
+    // Provisional until M3-09 calibration lands: with the placeholder sigmoid
+    // {center:0, scale:2} the numeric meaning of this floor is unvalidated and
+    // must be re-derived together with the calibration params.
+    minReferenceConfidence: z.number().min(0).max(1).optional(),
     // Optional per-collection sigmoid params; getDefaults / runtime fall back to
     // {center:0, scale:2}, matching DEFAULT_CALIBRATION_ARTIFACT_V1.
     preSetCalibration: SigmoidCalibrationV1Schema.optional(),
@@ -426,6 +430,7 @@ export const ConfigViewV1Schema = z.strictObject({
   prompt: SystemPromptV1Schema.optional(),
   directPushThreshold: z.number().min(0).max(1),
   semanticDiscardConfidence: z.number().min(0).max(1),
+  minReferenceConfidence: z.number().min(0).max(1),
   preSetCalibration: SigmoidCalibrationV1Schema,
   goldenSetCalibration: SigmoidCalibrationV1Schema,
   queueing: QueueingConfigV1Schema,
@@ -469,6 +474,7 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
   // service start.
   directPushThreshold: z.number().min(0).max(1).optional(),
   semanticDiscardConfidence: z.number().min(0).max(1).optional(),
+  minReferenceConfidence: z.number().min(0).max(1).optional(),
   preSetCalibration: SigmoidCalibrationV1Schema.optional(),
   goldenSetCalibration: SigmoidCalibrationV1Schema.optional(),
   // System-settings runtime mechanism controls.
@@ -484,6 +490,7 @@ export const ConfigUpdateRequestV1Schema = z.strictObject({
     value.systemPrompt === undefined &&
     value.directPushThreshold === undefined &&
     value.semanticDiscardConfidence === undefined &&
+    value.minReferenceConfidence === undefined &&
     value.preSetCalibration === undefined &&
     value.goldenSetCalibration === undefined &&
     value.queueing === undefined &&

@@ -85,6 +85,7 @@ export class SuggestionAttemptOrchestrator {
   private frozenSafety: FrozenSafety | null = null;
   private frozenMembers: readonly TeamMemberNameV1[] = [];
   private frozenSystemPrompt: SystemPromptConfig | null = null;
+  private frozenReferenceConfidenceFloor: number | null = null;
   /** WP-2: frozen display-window queueing config (null = disabled). */
   private frozenQueueing: { enabled: boolean; timeoutMs: number } | null = null;
   /** WP-4: run-page retrieval thresholds, frozen per session like safety/prompt. */
@@ -150,6 +151,7 @@ export class SuggestionAttemptOrchestrator {
     // the fallback when the getter is absent or settings are unreadable).
     this.frozenDirectPushThreshold = (await this.deps.getDirectPushThreshold?.()) ?? null;
     this.frozenSemanticDiscardConfidence = (await this.deps.getSemanticDiscardConfidence?.()) ?? null;
+    this.frozenReferenceConfidenceFloor = (await this.deps.getReferenceConfidenceFloor?.()) ?? null;
     this.frozenCalibrationParams = (await this.deps.getCalibrationParams?.()) ?? null;
     // WP-10: freeze the configured risk filter for the whole session.
     this.frozenRiskFilter = (await this.deps.getRiskFilter?.()) ?? null;
@@ -547,6 +549,9 @@ export class SuggestionAttemptOrchestrator {
             systemPromptTemplate: this.frozenSystemPrompt.systemPromptTemplate,
             systemPromptTemplateVersion: this.frozenSystemPrompt.templateVersion,
           }
+        : {}),
+      ...(this.frozenReferenceConfidenceFloor !== null
+        ? { minReferenceConfidence: this.frozenReferenceConfidenceFloor }
         : {}),
     });
     this.transition(candidate.processingComment, 'RETRIEVING', 'PROMPT_RENDERED', 'LLM_REQUIRED', [

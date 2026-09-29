@@ -147,7 +147,23 @@ function buildUserPayload(input: PromptInput, cases: readonly ReferenceCase[]): 
  */
 export function renderPrompt(input: PromptInput): RenderedPrompt {
   const budget = input.maxContextBudget ?? DEFAULT_CONTEXT_BUDGET_TOKENS;
-  const hits = input.mergedTopK;
+  const floor = input.minReferenceConfidence;
+
+  // The floor only shapes the model's reference cases: semantic-discard and
+  // direct-push decisions already ran on the unfiltered mergedTopK.
+  const eligible = floor === undefined
+    ? [...input.mergedTopK]
+    : input.mergedTopK.filter((hit) => hit.retrievalConfidence >= floor);
+  const excludedLowConfidence = floor === undefined
+    ? undefined
+    : input.mergedTopK
+      .filter((hit) => hit.retrievalConfidence < floor)
+      .map((hit) => ({
+        caseId: hit.caseId,
+        collection: hit.collection,
+        confidence: hit.retrievalConfidence,
+      }));
+  const hits = eligible;
 
   let included: ReferenceCase[] = [];
   let exhausted = false;
@@ -183,6 +199,9 @@ export function renderPrompt(input: PromptInput): RenderedPrompt {
     user: JSON.stringify(buildUserPayload(input, included)),
     templateVersion,
     assemblerVersion: PROMPT_ASSEMBLER_VERSION_V1,
-    truncationLog: { excludedCases: excluded },
+    truncationLog: {
+      excludedCases: excluded,
+      ...(excludedLowConfidence !== undefined ? { excludedLowConfidence } : {}),
+    },
   };
 }

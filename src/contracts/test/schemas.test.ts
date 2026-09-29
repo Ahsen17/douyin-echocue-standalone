@@ -144,6 +144,7 @@ const VALID_PROMPT: object = {
 const VALID_VIEW_EXTRAS: object = {
   directPushThreshold: 0.85,
   semanticDiscardConfidence: 0.9,
+  minReferenceConfidence: 0.75,
   preSetCalibration: { center: 0, scale: 2 },
   goldenSetCalibration: { center: 0, scale: 2 },
   queueing: { enabled: false, timeoutMs: 30000 },
@@ -196,6 +197,15 @@ test('rejects non-finite calibration center/scale', () => {
     },
   }, 'scale Infinity');
 });
+test('valid settings without minReferenceConfidence (pre-TD-12 settings.json)', () =>
+  expectValid(SettingsV1Schema, VALID_SETTINGS, 'floor optional'));
+test('rejects minReferenceConfidence out of range', () => expectInvalid(SettingsV1Schema, {
+  ...VALID_SETTINGS,
+  internalRetrieval: {
+    ...(VALID_SETTINGS as { internalRetrieval: object }).internalRetrieval,
+    minReferenceConfidence: 1.5,
+  },
+}, 'floor 1.5'));
 test('rejects settings history maxEntries out of range', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, history: { maxEntries: 121 } }, 'history 121'));
 test('rejects wrong schemaVersion', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, schemaVersion: 2 }, 'schemaVersion 2'));
 test('rejects extra field', () => expectInvalid(SettingsV1Schema, { ...VALID_SETTINGS, extra: true }, 'extra field'));

@@ -239,6 +239,13 @@ export async function createServiceController(
         return 0.9;
       }
     },
+    getReferenceConfidenceFloor: async () => {
+      try {
+        return (await settings.get())?.internalRetrieval.minReferenceConfidence ?? 0.75;
+      } catch {
+        return 0.75;
+      }
+    },
     // null = user has not explicitly configured the sigmoid params, so the
     // orchestrator keeps the injected/ default artifact instead of a fallback
     // that would shadow a future real calibration artifact (M3-09).

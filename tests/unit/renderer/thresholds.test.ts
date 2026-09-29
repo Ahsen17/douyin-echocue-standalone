@@ -3,6 +3,7 @@ import type { ConfigViewV1 } from '@echocue/contracts'
 import {
   DEFAULT_DIRECT_PUSH_THRESHOLD,
   DEFAULT_SEMANTIC_DISCARD_CONFIDENCE,
+  DEFAULT_MIN_REFERENCE_CONFIDENCE,
   DEFAULT_PRE_SET_CALIBRATION,
   DEFAULT_GOLDEN_SET_CALIBRATION,
   buildThresholdUpdate,
@@ -24,6 +25,7 @@ function configView(overrides: Partial<ConfigViewV1> = {}): ConfigViewV1 {
     },
     directPushThreshold: 0.85,
     semanticDiscardConfidence: 0.9,
+    minReferenceConfidence: 0.75,
     preSetCalibration: { center: 0, scale: 2 },
     goldenSetCalibration: { center: 0, scale: 2 },
     queueing: { enabled: false, timeoutMs: 30000 },
@@ -40,6 +42,7 @@ function validForm(overrides: Partial<ThresholdForm> = {}): ThresholdForm {
   return {
     directPush: '0.85',
     semanticDiscard: '0.9',
+    minReference: '0.75',
     preSetCenter: '0',
     preSetScale: '2',
     goldenSetCenter: '0',
@@ -53,6 +56,7 @@ describe('run-page retrieval threshold form (WP-4)', () => {
     expect(thresholdFormFromConfig(configView())).toEqual({
       directPush: '0.85',
       semanticDiscard: '0.9',
+      minReference: '0.75',
       preSetCenter: '0',
       preSetScale: '2',
       goldenSetCenter: '0',
@@ -62,21 +66,29 @@ describe('run-page retrieval threshold form (WP-4)', () => {
 
   it('accepts in-range values and builds the config update', () => {
     const result = validateThresholdForm(
-      validForm({ directPush: '0.7', semanticDiscard: '0.95' }),
+      validForm({ directPush: '0.7', semanticDiscard: '0.95', minReference: '0.6' }),
     )
     expect(result).toEqual({
       ok: true,
       directPush: 0.7,
       semanticDiscard: 0.95,
+      minReference: 0.6,
       preSet: { center: 0, scale: 2 },
       goldenSet: { center: 0, scale: 2 },
     })
     if (result.ok) {
       expect(
-        buildThresholdUpdate(result.directPush, result.semanticDiscard, result.preSet, result.goldenSet),
+        buildThresholdUpdate(
+          result.directPush,
+          result.semanticDiscard,
+          result.minReference,
+          result.preSet,
+          result.goldenSet,
+        ),
       ).toEqual({
         directPushThreshold: 0.7,
         semanticDiscardConfidence: 0.95,
+        minReferenceConfidence: 0.6,
         preSetCalibration: { center: 0, scale: 2 },
         goldenSetCalibration: { center: 0, scale: 2 },
       })
@@ -96,6 +108,7 @@ describe('run-page retrieval threshold form (WP-4)', () => {
       ok: true,
       directPush: 0.85,
       semanticDiscard: 0.9,
+      minReference: 0.75,
       preSet: { center: -1, scale: 3 },
       goldenSet: { center: 2, scale: 4 },
     })
@@ -115,6 +128,10 @@ describe('run-page retrieval threshold form (WP-4)', () => {
     })
     expect(validateThresholdForm(validForm({ directPush: '' }))).toMatchObject({
       ok: false,
+    })
+    expect(validateThresholdForm(validForm({ minReference: '1.5' }))).toEqual({
+      ok: false,
+      message: '参考案例置信度地板需为 0–1 之间的小数',
     })
   })
 
@@ -136,6 +153,7 @@ describe('run-page retrieval threshold form (WP-4)', () => {
   it('keeps documented defaults aligned with the runtime fallbacks', () => {
     expect(DEFAULT_DIRECT_PUSH_THRESHOLD).toBe(0.85)
     expect(DEFAULT_SEMANTIC_DISCARD_CONFIDENCE).toBe(0.9)
+    expect(DEFAULT_MIN_REFERENCE_CONFIDENCE).toBe(0.75)
     expect(DEFAULT_PRE_SET_CALIBRATION).toEqual({ center: 0, scale: 2 })
     expect(DEFAULT_GOLDEN_SET_CALIBRATION).toEqual({ center: 0, scale: 2 })
   })

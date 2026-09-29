@@ -106,6 +106,9 @@ export class SettingsStore {
         // 2026-08 校准：语义丢弃阈值（low_value/filter_risk 明确丢弃），与
         // DEFAULT_CALIBRATION_ARTIFACT_V1 保持一致；运行页可调。
         semanticDiscardConfidence: 0.9,
+        // Provisional (TD-12): LLM 参考案例最低置信度地板，占位校准 {0,2} 下
+        // 对应 rawScore≈2.2；M3-09 校准落地时须一并重推。运行页可调。
+        minReferenceConfidence: 0.75,
         // sigmoid 校准参数（POC 占位 {0,2}），与 DEFAULT_CALIBRATION_ARTIFACT_V1
         // 保持一致；运行页可调，服务启动冻结生效。
         preSetCalibration: { center: 0, scale: 2 },

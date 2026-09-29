@@ -34,6 +34,13 @@ export interface PromptInput {
   systemPromptTemplate?: string;
   /** TD-08: version stamp of the custom template (audit reproducibility). */
   systemPromptTemplateVersion?: string;
+  /**
+   * TD-12 (provisional): hits below this retrieval confidence never become
+   * reference cases. Applied here rather than in rerank because mergedTopK
+   * also feeds the semantic-discard vote and direct-push gate, both of which
+   * need the low-confidence hits.
+   */
+  minReferenceConfidence?: number;
 }
 
 /** TD-08: user-configured system prompt overrides (SettingsV1.prompt). */
@@ -52,9 +59,14 @@ export interface ReferenceCase {
   cues?: string[];
 }
 
-/** Facts about which cases were dropped for the budget, for audit (LLM §7). */
+/** Facts about which cases were dropped and why, for audit (LLM §7). */
 export interface TruncationLog {
   excludedCases: string[];
+  excludedLowConfidence?: Array<{
+    caseId: string;
+    collection: SourceCollectionV1;
+    confidence: number;
+  }>;
 }
 
 /** Rendered system+user messages plus audit metadata. */

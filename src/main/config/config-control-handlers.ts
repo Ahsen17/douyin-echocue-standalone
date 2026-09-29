@@ -40,6 +40,8 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         directPushThreshold: settings.internalRetrieval.directPushThreshold,
         semanticDiscardConfidence:
           settings.internalRetrieval.semanticDiscardConfidence ?? 0.9,
+        minReferenceConfidence:
+          settings.internalRetrieval.minReferenceConfidence ?? 0.75,
         preSetCalibration:
           settings.internalRetrieval.preSetCalibration ?? { center: 0, scale: 2 },
         goldenSetCalibration:
@@ -64,6 +66,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         systemPrompt,
         directPushThreshold,
         semanticDiscardConfidence,
+        minReferenceConfidence,
         preSetCalibration,
         goldenSetCalibration,
         queueing,
@@ -124,6 +127,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
         if (
           directPushThreshold !== undefined ||
           semanticDiscardConfidence !== undefined ||
+          minReferenceConfidence !== undefined ||
           preSetCalibration !== undefined ||
           goldenSetCalibration !== undefined
         ) {
@@ -133,6 +137,7 @@ export function createConfigControlHandlers(deps: ConfigControlDeps): ConfigCont
               ...currentSettings.internalRetrieval,
               ...(directPushThreshold !== undefined ? { directPushThreshold } : {}),
               ...(semanticDiscardConfidence !== undefined ? { semanticDiscardConfidence } : {}),
+              ...(minReferenceConfidence !== undefined ? { minReferenceConfidence } : {}),
               ...(preSetCalibration !== undefined ? { preSetCalibration } : {}),
               ...(goldenSetCalibration !== undefined ? { goldenSetCalibration } : {}),
             },

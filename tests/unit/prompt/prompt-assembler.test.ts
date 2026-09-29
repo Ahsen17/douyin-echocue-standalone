@@ -97,6 +97,64 @@ function parseUser(user: string): Record<string, any> {
   return JSON.parse(user);
 }
 
+describe('renderPrompt reference confidence floor (TD-12)', () => {
+  function hitWithConfidence(hit: RetrievalHitV1, confidence: number): RetrievalHitV1 {
+    return { ...hit, retrievalConfidence: confidence };
+  }
+
+  it('drops hits below the floor and records them for audit', () => {
+    const input = {
+      ...BASE_INPUT,
+      mergedTopK: [
+        hitWithConfidence(goldenHit('g-1', 1), 0.9),
+        hitWithConfidence(preHit('p-1', 2), 0.4),
+      ],
+      minReferenceConfidence: 0.75,
+    };
+    const out = renderPrompt(input);
+    const parsed = parseUser(out.user);
+    expect(parsed.reference_cases.map((c: any) => c.comment)).toEqual(['今天状态真好']);
+    expect(out.truncationLog.excludedLowConfidence).toEqual([
+      { caseId: 'p-1', collection: 'pre_set', confidence: 0.4 },
+    ]);
+    expect(out.user).not.toContain('0.4');
+    expect(out.user).not.toContain('retrievalConfidence');
+  });
+
+  it('keeps hits exactly at the floor (>= semantics)', () => {
+    const input = {
+      ...BASE_INPUT,
+      mergedTopK: [hitWithConfidence(goldenHit('g-1', 1), 0.75)],
+      minReferenceConfidence: 0.75,
+    };
+    const out = renderPrompt(input);
+    expect(out.truncationLog.excludedLowConfidence).toEqual([]);
+    expect(parseUser(out.user).reference_cases).toHaveLength(1);
+  });
+
+  it('keeps everything when the floor is absent or zero', () => {
+    const withFloorZero = renderPrompt({ ...BASE_INPUT, minReferenceConfidence: 0 });
+    const withoutFloor = renderPrompt(BASE_INPUT);
+    expect(withFloorZero.user).toBe(withoutFloor.user);
+    expect(withFloorZero.truncationLog.excludedLowConfidence).toEqual([]);
+  });
+
+  it('stays byte-stable for identical inputs including the audit log', () => {
+    const input = {
+      ...BASE_INPUT,
+      mergedTopK: [
+        hitWithConfidence(goldenHit('g-1', 1), 0.9),
+        hitWithConfidence(preHit('p-1', 2), 0.4),
+      ],
+      minReferenceConfidence: 0.75,
+    };
+    const a = renderPrompt(input);
+    const b = renderPrompt(input);
+    expect(a.user).toBe(b.user);
+    expect(a.truncationLog).toEqual(b.truncationLog);
+  });
+});
+
 describe('renderPrompt', () => {
   it('renders the fixed system template and version', () => {
     const out = renderPrompt(BASE_INPUT);
