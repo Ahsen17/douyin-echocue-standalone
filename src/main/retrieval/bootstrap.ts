@@ -5,6 +5,7 @@ import type {
   PreSetPayloadV1,
 } from '@echocue/contracts';
 import {
+  BM25_NORMALIZATION_VERSION_V1,
   BM25_TOKENIZER_VERSION_V1,
   BM25_VECTOR_NAME_V1,
   Bm25ZhJiebaProfileV1Schema,
@@ -18,6 +19,7 @@ import {
   computeAvgDocLenBaseline,
 } from './bm25-weights.js';
 import { importPreSet } from './pre-set-importer.js';
+import { readGoldenEntries, reencodeGoldenEntries } from './collection-reencode.js';
 import type { CompiledRiskFilter } from '../safety/risk-filter-config.js';
 import type { Bm25Analysis, PreSetEntryV1 } from './types.js';
 import { uuidv5 } from '../util/uuidv5.js';
@@ -209,15 +211,22 @@ export async function bootstrapPreSet(
   // WP-8: only the first bootstrap creates the golden_set collection/alias. A
   // re-import must never replace an existing golden collection, or the host
   // label reflux into golden_set would be wiped (old collection orphaned).
+  // The one exception is a tokenizer-version migration: the golden points stay
+  // (scroll → re-encode under the new profile) but the collection itself is
+  // rebuilt, since mixing tokenizations would make the two collections'
+  // scores incomparable.
   const aliases = await client.getAliases();
-  const existing = new Set(aliases.aliases.map((a) => a.alias_name));
+  const aliasMap = new Map(aliases.aliases.map((a) => [a.alias_name, a.collection_name]));
+  const existing = new Set(aliasMap.keys());
   const goldenExists = existing.has(QDRANT_ALIAS_GOLDEN_SET);
+  const goldenMigration =
+    goldenExists && (await goldenCollectionNeedsReencode(client, aliasMap.get(QDRANT_ALIAS_GOLDEN_SET)!));
 
   const preSetCollection = `${QDRANT_ALIAS_PRE_SET}__${profile.profileId}`;
   const goldenSetCollection = `${QDRANT_ALIAS_GOLDEN_SET}__${profile.profileId}`;
   await createCollectionWithSparse(client, { collectionName: preSetCollection, profile, golden: false });
   let createdGolden = false;
-  if (!goldenExists) {
+  if (!goldenExists || goldenMigration) {
     await createCollectionWithSparse(client, { collectionName: goldenSetCollection, profile, golden: true });
     createdGolden = true;
   }
@@ -239,6 +248,16 @@ export async function bootstrapPreSet(
       }
     }
 
+    const oldGoldenCollection = aliasMap.get(QDRANT_ALIAS_GOLDEN_SET);
+    if (goldenMigration) {
+      await reencodeGoldenCollection(client, {
+        oldGoldenCollection: oldGoldenCollection!,
+        goldenSetCollection,
+        profile,
+        pipeline,
+      });
+    }
+
     const actions: Array<
       { create_alias: { collection_name: string; alias_name: string } }
       | { delete_alias: { alias_name: string } }
@@ -248,9 +267,21 @@ export async function bootstrapPreSet(
     }
     actions.push({ create_alias: { collection_name: preSetCollection, alias_name: QDRANT_ALIAS_PRE_SET } });
     if (createdGolden) {
+      if (goldenMigration) {
+        actions.push({ delete_alias: { alias_name: QDRANT_ALIAS_GOLDEN_SET } });
+      }
       actions.push({ create_alias: { collection_name: goldenSetCollection, alias_name: QDRANT_ALIAS_GOLDEN_SET } });
     }
     await client.updateCollectionAliases({ actions });
+
+    // Migration is committed past this point; old collections are cleaned up
+    // best-effort so a failed delete never rolls back a finished migration.
+    const oldPreSetCollection = aliasMap.get(QDRANT_ALIAS_PRE_SET);
+    if (goldenMigration) {
+      for (const name of [oldPreSetCollection, oldGoldenCollection]) {
+        if (name !== undefined) await client.deleteCollection(name).catch(() => undefined);
+      }
+    }
 
     return profile;
   } catch (err) {
@@ -259,5 +290,54 @@ export async function bootstrapPreSet(
       await client.deleteCollection(goldenSetCollection).catch(() => undefined);
     }
     throw err;
+  }
+}
+
+async function goldenCollectionNeedsReencode(
+  client: QdrantClient,
+  collectionName: string,
+): Promise<boolean> {
+  const info = await client.getCollection(collectionName);
+  const metadata = (info.config?.metadata ?? {}) as Record<string, unknown>;
+  return (
+    metadata.tokenizer_version !== BM25_TOKENIZER_VERSION_V1 ||
+    metadata.normalization_version !== BM25_NORMALIZATION_VERSION_V1
+  );
+}
+
+async function reencodeGoldenCollection(
+  client: QdrantClient,
+  deps: {
+    oldGoldenCollection: string;
+    goldenSetCollection: string;
+    profile: Bm25ZhJiebaProfileV1;
+    pipeline: Bm25TextPipeline;
+  },
+): Promise<void> {
+  const entries = await readGoldenEntries(client, deps.oldGoldenCollection);
+  const result = reencodeGoldenEntries(entries, deps.profile, deps.pipeline);
+  // A migration that silently drops points is data loss; refuse before any
+  // alias switch so the old golden collection stays authoritative.
+  if (result.skippedInvalidPayload > 0) {
+    throw new Error(
+      `golden_set re-encode found ${result.skippedInvalidPayload} invalid payload(s); refusing to migrate`,
+    );
+  }
+  if (result.points.length > 0) {
+    await client.upsert(deps.goldenSetCollection, {
+      wait: true,
+      points: result.points.map((p) => ({
+        id: p.id,
+        vector: p.vector,
+        payload: p.payload,
+      })),
+    });
+  }
+  const info = await client.getCollection(deps.goldenSetCollection);
+  const pointCount = info.points_count ?? 0;
+  if (pointCount !== result.points.length) {
+    throw new Error(
+      `golden_set re-encode point count mismatch: expected ${result.points.length}, got ${pointCount}`,
+    );
   }
 }

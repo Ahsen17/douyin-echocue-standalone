@@ -293,6 +293,8 @@ flowchart LR
 
 切换不得发生在直播进行中；新旧 profile 的 collection metadata 必须记录 profile ID、Qdrant 版本、tokenizer version、词表版本、参数及 calibration artifact ID。旧 collection 在验证和回滚窗口内保留，是否清理由受控维护流程决定，绝不触及 SQLite 永久审计。
 
+实现说明（TD-10/TD-11 起）：golden_set 的重编码**以 Qdrant point payload 为源真相**（`readGoldenEntries` scroll 全量 payload → `reencodeGoldenEntries` 以新 profile 重算向量），而非从 SQLite 重放——SQLite 审计受保留期清理，重放会丢失超期点。point id 与 payload 字段原样保留（仅 `tokenizer_version` 字段随新版本重写）；文本在新分词下不再产生任何 token 的点（纯停用词等）无法以无向量形式写入 Qdrant（upsert 拒绝缺 vector 的点），只能跳过并计数。重编码发现 payload 校验失败即拒绝迁移并保留旧 collection；通过后新旧 pre_set/golden 双别名一次原子切换，旧集合 best-effort 删除。启动期不做全自动迁移：版本不匹配时 `getStatus()` 返回 `E_TOKENIZER_MISMATCH`，检索返回空结果（弹幕走 LLM-first），由用户重新导入 pre_set 触发上述流程。
+
 ### 7.3 首次安装初始化顺序
 
 1. 创建应用数据目录，启动本机 Qdrant sidecar（仅 loopback）。

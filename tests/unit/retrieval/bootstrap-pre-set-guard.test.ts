@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BM25_NORMALIZATION_VERSION_V1, BM25_TOKENIZER_VERSION_V1 } from '@echocue/contracts';
 import {
   QDRANT_ALIAS_GOLDEN_SET,
   QDRANT_ALIAS_PRE_SET,
@@ -45,7 +46,17 @@ function makeClient(opts: { goldenAliasExists: boolean; existingGoldenCollection
       if (opts.failUpsert) throw new Error('qdrant upsert failed');
       pointCounts.set(name, body.points?.length ?? 0);
     },
-    getCollection: async (name: string) => ({ points_count: pointCounts.get(name) ?? 0 }),
+    getCollection: async (name: string) => ({
+      points_count: pointCounts.get(name) ?? 0,
+      // Golden collections created by an older run carry the tokenizer version
+      // they were built with; the default fake is version-compatible.
+      config: {
+        metadata: {
+          tokenizer_version: BM25_TOKENIZER_VERSION_V1,
+          normalization_version: BM25_NORMALIZATION_VERSION_V1,
+        },
+      },
+    }),
     query: async () => ({ points: [{ id: 'hit' }] }),
     updateCollectionAliases: async ({ actions }: { actions: Array<{ create_alias?: { collection_name: string; alias_name: string }; delete_alias?: { alias_name: string } }> }) => {
       for (const action of actions) {
